@@ -8,12 +8,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
+import com.example.varalakshmiportfolio.data.VaralakshmiRepository
 import com.example.varalakshmiportfolio.theme.VaralakshmiPortfolioTheme
 import com.example.varalakshmiportfolio.ui.VaralakshmiDashboardScreen
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        VaralakshmiRepository.initialize(filesDir)
         enableEdgeToEdge()
         setContent {
             VaralakshmiPortfolioTheme {

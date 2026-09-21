@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.varalakshmiportfolio.model.PortfolioSummary
@@ -127,9 +128,17 @@ fun PortfolioHeaderCard(
             val todayColor = if (isTodayPositive) ProfitGreen else LossRed
             val todayBg = if (isTodayPositive) ProfitGreenBg else LossRedBg
 
+            val totalValStr = (if (isTotalPositive) "+₹" else "-₹") +
+                    String.format(Locale.US, "%,.2f", kotlin.math.abs(summary.totalPnl))
+            val totalPctStr = String.format(Locale.US, "(%+.2f%%)", summary.totalPnlPct)
+
+            val todayValStr = (if (isTodayPositive) "+₹" else "-₹") +
+                    String.format(Locale.US, "%,.2f", kotlin.math.abs(summary.todayPnl))
+            val todayPctStr = String.format(Locale.US, "(%+.2f%%)", summary.todayPnlPct)
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // 1. Total Return Pill
@@ -140,7 +149,7 @@ fun PortfolioHeaderCard(
                     modifier = Modifier.weight(1f)
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
@@ -150,21 +159,33 @@ fun PortfolioHeaderCard(
                             modifier = Modifier.size(15.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
-                        Column {
+                        Column(modifier = Modifier.weight(1f, fill = false)) {
                             Text(
                                 text = "TOTAL RETURN",
-                                fontSize = 9.sp,
+                                fontSize = 8.5.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = TextMuted,
-                                letterSpacing = 0.5.sp
+                                letterSpacing = 0.5.sp,
+                                maxLines = 1,
+                                softWrap = false
                             )
+                            Spacer(modifier = Modifier.height(1.dp))
                             Text(
-                                text = (if (isTotalPositive) "+" else "") +
-                                        String.format(Locale.US, "₹%,.2f (%.2f%%)", summary.totalPnl, summary.totalPnlPct),
+                                text = totalValStr,
                                 color = totalPnlColor,
                                 fontSize = 11.5.sp,
                                 fontWeight = FontWeight.ExtraBold,
-                                maxLines = 1
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = totalPctStr,
+                                color = totalPnlColor,
+                                fontSize = 9.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                softWrap = false
                             )
                         }
                     }
@@ -178,7 +199,7 @@ fun PortfolioHeaderCard(
                     modifier = Modifier.weight(1f)
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
@@ -188,21 +209,33 @@ fun PortfolioHeaderCard(
                             modifier = Modifier.size(15.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
-                        Column {
+                        Column(modifier = Modifier.weight(1f, fill = false)) {
                             Text(
                                 text = "TODAY'S CHANGE",
-                                fontSize = 9.sp,
+                                fontSize = 8.5.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = TextMuted,
-                                letterSpacing = 0.5.sp
+                                letterSpacing = 0.5.sp,
+                                maxLines = 1,
+                                softWrap = false
                             )
+                            Spacer(modifier = Modifier.height(1.dp))
                             Text(
-                                text = (if (isTodayPositive) "+" else "") +
-                                        String.format(Locale.US, "₹%,.2f (%.2f%%)", summary.todayPnl, summary.todayPnlPct),
+                                text = todayValStr,
                                 color = todayColor,
                                 fontSize = 11.5.sp,
                                 fontWeight = FontWeight.ExtraBold,
-                                maxLines = 1
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = todayPctStr,
+                                color = todayColor,
+                                fontSize = 9.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                softWrap = false
                             )
                         }
                     }

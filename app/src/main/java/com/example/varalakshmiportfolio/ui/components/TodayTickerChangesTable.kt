@@ -97,14 +97,14 @@ fun TodayTickerChangesTable(
                         color = TextMuted,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
-                        modifier = Modifier.weight(1.15f)
+                        modifier = Modifier.weight(1.30f)
                     )
                     Text(
                         text = "PRICE",
                         color = TextMuted,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
-                        modifier = Modifier.weight(1.0f)
+                        modifier = Modifier.weight(0.95f)
                     )
                     Text(
                         text = "TODAY CHG (%)",
@@ -112,7 +112,7 @@ fun TodayTickerChangesTable(
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         textAlign = TextAlign.Center,
-                        modifier = Modifier.weight(1.35f)
+                        modifier = Modifier.weight(1.25f)
                     )
                     Text(
                         text = "TODAY VALUE (₹)",
@@ -178,7 +178,7 @@ private fun TodayTickerRow(
             verticalAlignment = Alignment.CenterVertically
         ) {
             // 1. TICKER Column
-            Column(modifier = Modifier.weight(1.15f)) {
+            Column(modifier = Modifier.weight(1.30f)) {
                 Text(
                     text = position.symbol,
                     color = TextPrimary,
@@ -197,7 +197,7 @@ private fun TodayTickerRow(
             }
 
             // 2. PRICE Column (LTP & reference price)
-            Column(modifier = Modifier.weight(1.0f)) {
+            Column(modifier = Modifier.weight(0.95f)) {
                 Text(
                     text = "₹" + String.format(Locale.US, "%.2f", position.currentPrice),
                     color = TextPrimary,
@@ -215,7 +215,7 @@ private fun TodayTickerRow(
 
             // 3. TODAY CHG (%) Column (₹ diff and % change in badge)
             Box(
-                modifier = Modifier.weight(1.35f),
+                modifier = Modifier.weight(1.25f),
                 contentAlignment = Alignment.Center
             ) {
                 Surface(
@@ -227,9 +227,10 @@ private fun TodayTickerRow(
                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
+                        val priceChgStr = (if (isPositive) "+₹" else "-₹") +
+                                String.format(Locale.US, "%.2f", kotlin.math.abs(position.todayPriceChange))
                         Text(
-                            text = (if (isPositive) "+" else "") +
-                                    String.format(Locale.US, "₹%.2f", position.todayPriceChange),
+                            text = priceChgStr,
                             color = pnlColor,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
@@ -307,9 +308,11 @@ private fun TodayTickerRow(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
+                    val formulaPriceStr = (if (isPositive) "₹" else "-₹") +
+                            String.format(Locale.US, "%.2f", kotlin.math.abs(position.todayPriceChange))
                     DetailItem(
                         label = "Calculation Formula",
-                        value = "${position.quantity} shs × ₹${String.format(Locale.US, "%.2f", position.todayPriceChange)}"
+                        value = "${position.quantity} shs × $formulaPriceStr"
                     )
                     DetailItem(
                         label = "Previous Close",

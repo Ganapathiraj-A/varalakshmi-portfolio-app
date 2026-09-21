@@ -289,4 +289,186 @@ class VaralakshmiPortfolioTest {
         // Must use US dot decimal separator
         assertEquals("1.13x", position.multiplierString)
     }
+
+    @Test
+    fun testRoundPaiseHandlesNaNAndInfinityGracefully() {
+        assertEquals(0.0, VaralakshmiRepository.roundPaise(Double.NaN), 0.0001)
+        assertEquals(0.0, VaralakshmiRepository.roundPaise(Double.POSITIVE_INFINITY), 0.0001)
+        assertEquals(0.0, VaralakshmiRepository.roundPaise(Double.NEGATIVE_INFINITY), 0.0001)
+        assertEquals(12.35, VaralakshmiRepository.roundPaise(12.3456), 0.0001)
+        assertEquals(-12.35, VaralakshmiRepository.roundPaise(-12.3456), 0.0001)
+    }
+
+    @Test
+    fun testPositionItemNaNAndZeroDivisionResilience() {
+        val nanPos = PositionItem(
+            positionId = "NAN_POS",
+            symbol = "NAN_CORP",
+            quantity = 10,
+            entryPrice = Double.NaN,
+            currentPrice = Double.NaN,
+            marketValue = 0.0,
+            unrealizedPnl = 0.0,
+            unrealizedPnlPct = 0.0,
+            peakPrice = 0.0,
+            entryDate = "2026-09-21 00:00:00",
+            previousClose = Double.NaN
+        )
+
+        assertEquals(0.0, nanPos.todayPriceChange, 0.0001)
+        assertEquals(0.0, nanPos.todayPriceChangePct, 0.0001)
+        assertEquals(0.0, nanPos.todayValueChange, 0.0001)
+        assertEquals(1.0, nanPos.returnMultiplier, 0.0001)
+        assertEquals(0.0, nanPos.referencePrice, 0.0001)
+    }
+
+    @Test
+    fun testPositionItemTodayValueChangeFormulaInvariant() {
+        // Verify formula: todayValueChange strictly equals quantity * todayPriceChange
+        val pos = PositionItem(
+            positionId = "TEST_POS_FORMULA",
+            symbol = "TEST",
+            quantity = 350,
+            entryPrice = 120.0,
+            currentPrice = 123.45,
+            marketValue = 43207.50,
+            unrealizedPnl = 1207.50,
+            unrealizedPnlPct = 2.88,
+            peakPrice = 125.0,
+            entryDate = "2026-09-21 10:00:00",
+            previousClose = 121.15
+        )
+
+        val expectedPriceChange = VaralakshmiRepository.roundPaise(123.45 - 121.15) // 2.30
+        assertEquals(expectedPriceChange, pos.todayPriceChange, 0.001)
+        val expectedValueChange = VaralakshmiRepository.roundPaise(350 * expectedPriceChange) // 350 * 2.30 = 805.00
+        assertEquals(expectedValueChange, pos.todayValueChange, 0.001)
+        assertEquals(expectedValueChange, VaralakshmiRepository.roundPaise(pos.quantity * pos.todayPriceChange), 0.001)
+    }
+
+    @Test
+    fun testLiveSyncHandlesEmptyPositionsArrayAsFullLiquidation() = runTest {
+        val server = com.sun.net.httpserver.HttpServer.create(java.net.InetSocketAddress(0), 0)
+        try {
+            server.createContext("/api/live-trading/positions") { exchange ->
+                val response = """{"status":"OK","active":[]}"""
+                exchange.sendResponseHeaders(200, response.toByteArray().size.toLong())
+                exchange.responseBody.use { it.write(response.toByteArray()) }
+            }
+            server.createContext("/api/live-trading/transactions") { exchange ->
+                val response = """{"status":"OK","transactions":[]}"""
+                exchange.sendResponseHeaders(200, response.toByteArray().size.toLong())
+                exchange.responseBody.use { it.write(response.toByteArray()) }
+            }
+            server.start()
+
+            val repo = VaralakshmiRepository()
+            val result = repo.refreshData("http://localhost:${server.address.port}")
+
+            assertTrue("Empty active array must succeed as complete liquidation: ${(result as? SyncResult.OfflineCacheFallback)?.message}", result is SyncResult.Success)
+            assertEquals(0, result.positions.size)
+            assertEquals(0, result.summary.activeSlots)
+            assertEquals(0.00, result.summary.todayPnl, 0.001)
+            assertEquals(0.00, result.summary.todayPnlPct, 0.001)
+            assertEquals(0.00, result.summary.deployedCapital, 0.001)
+            // Available capital equals allocated (100,000) when deployed=0 and realized=0
+            assertEquals(100000.00, result.summary.availableCapital, 0.001)
+            assertEquals(100000.00, result.summary.totalNav, 0.001)
+        } finally {
+            server.stop(0)
+        }
+    }
+
+    @Test
+    fun testDiskPersistenceAcrossAppRestarts() {
+        val tempDir = java.nio.file.Files.createTempDirectory("varalakshmi_cache_test").toFile()
+        try {
+            VaralakshmiRepository.initialize(tempDir)
+
+            // 1. Initial repository instance
+            val repo1 = VaralakshmiRepository()
+            val initialNav = repo1.getCachedSummary().totalNav
+            assertEquals(109268.80, initialNav, 0.001)
+
+            // 2. Perform an exit to mutate state and trigger saveToDisk
+            val (updatedSummary, updatedPositions, updatedTransactions) = repo1.removePosition("STLNETWORK")
+            assertEquals(2, updatedPositions.size)
+            assertEquals(39015.18, updatedSummary.availableCapital, 0.001)
+
+            // 3. Verify portfolio_cache.json was written to disk
+            val cacheFile = java.io.File(tempDir, VaralakshmiRepository.CACHE_FILE_NAME)
+            assertTrue("Cache file must exist on disk after trade exit or refresh", cacheFile.exists())
+
+            // 4. Simulate process restart by creating a new repository instance
+            val repo2 = VaralakshmiRepository()
+            val reloadedSummary = repo2.getCachedSummary()
+            val reloadedPositions = repo2.getCachedPositions()
+            val reloadedTransactions = repo2.getCachedTransactions()
+
+            // 5. Must NOT show the old seed data, must show the latest data from the last session!
+            assertEquals(2, reloadedPositions.size)
+            assertTrue("STLNETWORK must not be in reloaded positions", reloadedPositions.none { it.symbol == "STLNETWORK" })
+            assertEquals(updatedSummary.totalNav, reloadedSummary.totalNav, 0.001)
+            assertEquals(39015.18, reloadedSummary.availableCapital, 0.001)
+            assertEquals(updatedSummary.realizedPnl, reloadedSummary.realizedPnl, 0.001)
+            assertEquals(updatedTransactions.size, reloadedTransactions.size)
+            assertEquals("SELL", reloadedTransactions.first().side)
+        } finally {
+            VaralakshmiRepository.resetCacheDirectoryForTesting()
+            tempDir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun testLiveSyncDefensiveAgainstNullAndMalformedFields() = runTest {
+        val server = com.sun.net.httpserver.HttpServer.create(java.net.InetSocketAddress(0), 0)
+        try {
+            server.createContext("/api/live-trading/positions") { exchange ->
+                val response = """
+                    {
+                        "status": "OK",
+                        "active": [
+                            {
+                                "symbol": "NULL_TEST",
+                                "quantity": 100,
+                                "entry_price": 50.0,
+                                "current_price": 55.0,
+                                "today_price_change": null,
+                                "change_pct": null,
+                                "today_value_change": null,
+                                "previous_close": null,
+                                "market_value": null,
+                                "unrealized_pnl": null
+                            }
+                        ]
+                    }
+                """.trimIndent()
+                exchange.sendResponseHeaders(200, response.toByteArray().size.toLong())
+                exchange.responseBody.use { it.write(response.toByteArray()) }
+            }
+            server.createContext("/api/live-trading/transactions") { exchange ->
+                val response = """{"status":"OK","transactions":[]}"""
+                exchange.sendResponseHeaders(200, response.toByteArray().size.toLong())
+                exchange.responseBody.use { it.write(response.toByteArray()) }
+            }
+            server.start()
+
+            val repo = VaralakshmiRepository()
+            val result = repo.refreshData("http://localhost:${server.address.port}")
+
+            assertTrue("Payload with null fields must parse safely", result is SyncResult.Success)
+            assertEquals(1, result.positions.size)
+            val pos = result.positions[0]
+            assertEquals("NULL_TEST", pos.symbol)
+            assertEquals(100, pos.quantity)
+            assertEquals(55.0, pos.currentPrice, 0.001)
+            // Fallback calculation: ref = entryPrice (50.0), todayChg = 55.0 - 50.0 = 5.0
+            assertEquals(5.00, pos.todayPriceChange, 0.001)
+            assertEquals(10.00, pos.todayPriceChangePct, 0.01)
+            assertEquals(500.00, pos.todayValueChange, 0.001)
+            assertEquals(500.00, result.summary.todayPnl, 0.001)
+        } finally {
+            server.stop(0)
+        }
+    }
 }

@@ -171,7 +171,7 @@ private fun TransactionRow(
         val parts = transaction.timestamp.split(" ")
         if (parts.size >= 2) {
             val datePart = parts[0] // 2026-09-21
-            val timePart = parts[1].substring(0, 5) // 09:26
+            val timePart = parts[1].take(5) // 09:26
             val sub = datePart.split("-")
             if (sub.size == 3) "${sub[2]}/${sub[1]} $timePart" else "$datePart $timePart"
         } else {

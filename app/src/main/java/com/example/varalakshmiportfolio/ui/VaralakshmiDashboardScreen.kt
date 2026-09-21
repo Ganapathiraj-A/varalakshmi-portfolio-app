@@ -35,6 +35,7 @@ import com.example.varalakshmiportfolio.ui.components.TodayTickerChangesTable
 import com.example.varalakshmiportfolio.ui.components.TransactionsTable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -282,6 +283,17 @@ fun VaralakshmiDashboardScreen(
     if (uiState.showSettingsDialog) {
         var tempUrl by remember { mutableStateOf(uiState.serverUrl) }
         val uriHandler = LocalUriHandler.current
+        val coroutineScope = rememberCoroutineScope()
+
+        fun safeOpenUri(uri: String) {
+            try {
+                uriHandler.openUri(uri)
+            } catch (e: Exception) {
+                coroutineScope.launch {
+                    snackbarHostState.showSnackbar("Unable to open browser: ${e.localizedMessage ?: "No browser application found"}")
+                }
+            }
+        }
 
         AlertDialog(
             onDismissRequest = { viewModel.closeSettings() },
@@ -293,7 +305,11 @@ fun VaralakshmiDashboardScreen(
                 )
             },
             text = {
-                Column {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                ) {
                     Text(
                         text = "Configure Unified UI server URL to sync live telemetry from trading cycles:",
                         color = TextSecondary,
@@ -346,7 +362,7 @@ fun VaralakshmiDashboardScreen(
                     ) {
                         OutlinedButton(
                             onClick = {
-                                uriHandler.openUri("https://github.com/Ganapathiraj-A/varalakshmi-portfolio-app/releases/latest/download/varalakshmi-portfolio.apk")
+                                safeOpenUri("https://github.com/Ganapathiraj-A/varalakshmi-portfolio-app/releases/latest/download/varalakshmi-portfolio.apk")
                             },
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(8.dp),
@@ -364,7 +380,7 @@ fun VaralakshmiDashboardScreen(
 
                         OutlinedButton(
                             onClick = {
-                                uriHandler.openUri("https://github.com/Ganapathiraj-A/varalakshmi-portfolio-app/releases")
+                                safeOpenUri("https://github.com/Ganapathiraj-A/varalakshmi-portfolio-app/releases")
                             },
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(8.dp),

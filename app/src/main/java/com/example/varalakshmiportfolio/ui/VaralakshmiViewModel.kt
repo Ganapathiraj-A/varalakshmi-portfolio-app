@@ -28,7 +28,8 @@ data class VaralakshmiUiState(
 )
 
 class VaralakshmiViewModel(
-    private val repository: VaralakshmiRepository = VaralakshmiRepository()
+    private val repository: VaralakshmiRepository = VaralakshmiRepository(),
+    autoRefresh: Boolean = true
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(
@@ -39,6 +40,16 @@ class VaralakshmiViewModel(
         )
     )
     val uiState: StateFlow<VaralakshmiUiState> = _uiState.asStateFlow()
+
+    init {
+        if (autoRefresh) {
+            try {
+                refresh()
+            } catch (e: Throwable) {
+                // Safeguard against unconfigured Main dispatcher in headless JVM tests
+            }
+        }
+    }
 
     fun refresh() {
         if (_uiState.value.isRefreshing) return

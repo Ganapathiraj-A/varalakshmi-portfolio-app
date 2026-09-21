@@ -107,4 +107,22 @@ Please ensure that inside the Server Settings Dialog (in VaralakshmiDashboardScr
 
 Please incorporate this seamlessly alongside R1-R5.
 
+## 2026-09-21T11:08:42Z
+
+CRITICAL BUG REPORTED BY USER:
+"When i click refresh it shows latest data but when closing and open it shows 9:26 data. It should show latest data got from server during last refresh"
+
+Root Causes:
+1. `VaralakshmiRepository` stores cached data only in-memory variables (`cachedSummary`, `cachedPositions`, `cachedTransactions`), which are lost when the app process exits.
+2. `VaralakshmiViewModel` does not have an `init { refresh() }` block, so it never automatically syncs with the server when the app is launched.
+
+Remediation Required:
+1. Implement persistent local caching in `VaralakshmiRepository` (e.g. `portfolio_cache.json` in `context.filesDir` or `SharedPreferences`):
+   - Provide a static `VaralakshmiRepository.initialize(cacheDir: File)` called in `MainActivity.onCreate()` or use application context.
+   - On startup, if persistent cache exists, load `cachedSummary`, `cachedPositions`, and `cachedTransactions` from disk so the app immediately starts with the latest refreshed data.
+   - On successful `refreshData()`, save the fetched data to disk.
+2. In `VaralakshmiViewModel`, add `init { refresh() }` so that whenever the ViewModel starts, it immediately and automatically syncs live data from the server in the background.
+
+Please implement this fix immediately, ensure unit tests pass, and rebuild the release APK.
+
 

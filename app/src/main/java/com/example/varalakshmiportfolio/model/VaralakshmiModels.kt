@@ -39,28 +39,35 @@ data class PositionItem(
     val status: String = "OPEN",
     val previousClose: Double = 0.0,
     val todayPriceChange: Double = run {
-        val ref = if (previousClose > 0.0) previousClose else entryPrice
-        java.math.BigDecimal.valueOf(currentPrice - ref).setScale(2, java.math.RoundingMode.HALF_EVEN).toDouble()
+        if (currentPrice.isNaN() || currentPrice.isInfinite()) 0.0
+        else {
+            val ref = if (previousClose > 0.0) previousClose else if (entryPrice > 0.0) entryPrice else 0.0
+            if (ref.isNaN() || ref.isInfinite()) 0.0
+            else java.math.BigDecimal.valueOf(currentPrice - ref).setScale(2, java.math.RoundingMode.HALF_EVEN).toDouble()
+        }
     },
     val todayPriceChangePct: Double = run {
-        val ref = if (previousClose > 0.0) previousClose else entryPrice
-        if (ref > 0.0) {
-            java.math.BigDecimal.valueOf(((currentPrice - ref) / ref) * 100.0).setScale(2, java.math.RoundingMode.HALF_EVEN).toDouble()
-        } else 0.0
+        if (currentPrice.isNaN() || currentPrice.isInfinite()) 0.0
+        else {
+            val ref = if (previousClose > 0.0) previousClose else if (entryPrice > 0.0) entryPrice else 0.0
+            if (ref > 0.0 && !ref.isNaN() && !ref.isInfinite()) {
+                java.math.BigDecimal.valueOf(((currentPrice - ref) / ref) * 100.0).setScale(2, java.math.RoundingMode.HALF_EVEN).toDouble()
+            } else 0.0
+        }
     },
     val todayValueChange: Double = run {
-        val ref = if (previousClose > 0.0) previousClose else entryPrice
-        java.math.BigDecimal.valueOf(quantity * (currentPrice - ref)).setScale(2, java.math.RoundingMode.HALF_EVEN).toDouble()
+        if (todayPriceChange.isNaN() || todayPriceChange.isInfinite()) 0.0
+        else java.math.BigDecimal.valueOf(quantity * todayPriceChange).setScale(2, java.math.RoundingMode.HALF_EVEN).toDouble()
     }
 ) {
     val returnMultiplier: Double
-        get() = if (entryPrice > 0) currentPrice / entryPrice else 1.0
+        get() = if (entryPrice > 0 && !currentPrice.isNaN() && !entryPrice.isNaN()) currentPrice / entryPrice else 1.0
 
     val multiplierString: String
         get() = String.format(Locale.US, "%.2fx", returnMultiplier)
 
     val referencePrice: Double
-        get() = if (previousClose > 0.0) previousClose else entryPrice
+        get() = if (previousClose > 0.0) previousClose else if (entryPrice > 0.0) entryPrice else 0.0
 }
 
 data class TransactionItem(

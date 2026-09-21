@@ -6,7 +6,9 @@ import com.example.varalakshmiportfolio.model.TransactionItem
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 import java.io.IOException
 import java.math.BigDecimal
 import java.math.RoundingMode
@@ -43,9 +45,24 @@ class VaralakshmiRepository {
     companion object {
         const val DEFAULT_SERVER_URL = "https://varalakshmi.ghostsoftwaresystems.com"
         const val DEFAULT_AUTH_TOKEN = "eyJlbWFpbCI6ImdhbmFwYXRoaXJhakBnbWFpbC5jb20iLCJleHAiOjIxMDUzNDA5NzgsIm5vbmNlIjoiYTFkYWE3NTlmMWU2ZmU1MjgxMDFlZTRmZDRjYTIzODQifQ.uEdogGmmZ7NeYDuwiWdv416rE7P5Im1s8CPByRwzgR0"
+        const val CACHE_FILE_NAME = "portfolio_cache.json"
+
+        @Volatile
+        private var cacheDirectory: File? = null
+
+        fun initialize(cacheDir: File) {
+            cacheDirectory = cacheDir
+        }
+
+        fun getCacheDirectory(): File? = cacheDirectory
+
+        fun resetCacheDirectoryForTesting() {
+            cacheDirectory = null
+        }
 
         fun roundPaise(value: Double): Double =
-            BigDecimal.valueOf(value).setScale(2, RoundingMode.HALF_EVEN).toDouble()
+            if (value.isNaN() || value.isInfinite()) 0.0
+            else BigDecimal.valueOf(value).setScale(2, RoundingMode.HALF_EVEN).toDouble()
     }
 
     private val lock = Any()
@@ -179,6 +196,14 @@ class VaralakshmiRepository {
         )
     )
 
+    init {
+        synchronized(lock) {
+            loadFromDisk()
+        }
+    }
+
+    fun reloadCache(): Boolean = synchronized(lock) { loadFromDisk() }
+
     fun getCachedSummary(): PortfolioSummary = synchronized(lock) { cachedSummary }
     fun getCachedPositions(): List<PositionItem> = synchronized(lock) { cachedPositions.toList() }
     fun getCachedTransactions(): List<TransactionItem> = synchronized(lock) { cachedTransactions.toList() }
@@ -207,15 +232,30 @@ class VaralakshmiRepository {
                         val quantity = obj.optInt("quantity", 0)
                         val entryPrice = obj.optDouble("entry_price", 0.0)
                         val currentPrice = obj.optDouble("current_price", 0.0)
-                        val marketValue = if (obj.has("market_value")) obj.optDouble("market_value") else roundPaise(quantity * currentPrice)
-                        val unrealizedPnl = obj.optDouble("unrealized_pnl", 0.0)
-                        val unrealizedPnlPct = obj.optDouble("unrealized_pnl_pct", 0.0)
-                        val peakPrice = obj.optDouble("peak_price", currentPrice)
+                        val marketValue = if (obj.has("market_value") && !obj.isNull("market_value")) {
+                            roundPaise(obj.optDouble("market_value", 0.0))
+                        } else roundPaise(quantity * currentPrice)
+                        val unrealizedPnl = if (obj.has("unrealized_pnl") && !obj.isNull("unrealized_pnl")) {
+                            roundPaise(obj.optDouble("unrealized_pnl", 0.0))
+                        } else roundPaise(marketValue - (quantity * entryPrice))
+                        val unrealizedPnlPct = if (obj.has("unrealized_pnl_pct") && !obj.isNull("unrealized_pnl_pct")) {
+                            roundPaise(obj.optDouble("unrealized_pnl_pct", 0.0))
+                        } else {
+                            if (entryPrice > 0.0) roundPaise(((currentPrice - entryPrice) / entryPrice) * 100.0) else 0.0
+                        }
+                        val peakPrice = if (obj.has("peak_price") && !obj.isNull("peak_price")) {
+                            obj.optDouble("peak_price", currentPrice)
+                        } else currentPrice
                         val entryDate = obj.optString("entry_date", "")
                         val status = obj.optString("status", "OPEN")
 
                         // Look up previous close from JSON, or fall back to cached position, or entryPrice
-                        val jsonPrevClose = obj.optDouble("previous_close", obj.optDouble("prev_close", 0.0))
+                        val jsonPrevClose = if (obj.has("previous_close") && !obj.isNull("previous_close")) {
+                            obj.optDouble("previous_close", 0.0)
+                        } else if (obj.has("prev_close") && !obj.isNull("prev_close")) {
+                            obj.optDouble("prev_close", 0.0)
+                        } else 0.0
+
                         val cachedPrevClose = synchronized(lock) {
                             cachedPositions.find { it.symbol == symbol }?.previousClose
                         } ?: 0.0
@@ -229,24 +269,24 @@ class VaralakshmiRepository {
 
                         val refPrice = if (effectivePrevClose > 0.0) effectivePrevClose else entryPrice
 
-                        val todayChg = if (obj.has("today_price_change")) {
-                            roundPaise(obj.optDouble("today_price_change"))
-                        } else if (obj.has("change")) {
-                            roundPaise(obj.optDouble("change"))
+                        val todayChg = if (obj.has("today_price_change") && !obj.isNull("today_price_change")) {
+                            roundPaise(obj.optDouble("today_price_change", 0.0))
+                        } else if (obj.has("change") && !obj.isNull("change")) {
+                            roundPaise(obj.optDouble("change", 0.0))
                         } else {
                             roundPaise(currentPrice - refPrice)
                         }
 
-                        val todayChgPct = if (obj.has("today_price_change_pct")) {
-                            roundPaise(obj.optDouble("today_price_change_pct"))
-                        } else if (obj.has("change_pct")) {
-                            roundPaise(obj.optDouble("change_pct"))
+                        val todayChgPct = if (obj.has("today_price_change_pct") && !obj.isNull("today_price_change_pct")) {
+                            roundPaise(obj.optDouble("today_price_change_pct", 0.0))
+                        } else if (obj.has("change_pct") && !obj.isNull("change_pct")) {
+                            roundPaise(obj.optDouble("change_pct", 0.0))
                         } else {
                             if (refPrice > 0.0) roundPaise(((currentPrice - refPrice) / refPrice) * 100.0) else 0.0
                         }
 
-                        val todayValChg = if (obj.has("today_value_change")) {
-                            roundPaise(obj.optDouble("today_value_change"))
+                        val todayValChg = if (obj.has("today_value_change") && !obj.isNull("today_value_change")) {
+                            roundPaise(obj.optDouble("today_value_change", 0.0))
                         } else {
                             roundPaise(quantity * todayChg)
                         }
@@ -271,9 +311,7 @@ class VaralakshmiRepository {
                             )
                         )
                     }
-                    if (parsedPositions.isNotEmpty()) {
-                        fetchedPositions = parsedPositions
-                    }
+                    fetchedPositions = parsedPositions
                 }
             } else {
                 networkError = "Positions endpoint returned empty response"
@@ -306,7 +344,7 @@ class VaralakshmiRepository {
                             (if (realized >= 0) "+₹" else "-₹") + String.format(Locale.US, "%.2f", kotlin.math.abs(realized))
                         } else if (matchedPos != null) {
                             (if (matchedPos.unrealizedPnl >= 0) "+₹" else "-₹") +
-                                    String.format(Locale.US, "%.2f (+%.1f%%)", kotlin.math.abs(matchedPos.unrealizedPnl), matchedPos.unrealizedPnlPct)
+                                    String.format(Locale.US, "%.2f (%+.1f%%)", kotlin.math.abs(matchedPos.unrealizedPnl), matchedPos.unrealizedPnlPct)
                         } else {
                             "₹0.00"
                         }
@@ -326,9 +364,7 @@ class VaralakshmiRepository {
                             )
                         )
                     }
-                    if (parsedTx.isNotEmpty()) {
-                        fetchedTransactions = parsedTx
-                    }
+                    fetchedTransactions = parsedTx
                 }
             }
         } catch (e: CancellationException) {
@@ -376,6 +412,7 @@ class VaralakshmiRepository {
                     activeSlots = cachedPositions.size,
                     lastUpdated = nowStr
                 )
+                saveToDisk()
 
                 SyncResult.Success(cachedSummary, cachedPositions.toList(), cachedTransactions.toList())
             } else {
@@ -452,6 +489,7 @@ class VaralakshmiRepository {
                     pnlDifference = diffStr
                 )
                 cachedTransactions.add(0, exitTx)
+                saveToDisk()
             }
 
             Triple(cachedSummary, cachedPositions.toList(), cachedTransactions.toList())
@@ -488,6 +526,182 @@ class VaralakshmiRepository {
             null
         } finally {
             conn?.disconnect()
+        }
+    }
+
+    private fun saveToDisk() {
+        val dir = cacheDirectory ?: return
+        try {
+            val root = JSONObject()
+            val summaryObj = JSONObject().apply {
+                put("strategyId", cachedSummary.strategyId)
+                put("strategyName", cachedSummary.strategyName)
+                put("formula", cachedSummary.formula)
+                put("status", cachedSummary.status)
+                put("totalNav", cachedSummary.totalNav)
+                put("allocatedCapital", cachedSummary.allocatedCapital)
+                put("deployedCapital", cachedSummary.deployedCapital)
+                put("availableCapital", cachedSummary.availableCapital)
+                put("realizedPnl", cachedSummary.realizedPnl)
+                put("unrealizedPnl", cachedSummary.unrealizedPnl)
+                put("totalPnl", cachedSummary.totalPnl)
+                put("totalPnlPct", cachedSummary.totalPnlPct)
+                put("todayPnl", cachedSummary.todayPnl)
+                put("todayPnlPct", cachedSummary.todayPnlPct)
+                put("activeSlots", cachedSummary.activeSlots)
+                put("maxSlots", cachedSummary.maxSlots)
+                put("lastUpdated", cachedSummary.lastUpdated)
+            }
+            root.put("summary", summaryObj)
+
+            val posArray = JSONArray()
+            for (p in cachedPositions) {
+                val pObj = JSONObject().apply {
+                    put("positionId", p.positionId)
+                    put("symbol", p.symbol)
+                    put("quantity", p.quantity)
+                    put("entryPrice", p.entryPrice)
+                    put("currentPrice", p.currentPrice)
+                    put("marketValue", p.marketValue)
+                    put("unrealizedPnl", p.unrealizedPnl)
+                    put("unrealizedPnlPct", p.unrealizedPnlPct)
+                    put("peakPrice", p.peakPrice)
+                    put("entryDate", p.entryDate)
+                    put("status", p.status)
+                    put("previousClose", p.previousClose)
+                    put("todayPriceChange", p.todayPriceChange)
+                    put("todayPriceChangePct", p.todayPriceChangePct)
+                    put("todayValueChange", p.todayValueChange)
+                }
+                posArray.put(pObj)
+            }
+            root.put("positions", posArray)
+
+            val txArray = JSONArray()
+            for (tx in cachedTransactions) {
+                val txObj = JSONObject().apply {
+                    put("transactionId", tx.transactionId)
+                    put("timestamp", tx.timestamp)
+                    put("side", tx.side)
+                    put("symbol", tx.symbol)
+                    put("quantity", tx.quantity)
+                    put("fillPrice", tx.fillPrice)
+                    put("grossAmount", tx.grossAmount)
+                    put("fees", tx.fees)
+                    put("realizedPnl", tx.realizedPnl)
+                    put("pnlDifference", tx.pnlDifference)
+                }
+                txArray.put(txObj)
+            }
+            root.put("transactions", txArray)
+
+            val targetFile = File(dir, CACHE_FILE_NAME)
+            val tempFile = File(dir, "$CACHE_FILE_NAME.tmp")
+            tempFile.writeText(root.toString(2), Charsets.UTF_8)
+            if (tempFile.renameTo(targetFile).not()) {
+                tempFile.copyTo(targetFile, overwrite = true)
+                tempFile.delete()
+            }
+        } catch (e: Exception) {
+            // Disk caching failure must not interrupt normal operations
+        }
+    }
+
+    private fun loadFromDisk(): Boolean {
+        val dir = cacheDirectory ?: return false
+        val cacheFile = File(dir, CACHE_FILE_NAME)
+        if (!cacheFile.exists() || !cacheFile.isFile) return false
+
+        return try {
+            val jsonStr = cacheFile.readText(Charsets.UTF_8)
+            val root = JSONObject(jsonStr)
+
+            val summaryObj = root.optJSONObject("summary")
+            if (summaryObj != null) {
+                cachedSummary = PortfolioSummary(
+                    strategyId = summaryObj.optString("strategyId", cachedSummary.strategyId),
+                    strategyName = summaryObj.optString("strategyName", cachedSummary.strategyName),
+                    formula = summaryObj.optString("formula", cachedSummary.formula),
+                    status = summaryObj.optString("status", cachedSummary.status),
+                    totalNav = summaryObj.optDouble("totalNav", cachedSummary.totalNav),
+                    allocatedCapital = summaryObj.optDouble("allocatedCapital", cachedSummary.allocatedCapital),
+                    deployedCapital = summaryObj.optDouble("deployedCapital", cachedSummary.deployedCapital),
+                    availableCapital = summaryObj.optDouble("availableCapital", cachedSummary.availableCapital),
+                    realizedPnl = summaryObj.optDouble("realizedPnl", cachedSummary.realizedPnl),
+                    unrealizedPnl = summaryObj.optDouble("unrealizedPnl", cachedSummary.unrealizedPnl),
+                    totalPnl = summaryObj.optDouble("totalPnl", cachedSummary.totalPnl),
+                    totalPnlPct = summaryObj.optDouble("totalPnlPct", cachedSummary.totalPnlPct),
+                    todayPnl = summaryObj.optDouble("todayPnl", cachedSummary.todayPnl),
+                    todayPnlPct = summaryObj.optDouble("todayPnlPct", cachedSummary.todayPnlPct),
+                    activeSlots = summaryObj.optInt("activeSlots", cachedSummary.activeSlots),
+                    maxSlots = summaryObj.optInt("maxSlots", cachedSummary.maxSlots),
+                    lastUpdated = summaryObj.optString("lastUpdated", cachedSummary.lastUpdated)
+                )
+            }
+
+            val posArray = root.optJSONArray("positions")
+            if (posArray != null) {
+                val list = mutableListOf<PositionItem>()
+                for (i in 0 until posArray.length()) {
+                    val p = posArray.optJSONObject(i) ?: continue
+                    list.add(
+                        PositionItem(
+                            positionId = p.optString("positionId", ""),
+                            symbol = p.optString("symbol", ""),
+                            quantity = p.optInt("quantity", 0),
+                            entryPrice = p.optDouble("entryPrice", 0.0),
+                            currentPrice = p.optDouble("currentPrice", 0.0),
+                            marketValue = p.optDouble("marketValue", 0.0),
+                            unrealizedPnl = p.optDouble("unrealizedPnl", 0.0),
+                            unrealizedPnlPct = p.optDouble("unrealizedPnlPct", 0.0),
+                            peakPrice = p.optDouble("peakPrice", 0.0),
+                            entryDate = p.optString("entryDate", ""),
+                            status = p.optString("status", "OPEN"),
+                            previousClose = p.optDouble("previousClose", 0.0),
+                            todayPriceChange = p.optDouble("todayPriceChange", 0.0),
+                            todayPriceChangePct = p.optDouble("todayPriceChangePct", 0.0),
+                            todayValueChange = p.optDouble("todayValueChange", 0.0)
+                        )
+                    )
+                }
+                cachedPositions.clear()
+                cachedPositions.addAll(list)
+            }
+
+            val txArray = root.optJSONArray("transactions")
+            if (txArray != null) {
+                val list = mutableListOf<TransactionItem>()
+                for (i in 0 until txArray.length()) {
+                    val tx = txArray.optJSONObject(i) ?: continue
+                    list.add(
+                        TransactionItem(
+                            transactionId = tx.optString("transactionId", ""),
+                            timestamp = tx.optString("timestamp", ""),
+                            side = tx.optString("side", "BUY"),
+                            symbol = tx.optString("symbol", ""),
+                            quantity = tx.optInt("quantity", 0),
+                            fillPrice = tx.optDouble("fillPrice", 0.0),
+                            grossAmount = tx.optDouble("grossAmount", 0.0),
+                            fees = tx.optDouble("fees", 20.0),
+                            realizedPnl = tx.optDouble("realizedPnl", 0.0),
+                            pnlDifference = tx.optString("pnlDifference", "")
+                        )
+                    )
+                }
+                cachedTransactions.clear()
+                cachedTransactions.addAll(list)
+            }
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    fun clearDiskCache() {
+        val dir = cacheDirectory ?: return
+        val cacheFile = File(dir, CACHE_FILE_NAME)
+        if (cacheFile.exists()) {
+            cacheFile.delete()
         }
     }
 }
