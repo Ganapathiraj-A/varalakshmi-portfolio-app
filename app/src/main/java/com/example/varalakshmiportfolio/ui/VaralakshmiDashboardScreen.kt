@@ -154,7 +154,9 @@ fun VaralakshmiDashboardScreen(
                                 text = currentTimeString,
                                 fontSize = 12.5.sp,
                                 fontWeight = FontWeight.SemiBold,
-                                color = TextPrimary
+                                color = TextPrimary,
+                                maxLines = 1,
+                                softWrap = false
                             )
                         }
                     }
@@ -180,13 +182,18 @@ fun VaralakshmiDashboardScreen(
                                 color = if (uiState.isRefreshing) GoldAccent
                                 else if (uiState.isLiveSync) ProfitGreen
                                 else TextSecondary,
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                softWrap = false
                             )
                         }
                         Text(
                             text = "Data: ${uiState.summary.lastUpdated}",
                             fontSize = 10.sp,
-                            color = TextMuted
+                            color = TextMuted,
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                         )
                     }
                 }
@@ -288,7 +295,7 @@ fun VaralakshmiDashboardScreen(
         fun safeOpenUri(uri: String) {
             try {
                 uriHandler.openUri(uri)
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 coroutineScope.launch {
                     snackbarHostState.showSnackbar("Unable to open browser: ${e.localizedMessage ?: "No browser application found"}")
                 }
@@ -366,6 +373,7 @@ fun VaralakshmiDashboardScreen(
                             },
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 8.dp),
                             border = androidx.compose.foundation.BorderStroke(1.dp, AccentIndigoLight.copy(alpha = 0.6f)),
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = AccentIndigoLight)
                         ) {
@@ -375,7 +383,7 @@ fun VaralakshmiDashboardScreen(
                                 modifier = Modifier.size(15.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Download APK", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Download APK", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false)
                         }
 
                         OutlinedButton(
@@ -384,6 +392,7 @@ fun VaralakshmiDashboardScreen(
                             },
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 8.dp),
                             border = androidx.compose.foundation.BorderStroke(1.dp, TextSecondary.copy(alpha = 0.5f)),
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary)
                         ) {
@@ -393,7 +402,7 @@ fun VaralakshmiDashboardScreen(
                                 modifier = Modifier.size(15.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("All Releases", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                            Text("All Releases", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false)
                         }
                     }
                 }

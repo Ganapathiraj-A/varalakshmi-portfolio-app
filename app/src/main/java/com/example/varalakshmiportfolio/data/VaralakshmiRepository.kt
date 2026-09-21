@@ -63,6 +63,137 @@ class VaralakshmiRepository {
         fun roundPaise(value: Double): Double =
             if (value.isNaN() || value.isInfinite()) 0.0
             else BigDecimal.valueOf(value).setScale(2, RoundingMode.HALF_EVEN).toDouble()
+
+        fun optSafeDouble(obj: JSONObject, key: String, default: Double): Double {
+            if (!obj.has(key) || obj.isNull(key)) return default
+            val v = obj.optDouble(key, default)
+            return if (v.isNaN() || v.isInfinite()) default else roundPaise(v)
+        }
+
+        fun createDefaultSummary() = PortfolioSummary(
+            strategyId = "VARALAKSHMI_ALPHA_SCALE_35",
+            strategyName = "VaraLakshmi Alpha (80%+ Fast Rotation Compounder)",
+            formula = "AlphaZero_MCTS_Options_Gated_Agile_Exit(cut_loss=4%, trail_stop=8%, target=35%)",
+            status = "ACTIVE",
+            totalNav = 109268.80,
+            allocatedCapital = 100000.00,
+            deployedCapital = 99536.77,
+            availableCapital = 463.23,
+            realizedPnl = 0.00,
+            unrealizedPnl = 9268.80,
+            totalPnl = 9268.80,
+            totalPnlPct = 9.2688,
+            todayPnl = 4007.77,
+            todayPnlPct = 3.81,
+            activeSlots = 3,
+            maxSlots = 3,
+            lastUpdated = "2026-09-21 09:26:07"
+        )
+
+        fun createDefaultPositions() = listOf(
+            PositionItem(
+                positionId = "VARALAKSHMI_ALPHA_SCALE_35_STLNETWORK",
+                symbol = "STLNETWORK",
+                quantity = 855,
+                entryPrice = 40.20,
+                currentPrice = 45.09,
+                marketValue = 38551.95,
+                unrealizedPnl = 4180.95,
+                unrealizedPnlPct = 12.16,
+                peakPrice = 45.09,
+                entryDate = "2026-09-17 08:41:42",
+                status = "OPEN",
+                previousClose = 43.80,
+                todayPriceChange = 1.29,
+                todayPriceChangePct = 2.95,
+                todayValueChange = 1102.95
+            ),
+            PositionItem(
+                positionId = "VARALAKSHMI_ALPHA_SCALE_35_AHCL",
+                symbol = "AHCL",
+                quantity = 1472,
+                entryPrice = 22.67,
+                currentPrice = 24.91,
+                marketValue = 36667.52,
+                unrealizedPnl = 3301.75,
+                unrealizedPnlPct = 9.90,
+                peakPrice = 25.30,
+                entryDate = "2026-09-18 09:23:45",
+                status = "OPEN",
+                previousClose = 24.15,
+                todayPriceChange = 0.76,
+                todayPriceChangePct = 3.15,
+                todayValueChange = 1118.72
+            ),
+            PositionItem(
+                positionId = "VARALAKSHMI_ALPHA_SCALE_35_TBZ",
+                symbol = "TBZ",
+                quantity = 53,
+                entryPrice = 600.00,
+                currentPrice = 633.70,
+                marketValue = 33586.10,
+                unrealizedPnl = 1786.10,
+                unrealizedPnlPct = 5.62,
+                peakPrice = 633.70,
+                entryDate = "2026-09-21 09:26:07",
+                status = "OPEN",
+                previousClose = 600.00,
+                todayPriceChange = 33.70,
+                todayPriceChangePct = 5.62,
+                todayValueChange = 1786.10
+            )
+        )
+
+        fun createDefaultTransactions() = listOf(
+            TransactionItem(
+                transactionId = "TX_ORD_VARALAKSHMI_ALPHA_SCALE_35_TBZ_20260919_BUY_53",
+                timestamp = "2026-09-21 09:26:07",
+                side = "BUY",
+                symbol = "TBZ",
+                quantity = 53,
+                fillPrice = 600.00,
+                grossAmount = 31800.00,
+                fees = 20.0,
+                realizedPnl = 0.0,
+                pnlDifference = "+₹1,786.10 (+5.6%)"
+            ),
+            TransactionItem(
+                transactionId = "TX_ORD_VARALAKSHMI_ALPHA_SCALE_35_AHCL_20260918_BUY_1472",
+                timestamp = "2026-09-18 09:23:45",
+                side = "BUY",
+                symbol = "AHCL",
+                quantity = 1472,
+                fillPrice = 22.67,
+                grossAmount = 33365.77,
+                fees = 20.0,
+                realizedPnl = 0.0,
+                pnlDifference = "+₹3,301.75 (+9.9%)"
+            ),
+            TransactionItem(
+                transactionId = "TX_ORD_VARALAKSHMI_ALPHA_SCALE_35_TBZ_20260918_BUY_58",
+                timestamp = "2026-09-18 09:11:58",
+                side = "BUY",
+                symbol = "TBZ",
+                quantity = 58,
+                fillPrice = 574.85,
+                grossAmount = 33341.30,
+                fees = 20.0,
+                realizedPnl = 0.0,
+                pnlDifference = "Pre-fill Entry"
+            ),
+            TransactionItem(
+                transactionId = "TX_ORD_VARALAKSHMI_ALPHA_SCALE_35_STLNETWORK_20260917_BUY_855",
+                timestamp = "2026-09-17 08:41:42",
+                side = "BUY",
+                symbol = "STLNETWORK",
+                quantity = 855,
+                fillPrice = 40.20,
+                grossAmount = 34371.00,
+                fees = 20.0,
+                realizedPnl = 0.0,
+                pnlDifference = "+₹4,180.95 (+12.2%)"
+            )
+        )
     }
 
     private val lock = Any()
@@ -71,142 +202,57 @@ class VaralakshmiRepository {
     // STL (cost 34,371.00) + AHCL (cost 33,365.77) + TBZ (cost 31,800.00) = 99,536.77
     // Allocated: 100,000.00 -> Available: 463.23
     // NAV = 99,536.77 + 463.23 + 9,268.80 = 109,268.80
-    private var cachedSummary = PortfolioSummary(
-        strategyId = "VARALAKSHMI_ALPHA_SCALE_35",
-        strategyName = "VaraLakshmi Alpha (80%+ Fast Rotation Compounder)",
-        formula = "AlphaZero_MCTS_Options_Gated_Agile_Exit(cut_loss=4%, trail_stop=8%, target=35%)",
-        status = "ACTIVE",
-        totalNav = 109268.80,
-        allocatedCapital = 100000.00,
-        deployedCapital = 99536.77,
-        availableCapital = 463.23,
-        realizedPnl = 0.00,
-        unrealizedPnl = 9268.80,
-        totalPnl = 9268.80,
-        totalPnlPct = 9.2688,
-        todayPnl = 4007.77,
-        todayPnlPct = 3.81,
-        activeSlots = 3,
-        maxSlots = 3,
-        lastUpdated = "2026-09-21 09:26:07"
-    )
+    private var cachedSummary = createDefaultSummary()
+    private val cachedPositions = createDefaultPositions().toMutableList()
+    private val cachedTransactions = createDefaultTransactions().toMutableList()
 
-    private val cachedPositions = mutableListOf(
-        PositionItem(
-            positionId = "VARALAKSHMI_ALPHA_SCALE_35_STLNETWORK",
-            symbol = "STLNETWORK",
-            quantity = 855,
-            entryPrice = 40.20,
-            currentPrice = 45.09,
-            marketValue = 38551.95,
-            unrealizedPnl = 4180.95,
-            unrealizedPnlPct = 12.16,
-            peakPrice = 45.09,
-            entryDate = "2026-09-17 08:41:42",
-            status = "OPEN",
-            previousClose = 43.80,
-            todayPriceChange = 1.29,
-            todayPriceChangePct = 2.95,
-            todayValueChange = 1102.95
-        ),
-        PositionItem(
-            positionId = "VARALAKSHMI_ALPHA_SCALE_35_AHCL",
-            symbol = "AHCL",
-            quantity = 1472,
-            entryPrice = 22.67,
-            currentPrice = 24.91,
-            marketValue = 36667.52,
-            unrealizedPnl = 3301.75,
-            unrealizedPnlPct = 9.90,
-            peakPrice = 25.30,
-            entryDate = "2026-09-18 09:23:45",
-            status = "OPEN",
-            previousClose = 24.15,
-            todayPriceChange = 0.76,
-            todayPriceChangePct = 3.15,
-            todayValueChange = 1118.72
-        ),
-        PositionItem(
-            positionId = "VARALAKSHMI_ALPHA_SCALE_35_TBZ",
-            symbol = "TBZ",
-            quantity = 53,
-            entryPrice = 600.00,
-            currentPrice = 633.70,
-            marketValue = 33586.10,
-            unrealizedPnl = 1786.10,
-            unrealizedPnlPct = 5.62,
-            peakPrice = 633.70,
-            entryDate = "2026-09-21 09:26:07",
-            status = "OPEN",
-            previousClose = 600.00,
-            todayPriceChange = 33.70,
-            todayPriceChangePct = 5.62,
-            todayValueChange = 1786.10
-        )
-    )
+    fun resetToDefaultSeed() = synchronized(lock) {
+        cachedSummary = createDefaultSummary()
+        cachedPositions.clear()
+        cachedPositions.addAll(createDefaultPositions())
+        cachedTransactions.clear()
+        cachedTransactions.addAll(createDefaultTransactions())
+    }
 
-    private val cachedTransactions = mutableListOf(
-        TransactionItem(
-            transactionId = "TX_ORD_VARALAKSHMI_ALPHA_SCALE_35_TBZ_20260919_BUY_53",
-            timestamp = "2026-09-21 09:26:07",
-            side = "BUY",
-            symbol = "TBZ",
-            quantity = 53,
-            fillPrice = 600.00,
-            grossAmount = 31800.00,
-            fees = 20.0,
-            realizedPnl = 0.0,
-            pnlDifference = "+₹1,786.10 (+5.6%)"
-        ),
-        TransactionItem(
-            transactionId = "TX_ORD_VARALAKSHMI_ALPHA_SCALE_35_AHCL_20260918_BUY_1472",
-            timestamp = "2026-09-18 09:23:45",
-            side = "BUY",
-            symbol = "AHCL",
-            quantity = 1472,
-            fillPrice = 22.67,
-            grossAmount = 33365.77,
-            fees = 20.0,
-            realizedPnl = 0.0,
-            pnlDifference = "+₹3,301.75 (+9.9%)"
-        ),
-        TransactionItem(
-            transactionId = "TX_ORD_VARALAKSHMI_ALPHA_SCALE_35_TBZ_20260918_BUY_58",
-            timestamp = "2026-09-18 09:11:58",
-            side = "BUY",
-            symbol = "TBZ",
-            quantity = 58,
-            fillPrice = 574.85,
-            grossAmount = 33341.30,
-            fees = 20.0,
-            realizedPnl = 0.0,
-            pnlDifference = "Pre-fill Entry"
-        ),
-        TransactionItem(
-            transactionId = "TX_ORD_VARALAKSHMI_ALPHA_SCALE_35_STLNETWORK_20260917_BUY_855",
-            timestamp = "2026-09-17 08:41:42",
-            side = "BUY",
-            symbol = "STLNETWORK",
-            quantity = 855,
-            fillPrice = 40.20,
-            grossAmount = 34371.00,
-            fees = 20.0,
-            realizedPnl = 0.0,
-            pnlDifference = "+₹4,180.95 (+12.2%)"
-        )
-    )
+    private var isLoadedFromDisk = false
+    private var cachedServerUrl = DEFAULT_SERVER_URL
+    private var cachedAuthToken = DEFAULT_AUTH_TOKEN
 
     init {
         synchronized(lock) {
-            loadFromDisk()
+            if (loadFromDisk()) {
+                isLoadedFromDisk = true
+            }
         }
     }
 
-    fun reloadCache(): Boolean = synchronized(lock) { loadFromDisk() }
+    private fun ensureLoaded() {
+        if (!isLoadedFromDisk && cacheDirectory != null) {
+            if (loadFromDisk()) {
+                isLoadedFromDisk = true
+            }
+        }
+    }
 
-    fun getCachedSummary(): PortfolioSummary = synchronized(lock) { cachedSummary }
-    fun getCachedPositions(): List<PositionItem> = synchronized(lock) { cachedPositions.toList() }
-    fun getCachedTransactions(): List<TransactionItem> = synchronized(lock) { cachedTransactions.toList() }
+    fun reloadCache(): Boolean = synchronized(lock) {
+        val result = loadFromDisk()
+        if (result) isLoadedFromDisk = true
+        result
+    }
+
+    fun getServerUrl(): String = synchronized(lock) { ensureLoaded(); cachedServerUrl }
+    fun getAuthToken(): String = synchronized(lock) { ensureLoaded(); cachedAuthToken }
+    fun setServerConfig(url: String, token: String = cachedAuthToken) {
+        synchronized(lock) {
+            cachedServerUrl = url
+            cachedAuthToken = token
+            saveToDisk()
+        }
+    }
+
+    fun getCachedSummary(): PortfolioSummary = synchronized(lock) { ensureLoaded(); cachedSummary }
+    fun getCachedPositions(): List<PositionItem> = synchronized(lock) { ensureLoaded(); cachedPositions.toList() }
+    fun getCachedTransactions(): List<TransactionItem> = synchronized(lock) { ensureLoaded(); cachedTransactions.toList() }
 
     suspend fun refreshData(serverBaseUrl: String, authToken: String = DEFAULT_AUTH_TOKEN): SyncResult = withContext(Dispatchers.IO) {
         val cleanUrl = serverBaseUrl.trimEnd('/')
@@ -285,10 +331,11 @@ class VaralakshmiRepository {
                             if (refPrice > 0.0) roundPaise(((currentPrice - refPrice) / refPrice) * 100.0) else 0.0
                         }
 
-                        val todayValChg = if (obj.has("today_value_change") && !obj.isNull("today_value_change")) {
+                        val calculatedValChg = roundPaise(quantity * todayChg)
+                        val todayValChg = if (obj.has("today_value_change") && !obj.isNull("today_value_change") && obj.optDouble("today_value_change", 0.0) != 0.0) {
                             roundPaise(obj.optDouble("today_value_change", 0.0))
                         } else {
-                            roundPaise(quantity * todayChg)
+                            calculatedValChg
                         }
 
                         parsedPositions.add(
@@ -532,7 +579,12 @@ class VaralakshmiRepository {
     private fun saveToDisk() {
         val dir = cacheDirectory ?: return
         try {
+            if (!dir.exists()) {
+                dir.mkdirs()
+            }
             val root = JSONObject()
+            root.put("serverUrl", cachedServerUrl)
+            root.put("authToken", cachedAuthToken)
             val summaryObj = JSONObject().apply {
                 put("strategyId", cachedSummary.strategyId)
                 put("strategyName", cachedSummary.strategyName)
@@ -553,6 +605,8 @@ class VaralakshmiRepository {
                 put("lastUpdated", cachedSummary.lastUpdated)
             }
             root.put("summary", summaryObj)
+            root.put("serverUrl", cachedServerUrl)
+            root.put("authToken", cachedAuthToken)
 
             val posArray = JSONArray()
             for (p in cachedPositions) {
@@ -614,94 +668,225 @@ class VaralakshmiRepository {
 
         return try {
             val jsonStr = cacheFile.readText(Charsets.UTF_8)
+            if (jsonStr.isBlank()) {
+                cacheFile.delete()
+                return false
+            }
             val root = JSONObject(jsonStr)
 
             val summaryObj = root.optJSONObject("summary")
-            if (summaryObj != null) {
-                cachedSummary = PortfolioSummary(
+            val parsedSummary = if (summaryObj != null) {
+                PortfolioSummary(
                     strategyId = summaryObj.optString("strategyId", cachedSummary.strategyId),
                     strategyName = summaryObj.optString("strategyName", cachedSummary.strategyName),
                     formula = summaryObj.optString("formula", cachedSummary.formula),
                     status = summaryObj.optString("status", cachedSummary.status),
-                    totalNav = summaryObj.optDouble("totalNav", cachedSummary.totalNav),
-                    allocatedCapital = summaryObj.optDouble("allocatedCapital", cachedSummary.allocatedCapital),
-                    deployedCapital = summaryObj.optDouble("deployedCapital", cachedSummary.deployedCapital),
-                    availableCapital = summaryObj.optDouble("availableCapital", cachedSummary.availableCapital),
-                    realizedPnl = summaryObj.optDouble("realizedPnl", cachedSummary.realizedPnl),
-                    unrealizedPnl = summaryObj.optDouble("unrealizedPnl", cachedSummary.unrealizedPnl),
-                    totalPnl = summaryObj.optDouble("totalPnl", cachedSummary.totalPnl),
-                    totalPnlPct = summaryObj.optDouble("totalPnlPct", cachedSummary.totalPnlPct),
-                    todayPnl = summaryObj.optDouble("todayPnl", cachedSummary.todayPnl),
-                    todayPnlPct = summaryObj.optDouble("todayPnlPct", cachedSummary.todayPnlPct),
+                    totalNav = optSafeDouble(summaryObj, "totalNav", cachedSummary.totalNav),
+                    allocatedCapital = optSafeDouble(summaryObj, "allocatedCapital", cachedSummary.allocatedCapital),
+                    deployedCapital = optSafeDouble(summaryObj, "deployedCapital", cachedSummary.deployedCapital),
+                    availableCapital = optSafeDouble(summaryObj, "availableCapital", cachedSummary.availableCapital),
+                    realizedPnl = optSafeDouble(summaryObj, "realizedPnl", cachedSummary.realizedPnl),
+                    unrealizedPnl = optSafeDouble(summaryObj, "unrealizedPnl", cachedSummary.unrealizedPnl),
+                    totalPnl = optSafeDouble(summaryObj, "totalPnl", cachedSummary.totalPnl),
+                    totalPnlPct = optSafeDouble(summaryObj, "totalPnlPct", cachedSummary.totalPnlPct),
+                    todayPnl = optSafeDouble(summaryObj, "todayPnl", cachedSummary.todayPnl),
+                    todayPnlPct = optSafeDouble(summaryObj, "todayPnlPct", cachedSummary.todayPnlPct),
                     activeSlots = summaryObj.optInt("activeSlots", cachedSummary.activeSlots),
                     maxSlots = summaryObj.optInt("maxSlots", cachedSummary.maxSlots),
                     lastUpdated = summaryObj.optString("lastUpdated", cachedSummary.lastUpdated)
                 )
-            }
+            } else null
 
             val posArray = root.optJSONArray("positions")
-            if (posArray != null) {
+            val parsedPositions = if (posArray != null) {
                 val list = mutableListOf<PositionItem>()
                 for (i in 0 until posArray.length()) {
                     val p = posArray.optJSONObject(i) ?: continue
+                    val symbol = p.optString("symbol", "")
+                    val quantity = p.optInt("quantity", 0)
+                    val entryPrice = optSafeDouble(p, "entryPrice", if (p.has("entry_price")) optSafeDouble(p, "entry_price", 0.0) else 0.0)
+                    val currentPrice = optSafeDouble(p, "currentPrice", if (p.has("current_price")) optSafeDouble(p, "current_price", 0.0) else 0.0)
+                    val prevClose = if (p.has("previousClose") && !p.isNull("previousClose")) {
+                        optSafeDouble(p, "previousClose", 0.0)
+                    } else if (p.has("previous_close") && !p.isNull("previous_close")) {
+                        optSafeDouble(p, "previous_close", 0.0)
+                    } else 0.0
+                    val effectivePrevClose = if (prevClose > 0.0) prevClose else entryPrice
+                    val refPrice = if (effectivePrevClose > 0.0) effectivePrevClose else entryPrice
+
+                    val todayChg = if (p.has("todayPriceChange") && !p.isNull("todayPriceChange")) {
+                        optSafeDouble(p, "todayPriceChange", 0.0)
+                    } else if (p.has("today_price_change") && !p.isNull("today_price_change")) {
+                        optSafeDouble(p, "today_price_change", 0.0)
+                    } else {
+                        roundPaise(currentPrice - refPrice)
+                    }
+
+                    val todayChgPct = if (p.has("todayPriceChangePct") && !p.isNull("todayPriceChangePct")) {
+                        optSafeDouble(p, "todayPriceChangePct", 0.0)
+                    } else if (p.has("today_price_change_pct") && !p.isNull("today_price_change_pct")) {
+                        optSafeDouble(p, "today_price_change_pct", 0.0)
+                    } else {
+                        if (refPrice > 0.0) roundPaise(((currentPrice - refPrice) / refPrice) * 100.0) else 0.0
+                    }
+
+                    val calculatedValChg = roundPaise(quantity * todayChg)
+                    val todayValChg = if (p.has("todayValueChange") && !p.isNull("todayValueChange") && p.optDouble("todayValueChange", 0.0) != 0.0) {
+                        optSafeDouble(p, "todayValueChange", calculatedValChg)
+                    } else if (p.has("today_value_change") && !p.isNull("today_value_change") && p.optDouble("today_value_change", 0.0) != 0.0) {
+                        optSafeDouble(p, "today_value_change", calculatedValChg)
+                    } else {
+                        calculatedValChg
+                    }
+
+                    val marketValue = if (p.has("marketValue") && !p.isNull("marketValue")) {
+                        optSafeDouble(p, "marketValue", roundPaise(quantity * currentPrice))
+                    } else if (p.has("market_value") && !p.isNull("market_value")) {
+                        optSafeDouble(p, "market_value", roundPaise(quantity * currentPrice))
+                    } else roundPaise(quantity * currentPrice)
+
+                    val unrealizedPnl = if (p.has("unrealizedPnl") && !p.isNull("unrealizedPnl")) {
+                        optSafeDouble(p, "unrealizedPnl", roundPaise(marketValue - (quantity * entryPrice)))
+                    } else if (p.has("unrealized_pnl") && !p.isNull("unrealized_pnl")) {
+                        optSafeDouble(p, "unrealized_pnl", roundPaise(marketValue - (quantity * entryPrice)))
+                    } else roundPaise(marketValue - (quantity * entryPrice))
+
+                    val unrealizedPnlPct = if (p.has("unrealizedPnlPct") && !p.isNull("unrealizedPnlPct")) {
+                        optSafeDouble(p, "unrealizedPnlPct", 0.0)
+                    } else if (p.has("unrealized_pnl_pct") && !p.isNull("unrealized_pnl_pct")) {
+                        optSafeDouble(p, "unrealized_pnl_pct", 0.0)
+                    } else {
+                        if (entryPrice > 0.0) roundPaise(((currentPrice - entryPrice) / entryPrice) * 100.0) else 0.0
+                    }
+
+                    val peakPrice = if (p.has("peakPrice") && !p.isNull("peakPrice")) {
+                        optSafeDouble(p, "peakPrice", currentPrice)
+                    } else if (p.has("peak_price") && !p.isNull("peak_price")) {
+                        optSafeDouble(p, "peak_price", currentPrice)
+                    } else currentPrice
+
                     list.add(
                         PositionItem(
-                            positionId = p.optString("positionId", ""),
-                            symbol = p.optString("symbol", ""),
-                            quantity = p.optInt("quantity", 0),
-                            entryPrice = p.optDouble("entryPrice", 0.0),
-                            currentPrice = p.optDouble("currentPrice", 0.0),
-                            marketValue = p.optDouble("marketValue", 0.0),
-                            unrealizedPnl = p.optDouble("unrealizedPnl", 0.0),
-                            unrealizedPnlPct = p.optDouble("unrealizedPnlPct", 0.0),
-                            peakPrice = p.optDouble("peakPrice", 0.0),
-                            entryDate = p.optString("entryDate", ""),
+                            positionId = p.optString("positionId", if (p.has("position_id")) p.optString("position_id", "") else ""),
+                            symbol = symbol,
+                            quantity = quantity,
+                            entryPrice = entryPrice,
+                            currentPrice = currentPrice,
+                            marketValue = marketValue,
+                            unrealizedPnl = unrealizedPnl,
+                            unrealizedPnlPct = unrealizedPnlPct,
+                            peakPrice = peakPrice,
+                            entryDate = p.optString("entryDate", p.optString("entry_date", "")),
                             status = p.optString("status", "OPEN"),
-                            previousClose = p.optDouble("previousClose", 0.0),
-                            todayPriceChange = p.optDouble("todayPriceChange", 0.0),
-                            todayPriceChangePct = p.optDouble("todayPriceChangePct", 0.0),
-                            todayValueChange = p.optDouble("todayValueChange", 0.0)
+                            previousClose = effectivePrevClose,
+                            todayPriceChange = todayChg,
+                            todayPriceChangePct = todayChgPct,
+                            todayValueChange = todayValChg
                         )
                     )
                 }
-                cachedPositions.clear()
-                cachedPositions.addAll(list)
-            }
+                list
+            } else null
 
             val txArray = root.optJSONArray("transactions")
-            if (txArray != null) {
+            val parsedTransactions = if (txArray != null) {
                 val list = mutableListOf<TransactionItem>()
                 for (i in 0 until txArray.length()) {
                     val tx = txArray.optJSONObject(i) ?: continue
+                    val side = tx.optString("side", "BUY")
+                    val realized = optSafeDouble(tx, "realizedPnl", if (tx.has("realized_pnl")) optSafeDouble(tx, "realized_pnl", 0.0) else 0.0)
+                    val pnlDiff = tx.optString("pnlDifference", tx.optString("pnl_difference", ""))
+
                     list.add(
                         TransactionItem(
-                            transactionId = tx.optString("transactionId", ""),
+                            transactionId = tx.optString("transactionId", tx.optString("transaction_id", "")),
                             timestamp = tx.optString("timestamp", ""),
-                            side = tx.optString("side", "BUY"),
+                            side = side,
                             symbol = tx.optString("symbol", ""),
                             quantity = tx.optInt("quantity", 0),
-                            fillPrice = tx.optDouble("fillPrice", 0.0),
-                            grossAmount = tx.optDouble("grossAmount", 0.0),
-                            fees = tx.optDouble("fees", 20.0),
-                            realizedPnl = tx.optDouble("realizedPnl", 0.0),
-                            pnlDifference = tx.optString("pnlDifference", "")
+                            fillPrice = optSafeDouble(tx, "fillPrice", if (tx.has("fill_price")) optSafeDouble(tx, "fill_price", 0.0) else 0.0),
+                            grossAmount = optSafeDouble(tx, "grossAmount", if (tx.has("gross_amount")) optSafeDouble(tx, "gross_amount", 0.0) else 0.0),
+                            fees = optSafeDouble(tx, "fees", 20.0),
+                            realizedPnl = realized,
+                            pnlDifference = pnlDiff
                         )
                     )
                 }
-                cachedTransactions.clear()
-                cachedTransactions.addAll(list)
+                list
+            } else null
+
+            if (root.has("serverUrl") && !root.isNull("serverUrl")) {
+                val url = root.optString("serverUrl", "").trim()
+                if (url.isNotBlank()) cachedServerUrl = url
             }
+            if (root.has("authToken") && !root.isNull("authToken")) {
+                val token = root.optString("authToken", "").trim()
+                if (token.isNotBlank()) cachedAuthToken = token
+            }
+
+            // Transactional commit to memory: all-or-nothing
+            if (parsedPositions != null) {
+                cachedPositions.clear()
+                cachedPositions.addAll(parsedPositions)
+            }
+            if (parsedSummary != null) {
+                // Ensure todayPnl strictly matches parsedPositions to prevent calculation drift
+                val effectiveTodayPnl = if (parsedPositions != null) {
+                    if (summaryObj != null && summaryObj.has("todayPnl") && !summaryObj.isNull("todayPnl")) {
+                        optSafeDouble(summaryObj, "todayPnl", roundPaise(parsedPositions.sumOf { it.todayValueChange }))
+                    } else {
+                        roundPaise(parsedPositions.sumOf { it.todayValueChange })
+                    }
+                } else {
+                    parsedSummary.todayPnl
+                }
+                val prevNav = parsedSummary.totalNav - effectiveTodayPnl
+                val effectiveTodayPnlPct = if (prevNav > 0.0) roundPaise((effectiveTodayPnl / prevNav) * 100.0)
+                else if (parsedSummary.allocatedCapital > 0.0) roundPaise((effectiveTodayPnl / parsedSummary.allocatedCapital) * 100.0)
+                else 0.0
+
+                cachedSummary = parsedSummary.copy(
+                    todayPnl = effectiveTodayPnl,
+                    todayPnlPct = if (summaryObj != null && summaryObj.has("todayPnlPct") && !summaryObj.isNull("todayPnlPct")) parsedSummary.todayPnlPct else effectiveTodayPnlPct
+                )
+            }
+            if (parsedTransactions != null) {
+                cachedTransactions.clear()
+                cachedTransactions.addAll(parsedTransactions)
+            }
+            isLoadedFromDisk = true
             true
         } catch (e: Exception) {
+            // Corrupt file recovery: quarantine or delete corrupt file so app continues safely
+            try {
+                val corruptBackup = File(dir, "$CACHE_FILE_NAME.corrupt")
+                if (cacheFile.exists()) {
+                    if (corruptBackup.exists()) corruptBackup.delete()
+                    cacheFile.renameTo(corruptBackup)
+                }
+            } catch (_: Exception) {
+                try { cacheFile.delete() } catch (_: Exception) {}
+            }
             false
         }
     }
 
     fun clearDiskCache() {
-        val dir = cacheDirectory ?: return
-        val cacheFile = File(dir, CACHE_FILE_NAME)
-        if (cacheFile.exists()) {
-            cacheFile.delete()
+        synchronized(lock) {
+            val dir = cacheDirectory ?: return
+            val cacheFile = File(dir, CACHE_FILE_NAME)
+            if (cacheFile.exists()) {
+                cacheFile.delete()
+            }
+            val corruptFile = File(dir, "$CACHE_FILE_NAME.corrupt")
+            if (corruptFile.exists()) {
+                corruptFile.delete()
+            }
+            val tmpFile = File(dir, "$CACHE_FILE_NAME.tmp")
+            if (tmpFile.exists()) {
+                tmpFile.delete()
+            }
+            isLoadedFromDisk = false
         }
     }
 }

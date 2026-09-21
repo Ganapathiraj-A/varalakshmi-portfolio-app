@@ -36,7 +36,9 @@ class VaralakshmiViewModel(
         VaralakshmiUiState(
             summary = repository.getCachedSummary(),
             positions = repository.getCachedPositions(),
-            transactions = repository.getCachedTransactions()
+            transactions = repository.getCachedTransactions(),
+            serverUrl = repository.getServerUrl(),
+            authToken = repository.getAuthToken()
         )
     )
     val uiState: StateFlow<VaralakshmiUiState> = _uiState.asStateFlow()
@@ -116,6 +118,7 @@ class VaralakshmiViewModel(
     }
 
     fun updateServerUrl(newUrl: String, newToken: String = _uiState.value.authToken) {
+        repository.setServerConfig(newUrl, newToken)
         _uiState.update { it.copy(serverUrl = newUrl, authToken = newToken, showSettingsDialog = false) }
         refresh()
     }

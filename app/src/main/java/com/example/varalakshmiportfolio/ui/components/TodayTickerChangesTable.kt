@@ -95,32 +95,40 @@ fun TodayTickerChangesTable(
                     Text(
                         text = "TICKER",
                         color = TextMuted,
-                        fontSize = 11.sp,
+                        fontSize = 10.5.sp,
                         fontWeight = FontWeight.Bold,
-                        modifier = Modifier.weight(1.30f)
+                        modifier = Modifier.weight(1.30f),
+                        maxLines = 1,
+                        softWrap = false
                     )
                     Text(
                         text = "PRICE",
                         color = TextMuted,
-                        fontSize = 11.sp,
+                        fontSize = 10.5.sp,
                         fontWeight = FontWeight.Bold,
-                        modifier = Modifier.weight(0.95f)
+                        modifier = Modifier.weight(0.95f),
+                        maxLines = 1,
+                        softWrap = false
                     )
                     Text(
                         text = "TODAY CHG (%)",
                         color = TextMuted,
-                        fontSize = 11.sp,
+                        fontSize = 10.5.sp,
                         fontWeight = FontWeight.Bold,
                         textAlign = TextAlign.Center,
-                        modifier = Modifier.weight(1.25f)
+                        modifier = Modifier.weight(1.25f),
+                        maxLines = 1,
+                        softWrap = false
                     )
                     Text(
                         text = "TODAY VALUE (₹)",
                         color = TextMuted,
-                        fontSize = 11.sp,
+                        fontSize = 10.5.sp,
                         fontWeight = FontWeight.Bold,
                         textAlign = TextAlign.End,
-                        modifier = Modifier.weight(1.20f)
+                        modifier = Modifier.weight(1.20f),
+                        maxLines = 1,
+                        softWrap = false
                     )
                 }
             }
@@ -159,12 +167,42 @@ private fun TodayTickerRow(
     position: PositionItem
 ) {
     var expanded by remember { mutableStateOf(false) }
-    val isPositive = position.todayPriceChange >= 0
-    val pnlColor = if (isPositive) ProfitGreen else LossRed
-    val pnlBg = if (isPositive) ProfitGreenBg else LossRedBg
+    val isPositive = position.todayPriceChange > 0
+    val isNegative = position.todayPriceChange < 0
+    val pnlColor = when {
+        isPositive -> ProfitGreen
+        isNegative -> LossRed
+        else -> TextSecondary
+    }
+    val pnlBg = when {
+        isPositive -> ProfitGreenBg
+        isNegative -> LossRedBg
+        else -> DarkCard
+    }
 
-    val isValPositive = position.todayValueChange >= 0
-    val valColor = if (isValPositive) ProfitGreen else LossRed
+    val isValPositive = position.todayValueChange > 0
+    val isValNegative = position.todayValueChange < 0
+    val valColor = when {
+        isValPositive -> ProfitGreen
+        isValNegative -> LossRed
+        else -> TextSecondary
+    }
+
+    val priceChgStr = when {
+        isPositive -> "+₹" + String.format(Locale.US, "%.2f", position.todayPriceChange)
+        isNegative -> "-₹" + String.format(Locale.US, "%.2f", kotlin.math.abs(position.todayPriceChange))
+        else -> "₹0.00"
+    }
+    val priceChgPctStr = when {
+        isPositive || isNegative -> String.format(Locale.US, "(%+.2f%%)", position.todayPriceChangePct)
+        else -> "(0.00%)"
+    }
+
+    val valChgStr = when {
+        isValPositive -> "+₹" + String.format(Locale.US, "%,.2f", position.todayValueChange)
+        isValNegative -> "-₹" + String.format(Locale.US, "%,.2f", kotlin.math.abs(position.todayValueChange))
+        else -> "₹0.00"
+    }
 
     Column(
         modifier = Modifier
@@ -182,7 +220,7 @@ private fun TodayTickerRow(
                 Text(
                     text = position.symbol,
                     color = TextPrimary,
-                    fontSize = 13.sp,
+                    fontSize = 12.5.sp,
                     fontWeight = FontWeight.ExtraBold,
                     maxLines = 1,
                     softWrap = false,
@@ -191,8 +229,10 @@ private fun TodayTickerRow(
                 Text(
                     text = "${position.quantity} shares",
                     color = TextMuted,
-                    fontSize = 10.5.sp,
-                    maxLines = 1
+                    fontSize = 10.sp,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
 
@@ -201,15 +241,19 @@ private fun TodayTickerRow(
                 Text(
                     text = "₹" + String.format(Locale.US, "%.2f", position.currentPrice),
                     color = TextPrimary,
-                    fontSize = 12.5.sp,
+                    fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
-                    maxLines = 1
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     text = "Ref: ₹" + String.format(Locale.US, "%.2f", position.referencePrice),
                     color = TextMuted,
-                    fontSize = 10.sp,
-                    maxLines = 1
+                    fontSize = 9.5.sp,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
 
@@ -227,21 +271,23 @@ private fun TodayTickerRow(
                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        val priceChgStr = (if (isPositive) "+₹" else "-₹") +
-                                String.format(Locale.US, "%.2f", kotlin.math.abs(position.todayPriceChange))
                         Text(
                             text = priceChgStr,
                             color = pnlColor,
-                            fontSize = 11.sp,
+                            fontSize = 10.5.sp,
                             fontWeight = FontWeight.Bold,
-                            maxLines = 1
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis
                         )
                         Text(
-                            text = String.format(Locale.US, "(%+.2f%%)", position.todayPriceChangePct),
+                            text = priceChgPctStr,
                             color = pnlColor,
-                            fontSize = 9.5.sp,
+                            fontSize = 9.sp,
                             fontWeight = FontWeight.SemiBold,
-                            maxLines = 1
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
@@ -253,20 +299,22 @@ private fun TodayTickerRow(
                 horizontalAlignment = Alignment.End
             ) {
                 Text(
-                    text = (if (isValPositive) "+₹" else "-₹") +
-                            String.format(Locale.US, "%,.2f", kotlin.math.abs(position.todayValueChange)),
+                    text = valChgStr,
                     color = valColor,
-                    fontSize = 12.5.sp,
+                    fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.End,
-                    maxLines = 1
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     text = "Day P&L",
                     color = TextMuted,
                     fontSize = 9.5.sp,
                     textAlign = TextAlign.End,
-                    maxLines = 1
+                    maxLines = 1,
+                    softWrap = false
                 )
             }
         }

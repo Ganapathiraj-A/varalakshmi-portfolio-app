@@ -120,21 +120,61 @@ fun PortfolioHeaderCard(
             Spacer(modifier = Modifier.height(8.dp))
 
             // Side-by-side Return Badges (Total Return & Today's NAV Change)
-            val isTotalPositive = summary.totalPnl >= 0
-            val totalPnlColor = if (isTotalPositive) ProfitGreen else LossRed
-            val totalPnlBg = if (isTotalPositive) ProfitGreenBg else LossRedBg
+            val isTotalPositive = summary.totalPnl > 0
+            val isTotalNegative = summary.totalPnl < 0
+            val totalPnlColor = when {
+                isTotalPositive -> ProfitGreen
+                isTotalNegative -> LossRed
+                else -> TextSecondary
+            }
+            val totalPnlBg = when {
+                isTotalPositive -> ProfitGreenBg
+                isTotalNegative -> LossRedBg
+                else -> DarkCard
+            }
+            val totalIcon = when {
+                isTotalPositive -> Icons.AutoMirrored.Filled.TrendingUp
+                isTotalNegative -> Icons.Filled.ArrowDownward
+                else -> Icons.Filled.CheckCircle
+            }
 
-            val isTodayPositive = summary.todayPnl >= 0
-            val todayColor = if (isTodayPositive) ProfitGreen else LossRed
-            val todayBg = if (isTodayPositive) ProfitGreenBg else LossRedBg
+            val isTodayPositive = summary.todayPnl > 0
+            val isTodayNegative = summary.todayPnl < 0
+            val todayColor = when {
+                isTodayPositive -> ProfitGreen
+                isTodayNegative -> LossRed
+                else -> TextSecondary
+            }
+            val todayBg = when {
+                isTodayPositive -> ProfitGreenBg
+                isTodayNegative -> LossRedBg
+                else -> DarkCard
+            }
+            val todayIcon = when {
+                isTodayPositive -> Icons.AutoMirrored.Filled.TrendingUp
+                isTodayNegative -> Icons.Filled.ArrowDownward
+                else -> Icons.Filled.CheckCircle
+            }
 
-            val totalValStr = (if (isTotalPositive) "+₹" else "-₹") +
-                    String.format(Locale.US, "%,.2f", kotlin.math.abs(summary.totalPnl))
-            val totalPctStr = String.format(Locale.US, "(%+.2f%%)", summary.totalPnlPct)
+            val totalValStr = when {
+                isTotalPositive -> "+₹" + String.format(Locale.US, "%,.2f", summary.totalPnl)
+                isTotalNegative -> "-₹" + String.format(Locale.US, "%,.2f", kotlin.math.abs(summary.totalPnl))
+                else -> "₹0.00"
+            }
+            val totalPctStr = when {
+                isTotalPositive || isTotalNegative -> String.format(Locale.US, "(%+.2f%%)", summary.totalPnlPct)
+                else -> "(0.00%)"
+            }
 
-            val todayValStr = (if (isTodayPositive) "+₹" else "-₹") +
-                    String.format(Locale.US, "%,.2f", kotlin.math.abs(summary.todayPnl))
-            val todayPctStr = String.format(Locale.US, "(%+.2f%%)", summary.todayPnlPct)
+            val todayValStr = when {
+                isTodayPositive -> "+₹" + String.format(Locale.US, "%,.2f", summary.todayPnl)
+                isTodayNegative -> "-₹" + String.format(Locale.US, "%,.2f", kotlin.math.abs(summary.todayPnl))
+                else -> "₹0.00"
+            }
+            val todayPctStr = when {
+                isTodayPositive || isTodayNegative -> String.format(Locale.US, "(%+.2f%%)", summary.todayPnlPct)
+                else -> "(0.00%)"
+            }
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -153,7 +193,7 @@ fun PortfolioHeaderCard(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
-                            imageVector = if (isTotalPositive) Icons.AutoMirrored.Filled.TrendingUp else Icons.Filled.ArrowDownward,
+                            imageVector = totalIcon,
                             contentDescription = "Total Return Direction",
                             tint = totalPnlColor,
                             modifier = Modifier.size(15.dp)
@@ -185,7 +225,8 @@ fun PortfolioHeaderCard(
                                 fontSize = 9.5.sp,
                                 fontWeight = FontWeight.Bold,
                                 maxLines = 1,
-                                softWrap = false
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
@@ -203,7 +244,7 @@ fun PortfolioHeaderCard(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
-                            imageVector = if (isTodayPositive) Icons.AutoMirrored.Filled.TrendingUp else Icons.Filled.ArrowDownward,
+                            imageVector = todayIcon,
                             contentDescription = "Today's Change Direction",
                             tint = todayColor,
                             modifier = Modifier.size(15.dp)
@@ -235,7 +276,8 @@ fun PortfolioHeaderCard(
                                 fontSize = 9.5.sp,
                                 fontWeight = FontWeight.Bold,
                                 maxLines = 1,
-                                softWrap = false
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
@@ -292,37 +334,43 @@ fun PortfolioHeaderCard(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                        .padding(horizontal = 8.dp, vertical = 7.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
                         text = "🎯 Target: +35%",
-                        fontSize = 11.sp,
+                        fontSize = 10.5.sp,
                         color = ProfitGreenLight,
-                        fontWeight = FontWeight.Medium
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        softWrap = false
                     )
                     Text(
                         text = "•",
-                        fontSize = 11.sp,
+                        fontSize = 10.sp,
                         color = TextMuted
                     )
                     Text(
                         text = "🛡️ Cut Loss: -4%",
-                        fontSize = 11.sp,
+                        fontSize = 10.5.sp,
                         color = LossRedLight,
-                        fontWeight = FontWeight.Medium
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        softWrap = false
                     )
                     Text(
                         text = "•",
-                        fontSize = 11.sp,
+                        fontSize = 10.sp,
                         color = TextMuted
                     )
                     Text(
                         text = "📈 Trail: -8%",
-                        fontSize = 11.sp,
+                        fontSize = 10.5.sp,
                         color = GoldAccent,
-                        fontWeight = FontWeight.Medium
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        softWrap = false
                     )
                 }
             }

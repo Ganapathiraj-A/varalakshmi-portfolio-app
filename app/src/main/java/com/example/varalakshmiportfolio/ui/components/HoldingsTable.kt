@@ -238,13 +238,17 @@ private fun HoldingRow(
                     color = TextPrimary,
                     fontSize = 12.5.sp,
                     fontWeight = FontWeight.Bold,
-                    maxLines = 1
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     text = "@ ₹" + String.format(Locale.US, "%.2f", position.currentPrice),
                     color = TextMuted,
                     fontSize = 10.5.sp,
-                    maxLines = 1
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
 

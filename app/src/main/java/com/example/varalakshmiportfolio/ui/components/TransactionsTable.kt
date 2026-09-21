@@ -198,7 +198,10 @@ private fun TransactionRow(
                     text = displayDate,
                     color = TextSecondary,
                     fontSize = 11.sp,
-                    fontWeight = FontWeight.Medium
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                 )
             }
 
@@ -217,7 +220,9 @@ private fun TransactionRow(
                         color = sideColor,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.ExtraBold,
-                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
+                        maxLines = 1,
+                        softWrap = false
                     )
                 }
             }
@@ -228,12 +233,18 @@ private fun TransactionRow(
                     text = transaction.symbol,
                     color = TextPrimary,
                     fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                 )
                 Text(
                     text = "${transaction.quantity} qty",
                     color = TextMuted,
-                    fontSize = 10.sp
+                    fontSize = 10.sp,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                 )
             }
 
@@ -243,7 +254,10 @@ private fun TransactionRow(
                     text = "₹" + String.format(Locale.US, "%.2f", transaction.fillPrice),
                     color = TextPrimary,
                     fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                 )
             }
 
@@ -260,7 +274,10 @@ private fun TransactionRow(
                     text = transaction.pnlDifference.ifEmpty { "₹0.00" },
                     color = diffColor,
                     fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                 )
             }
         }
