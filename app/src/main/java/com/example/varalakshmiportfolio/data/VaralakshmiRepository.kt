@@ -67,6 +67,8 @@ class VaralakshmiRepository {
         unrealizedPnl = 9268.80,
         totalPnl = 9268.80,
         totalPnlPct = 9.2688,
+        todayPnl = 4007.77,
+        todayPnlPct = 3.81,
         activeSlots = 3,
         maxSlots = 3,
         lastUpdated = "2026-09-21 09:26:07"
@@ -84,7 +86,11 @@ class VaralakshmiRepository {
             unrealizedPnlPct = 12.16,
             peakPrice = 45.09,
             entryDate = "2026-09-17 08:41:42",
-            status = "OPEN"
+            status = "OPEN",
+            previousClose = 43.80,
+            todayPriceChange = 1.29,
+            todayPriceChangePct = 2.95,
+            todayValueChange = 1102.95
         ),
         PositionItem(
             positionId = "VARALAKSHMI_ALPHA_SCALE_35_AHCL",
@@ -97,7 +103,11 @@ class VaralakshmiRepository {
             unrealizedPnlPct = 9.90,
             peakPrice = 25.30,
             entryDate = "2026-09-18 09:23:45",
-            status = "OPEN"
+            status = "OPEN",
+            previousClose = 24.15,
+            todayPriceChange = 0.76,
+            todayPriceChangePct = 3.15,
+            todayValueChange = 1118.72
         ),
         PositionItem(
             positionId = "VARALAKSHMI_ALPHA_SCALE_35_TBZ",
@@ -110,7 +120,11 @@ class VaralakshmiRepository {
             unrealizedPnlPct = 5.62,
             peakPrice = 633.70,
             entryDate = "2026-09-21 09:26:07",
-            status = "OPEN"
+            status = "OPEN",
+            previousClose = 600.00,
+            todayPriceChange = 33.70,
+            todayPriceChangePct = 5.62,
+            todayValueChange = 1786.10
         )
     )
 
@@ -189,19 +203,71 @@ class VaralakshmiRepository {
                     val parsedPositions = mutableListOf<PositionItem>()
                     for (i in 0 until activeArray.length()) {
                         val obj = activeArray.optJSONObject(i) ?: continue
+                        val symbol = obj.optString("symbol", "")
+                        val quantity = obj.optInt("quantity", 0)
+                        val entryPrice = obj.optDouble("entry_price", 0.0)
+                        val currentPrice = obj.optDouble("current_price", 0.0)
+                        val marketValue = if (obj.has("market_value")) obj.optDouble("market_value") else roundPaise(quantity * currentPrice)
+                        val unrealizedPnl = obj.optDouble("unrealized_pnl", 0.0)
+                        val unrealizedPnlPct = obj.optDouble("unrealized_pnl_pct", 0.0)
+                        val peakPrice = obj.optDouble("peak_price", currentPrice)
+                        val entryDate = obj.optString("entry_date", "")
+                        val status = obj.optString("status", "OPEN")
+
+                        // Look up previous close from JSON, or fall back to cached position, or entryPrice
+                        val jsonPrevClose = obj.optDouble("previous_close", obj.optDouble("prev_close", 0.0))
+                        val cachedPrevClose = synchronized(lock) {
+                            cachedPositions.find { it.symbol == symbol }?.previousClose
+                        } ?: 0.0
+                        val effectivePrevClose = if (jsonPrevClose > 0.0) {
+                            jsonPrevClose
+                        } else if (cachedPrevClose > 0.0) {
+                            cachedPrevClose
+                        } else {
+                            entryPrice
+                        }
+
+                        val refPrice = if (effectivePrevClose > 0.0) effectivePrevClose else entryPrice
+
+                        val todayChg = if (obj.has("today_price_change")) {
+                            roundPaise(obj.optDouble("today_price_change"))
+                        } else if (obj.has("change")) {
+                            roundPaise(obj.optDouble("change"))
+                        } else {
+                            roundPaise(currentPrice - refPrice)
+                        }
+
+                        val todayChgPct = if (obj.has("today_price_change_pct")) {
+                            roundPaise(obj.optDouble("today_price_change_pct"))
+                        } else if (obj.has("change_pct")) {
+                            roundPaise(obj.optDouble("change_pct"))
+                        } else {
+                            if (refPrice > 0.0) roundPaise(((currentPrice - refPrice) / refPrice) * 100.0) else 0.0
+                        }
+
+                        val todayValChg = if (obj.has("today_value_change")) {
+                            roundPaise(obj.optDouble("today_value_change"))
+                        } else {
+                            roundPaise(quantity * todayChg)
+                        }
+
                         parsedPositions.add(
                             PositionItem(
                                 positionId = obj.optString("position_id", ""),
-                                symbol = obj.optString("symbol", ""),
-                                quantity = obj.optInt("quantity", 0),
-                                entryPrice = obj.optDouble("entry_price", 0.0),
-                                currentPrice = obj.optDouble("current_price", 0.0),
-                                marketValue = obj.optDouble("market_value", 0.0),
-                                unrealizedPnl = obj.optDouble("unrealized_pnl", 0.0),
-                                unrealizedPnlPct = obj.optDouble("unrealized_pnl_pct", 0.0),
-                                peakPrice = obj.optDouble("peak_price", 0.0),
-                                entryDate = obj.optString("entry_date", ""),
-                                status = obj.optString("status", "OPEN")
+                                symbol = symbol,
+                                quantity = quantity,
+                                entryPrice = entryPrice,
+                                currentPrice = currentPrice,
+                                marketValue = marketValue,
+                                unrealizedPnl = unrealizedPnl,
+                                unrealizedPnlPct = unrealizedPnlPct,
+                                peakPrice = peakPrice,
+                                entryDate = entryDate,
+                                status = status,
+                                previousClose = effectivePrevClose,
+                                todayPriceChange = todayChg,
+                                todayPriceChangePct = todayChgPct,
+                                todayValueChange = todayValChg
                             )
                         )
                     }
@@ -290,6 +356,10 @@ class VaralakshmiRepository {
                 val nav = roundPaise(deployed + available + totalUnrealized)
                 val totalPnl = roundPaise(realized + totalUnrealized)
                 val totalPnlPct = if (allocated > 0) (totalPnl / allocated) * 100.0 else 0.0
+
+                val todayPnl = roundPaise(cachedPositions.sumOf { it.todayValueChange })
+                val prevNav = nav - todayPnl
+                val todayPnlPct = if (prevNav > 0.0) roundPaise((todayPnl / prevNav) * 100.0) else if (allocated > 0.0) roundPaise((todayPnl / allocated) * 100.0) else 0.0
                 val nowStr = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())
 
                 cachedSummary = cachedSummary.copy(
@@ -301,6 +371,8 @@ class VaralakshmiRepository {
                     unrealizedPnl = totalUnrealized,
                     totalPnl = totalPnl,
                     totalPnlPct = totalPnlPct,
+                    todayPnl = todayPnl,
+                    todayPnlPct = todayPnlPct,
                     activeSlots = cachedPositions.size,
                     lastUpdated = nowStr
                 )
@@ -343,6 +415,10 @@ class VaralakshmiRepository {
                 val totalPnl = roundPaise(newRealizedPnl + totalUnrealized)
                 val totalPnlPct = if (allocated > 0) (totalPnl / allocated) * 100.0 else 0.0
 
+                val totalTodayPnl = roundPaise(cachedPositions.sumOf { it.todayValueChange })
+                val prevNav = nav - totalTodayPnl
+                val todayPnlPct = if (prevNav > 0.0) roundPaise((totalTodayPnl / prevNav) * 100.0) else if (allocated > 0.0) roundPaise((totalTodayPnl / allocated) * 100.0) else 0.0
+
                 val nowStr = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())
 
                 cachedSummary = cachedSummary.copy(
@@ -353,6 +429,8 @@ class VaralakshmiRepository {
                     unrealizedPnl = totalUnrealized,
                     totalPnl = totalPnl,
                     totalPnlPct = totalPnlPct,
+                    todayPnl = totalTodayPnl,
+                    todayPnlPct = todayPnlPct,
                     activeSlots = cachedPositions.size,
                     lastUpdated = nowStr
                 )

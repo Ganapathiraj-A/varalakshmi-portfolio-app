@@ -118,34 +118,94 @@ fun PortfolioHeaderCard(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Total Return Pill
-            val isPositive = summary.totalPnl >= 0
-            val pnlColor = if (isPositive) ProfitGreen else LossRed
-            val pnlBg = if (isPositive) ProfitGreenBg else LossRedBg
+            // Side-by-side Return Badges (Total Return & Today's NAV Change)
+            val isTotalPositive = summary.totalPnl >= 0
+            val totalPnlColor = if (isTotalPositive) ProfitGreen else LossRed
+            val totalPnlBg = if (isTotalPositive) ProfitGreenBg else LossRedBg
 
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = pnlBg,
-                border = androidx.compose.foundation.BorderStroke(1.dp, pnlColor.copy(alpha = 0.3f))
+            val isTodayPositive = summary.todayPnl >= 0
+            val todayColor = if (isTodayPositive) ProfitGreen else LossRed
+            val todayBg = if (isTodayPositive) ProfitGreenBg else LossRedBg
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                // 1. Total Return Pill
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = totalPnlBg,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, totalPnlColor.copy(alpha = 0.35f)),
+                    modifier = Modifier.weight(1f)
                 ) {
-                    Icon(
-                        imageVector = if (isPositive) Icons.AutoMirrored.Filled.TrendingUp else Icons.Filled.ArrowDownward,
-                        contentDescription = null,
-                        tint = pnlColor,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = (if (isPositive) "+" else "") +
-                                String.format(Locale.US, "₹%,.2f (%.2f%%)", summary.totalPnl, summary.totalPnlPct),
-                        color = pnlColor,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = if (isTotalPositive) Icons.AutoMirrored.Filled.TrendingUp else Icons.Filled.ArrowDownward,
+                            contentDescription = "Total Return Direction",
+                            tint = totalPnlColor,
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Column {
+                            Text(
+                                text = "TOTAL RETURN",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextMuted,
+                                letterSpacing = 0.5.sp
+                            )
+                            Text(
+                                text = (if (isTotalPositive) "+" else "") +
+                                        String.format(Locale.US, "₹%,.2f (%.2f%%)", summary.totalPnl, summary.totalPnlPct),
+                                color = totalPnlColor,
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                maxLines = 1
+                            )
+                        }
+                    }
+                }
+
+                // 2. Today's NAV Value Change Pill
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = todayBg,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, todayColor.copy(alpha = 0.35f)),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = if (isTodayPositive) Icons.AutoMirrored.Filled.TrendingUp else Icons.Filled.ArrowDownward,
+                            contentDescription = "Today's Change Direction",
+                            tint = todayColor,
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Column {
+                            Text(
+                                text = "TODAY'S CHANGE",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextMuted,
+                                letterSpacing = 0.5.sp
+                            )
+                            Text(
+                                text = (if (isTodayPositive) "+" else "") +
+                                        String.format(Locale.US, "₹%,.2f (%.2f%%)", summary.todayPnl, summary.todayPnlPct),
+                                color = todayColor,
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                maxLines = 1
+                            )
+                        }
+                    }
                 }
             }
 

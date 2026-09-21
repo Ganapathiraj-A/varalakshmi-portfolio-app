@@ -24,6 +24,10 @@ class VaralakshmiPortfolioTest {
         assertEquals(9268.80, summary.unrealizedPnl, 0.001)
         assertEquals(0.00, summary.realizedPnl, 0.001)
         assertEquals(9268.80, summary.totalPnl, 0.001)
+        assertEquals(4007.77, summary.todayPnl, 0.001)
+        assertEquals(3.81, summary.todayPnlPct, 0.01)
+        assertEquals(4007.77, summary.todayNavChange, 0.001)
+        assertEquals(3.81, summary.todayNavChangePct, 0.01)
         assertEquals(3, summary.activeSlots)
         assertEquals(3, positions.size)
         assertEquals(4, transactions.size)
@@ -31,6 +35,117 @@ class VaralakshmiPortfolioTest {
         // 2. Core Invariant: NAV = Deployed + Available + Unrealized
         val calculatedNav = summary.deployedCapital + summary.availableCapital + summary.unrealizedPnl
         assertEquals(summary.totalNav, calculatedNav, 0.001)
+
+        // 3. Daily Change Invariant: sum of todayValueChange across all positions equals summary.todayPnl
+        val sumTodayValueChange = VaralakshmiRepository.roundPaise(positions.sumOf { it.todayValueChange })
+        assertEquals(summary.todayPnl, sumTodayValueChange, 0.001)
+    }
+
+    @Test
+    fun testTodayTickerPositionsDataMappingAndCalculations() {
+        val repository = VaralakshmiRepository()
+        val positions = repository.getCachedPositions()
+
+        val stl = positions.first { it.symbol == "STLNETWORK" }
+        assertEquals(855, stl.quantity)
+        assertEquals(40.20, stl.entryPrice, 0.001)
+        assertEquals(45.09, stl.currentPrice, 0.001)
+        assertEquals(43.80, stl.previousClose, 0.001)
+        assertEquals(43.80, stl.referencePrice, 0.001)
+        assertEquals(1.29, stl.todayPriceChange, 0.001)
+        assertEquals(2.95, stl.todayPriceChangePct, 0.01)
+        assertEquals(1102.95, stl.todayValueChange, 0.001)
+        assertEquals(1102.95, VaralakshmiRepository.roundPaise(stl.quantity * stl.todayPriceChange), 0.001)
+
+        val ahcl = positions.first { it.symbol == "AHCL" }
+        assertEquals(1472, ahcl.quantity)
+        assertEquals(22.67, ahcl.entryPrice, 0.001)
+        assertEquals(24.91, ahcl.currentPrice, 0.001)
+        assertEquals(24.15, ahcl.previousClose, 0.001)
+        assertEquals(24.15, ahcl.referencePrice, 0.001)
+        assertEquals(0.76, ahcl.todayPriceChange, 0.001)
+        assertEquals(3.15, ahcl.todayPriceChangePct, 0.01)
+        assertEquals(1118.72, ahcl.todayValueChange, 0.001)
+        assertEquals(1118.72, VaralakshmiRepository.roundPaise(ahcl.quantity * ahcl.todayPriceChange), 0.001)
+
+        val tbz = positions.first { it.symbol == "TBZ" }
+        assertEquals(53, tbz.quantity)
+        assertEquals(600.00, tbz.entryPrice, 0.001)
+        assertEquals(633.70, tbz.currentPrice, 0.001)
+        assertEquals(600.00, tbz.previousClose, 0.001)
+        assertEquals(600.00, tbz.referencePrice, 0.001)
+        assertEquals(33.70, tbz.todayPriceChange, 0.001)
+        assertEquals(5.62, tbz.todayPriceChangePct, 0.01)
+        assertEquals(1786.10, tbz.todayValueChange, 0.001)
+        assertEquals(1786.10, VaralakshmiRepository.roundPaise(tbz.quantity * tbz.todayPriceChange), 0.001)
+    }
+
+    @Test
+    fun testSequentialExitsRecalculateTodayPnlWithoutDrift() {
+        val repository = VaralakshmiRepository()
+
+        // 1. Initial: todayPnl = 4007.77
+        assertEquals(4007.77, repository.getCachedSummary().todayPnl, 0.001)
+
+        // 2. Remove STLNETWORK (todayValueChange = 1102.95)
+        val (s1, p1, _) = repository.removePosition("STLNETWORK")
+        val expectedTodayPnl1 = VaralakshmiRepository.roundPaise(1118.72 + 1786.10)
+        assertEquals(2904.82, expectedTodayPnl1, 0.001)
+        assertEquals(expectedTodayPnl1, s1.todayPnl, 0.001)
+        assertEquals(s1.todayPnl, VaralakshmiRepository.roundPaise(p1.sumOf { it.todayValueChange }), 0.001)
+
+        // 3. Remove AHCL (todayValueChange = 1118.72)
+        val (s2, p2, _) = repository.removePosition("AHCL")
+        assertEquals(1786.10, s2.todayPnl, 0.001)
+        assertEquals(s2.todayPnl, VaralakshmiRepository.roundPaise(p2.sumOf { it.todayValueChange }), 0.001)
+
+        // 4. Remove TBZ -> Complete liquidation: todayPnl = 0.00, todayPnlPct = 0.00
+        val (s3, p3, _) = repository.removePosition("TBZ")
+        assertEquals(0.00, s3.todayPnl, 0.001)
+        assertEquals(0.00, s3.todayPnlPct, 0.001)
+        assertEquals(0, p3.size)
+    }
+
+    @Test
+    fun testPositionItemPreviousCloseFallbackToEntryPrice() {
+        // Position entered today without previousClose (previousClose = 0.0)
+        val todayNewPosition = PositionItem(
+            positionId = "NEW_POS_1",
+            symbol = "INFY",
+            quantity = 50,
+            entryPrice = 1800.00,
+            currentPrice = 1845.00,
+            marketValue = 92250.00,
+            unrealizedPnl = 2250.00,
+            unrealizedPnlPct = 2.50,
+            peakPrice = 1845.00,
+            entryDate = "2026-09-21 10:00:00"
+            // previousClose defaults to 0.0 -> falls back to entryPrice
+        )
+
+        assertEquals(1800.00, todayNewPosition.referencePrice, 0.001)
+        assertEquals(45.00, todayNewPosition.todayPriceChange, 0.001)
+        assertEquals(2.50, todayNewPosition.todayPriceChangePct, 0.01)
+        assertEquals(2250.00, todayNewPosition.todayValueChange, 0.001)
+
+        // Position with negative day movement
+        val downPosition = PositionItem(
+            positionId = "DOWN_POS",
+            symbol = "TCS",
+            quantity = 20,
+            entryPrice = 3500.00,
+            currentPrice = 3450.00,
+            marketValue = 69000.00,
+            unrealizedPnl = -1000.00,
+            unrealizedPnlPct = -1.43,
+            peakPrice = 3550.00,
+            entryDate = "2026-09-20 10:00:00",
+            previousClose = 3500.00
+        )
+
+        assertEquals(-50.00, downPosition.todayPriceChange, 0.001)
+        assertEquals(-1.43, downPosition.todayPriceChangePct, 0.01)
+        assertEquals(-1000.00, downPosition.todayValueChange, 0.001)
     }
 
     @Test

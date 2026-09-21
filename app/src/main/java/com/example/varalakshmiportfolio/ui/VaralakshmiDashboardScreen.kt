@@ -9,6 +9,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Settings
@@ -20,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -28,6 +31,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.varalakshmiportfolio.theme.*
 import com.example.varalakshmiportfolio.ui.components.HoldingsTable
 import com.example.varalakshmiportfolio.ui.components.PortfolioHeaderCard
+import com.example.varalakshmiportfolio.ui.components.TodayTickerChangesTable
 import com.example.varalakshmiportfolio.ui.components.TransactionsTable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -196,7 +200,12 @@ fun VaralakshmiDashboardScreen(
                 onExitClick = { viewModel.requestExit(it) }
             )
 
-            // 3. Recent Transactions Table (Date, Buy/Sell, Ticker, Price, Profit/Loss Difference)
+            // 3. Today's Ticker Changes Table (Ticker, Price, Today Chg %, Today Value ₹)
+            TodayTickerChangesTable(
+                positions = uiState.positions
+            )
+
+            // 4. Recent Transactions Table (Date, Buy/Sell, Ticker, Price, Profit/Loss Difference)
             TransactionsTable(
                 transactions = uiState.transactions
             )
@@ -272,6 +281,8 @@ fun VaralakshmiDashboardScreen(
     // Server Settings Dialog
     if (uiState.showSettingsDialog) {
         var tempUrl by remember { mutableStateOf(uiState.serverUrl) }
+        val uriHandler = LocalUriHandler.current
+
         AlertDialog(
             onDismissRequest = { viewModel.closeSettings() },
             title = {
@@ -309,6 +320,66 @@ fun VaralakshmiDashboardScreen(
                         color = TextMuted,
                         fontSize = 11.sp
                     )
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(vertical = 12.dp),
+                        color = DarkCardBorder
+                    )
+
+                    Text(
+                        text = "App Updates & Releases",
+                        color = TextPrimary,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Download the latest APK release directly to update your installation:",
+                        color = TextSecondary,
+                        fontSize = 11.5.sp
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                uriHandler.openUri("https://github.com/Ganapathiraj-A/varalakshmi-portfolio-app/releases/latest/download/varalakshmi-portfolio.apk")
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(8.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, AccentIndigoLight.copy(alpha = 0.6f)),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = AccentIndigoLight)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Download,
+                                contentDescription = "Download Latest APK",
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Download APK", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                uriHandler.openUri("https://github.com/Ganapathiraj-A/varalakshmi-portfolio-app/releases")
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(8.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, TextSecondary.copy(alpha = 0.5f)),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary)
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                                contentDescription = "View GitHub Releases",
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("All Releases", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
                 }
             },
             confirmButton = {

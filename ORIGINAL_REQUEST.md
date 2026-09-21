@@ -45,3 +45,66 @@ Ensure the refactored project compiles cleanly without warnings or build errors,
 ### Build Verification
 - [ ] `./gradlew assembleRelease` exits with code 0.
 - [ ] Updated `varalakshmi-portfolio.apk` is generated and passes archive verification.
+
+## 2026-09-21T10:48:45Z
+
+This is a single self-contained fix; keep it small and focused.
+
+Enhance the Varalakshmi Portfolio Android application to display today's NAV value change alongside total portfolio value in the header card, and add a dedicated table below the individual tickers table showing each ticker's current price, today's price change (₹ and %), and today's total value change.
+
+Working directory: `/home/ganapathiraj/Code/Stock Research/Unified UI/app`
+Integrity mode: development
+
+## Requirements
+
+### R1. Portfolio Header Today's Value Change
+Display today's portfolio NAV change (in ₹ and %) alongside total portfolio NAV and all-time return in the Portfolio Header Card. Ensure the daily change cleanly reflects the sum of today's price changes across all active positions without calculation drift.
+
+### R2. Today's Ticker Changes Table (Below Individual Tickers)
+Add a dedicated table directly below the "INDIVIDUAL TICKERS" table displaying each holding's daily market movements:
+- Ticker Symbol
+- Current Price (LTP)
+- Today's Price Change (₹ difference and % change)
+- Today's Total Value Change (Quantity × Today's Price Change in ₹)
+
+### R3. Data Integration & Model Extension
+Extend `VaralakshmiModels.kt` and `VaralakshmiRepository.kt` with fields for today's price change and today's value change (with previous close / entry price references), ensuring robust calculations in both live Cloudflare HTTPS sync and offline snapshot fallback modes.
+
+### R4. UI/UX Consistency & Preservation
+Maintain existing functionality and styling:
+- Preserve the 5-column aligned holdings table (`TICKER`, `% UP/DN`, `VALUE`, `X`, `EXIT`).
+- Preserve the live ticking seconds clock and sync status card.
+- Preserve the recent transactions table and confirmation modal.
+- Ensure all text and columns are cleanly aligned without wrapping on mobile screens.
+
+### R5. Test Verification & Release Build
+Update unit tests to verify today's portfolio value change calculations and table data mapping, execute `./gradlew testDebugUnitTest`, and build an updated release APK via `./gradlew assembleRelease`.
+
+## Acceptance Criteria
+
+### Header Presentation
+- [ ] Portfolio Header Card displays today's NAV change with value (₹) and percentage (%) side-by-side with total P&L.
+- [ ] Color-coding matches market direction (green for positive daily change, red for negative).
+
+### Today's Changes Table
+- [ ] Rendered directly below Individual Tickers and above Recent Transactions.
+- [ ] Contains columns: `TICKER`, `PRICE`, `TODAY CHG (%)`, and `TODAY VALUE (₹)`.
+- [ ] Ticker symbols, prices, and changes fit comfortably on mobile screen widths without clipping or misaligned borders.
+
+### Verification & Deliverables
+- [ ] All unit tests pass cleanly via `./gradlew testDebugUnitTest` with exit code 0.
+- [ ] `./gradlew assembleRelease` completes with exit code 0, generating `varalakshmi-portfolio.apk`.
+- [ ] Release APK is updated on the repository and release asset on GitHub.
+
+## 2026-09-21T10:49:58Z
+
+Additional requirement from the user:
+"also add a link under settings that can be used to download new apks for update"
+
+Please ensure that inside the Server Settings Dialog (in VaralakshmiDashboardScreen.kt), an "App Updates & Releases" section is included with clickable buttons/links using LocalUriHandler.current.openUri(...) to:
+1. Download latest APK directly: `https://github.com/Ganapathiraj-A/varalakshmi-portfolio-app/releases/latest/download/varalakshmi-portfolio.apk` (or the direct release tag URL)
+2. View all GitHub Releases: `https://github.com/Ganapathiraj-A/varalakshmi-portfolio-app/releases`
+
+Please incorporate this seamlessly alongside R1-R5.
+
+
