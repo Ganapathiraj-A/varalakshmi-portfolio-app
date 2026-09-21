@@ -1,5 +1,7 @@
 package com.example.varalakshmiportfolio.model
 
+import java.util.Locale
+
 data class PortfolioSummary(
     val strategyId: String = "VARALAKSHMI_ALPHA_SCALE_35",
     val strategyName: String = "VaraLakshmi Alpha (80%+ Fast Rotation Compounder)",
@@ -7,8 +9,8 @@ data class PortfolioSummary(
     val status: String = "ACTIVE",
     val totalNav: Double = 109268.80,
     val allocatedCapital: Double = 100000.00,
-    val deployedCapital: Double = 97205.62,
-    val availableCapital: Double = 2794.38,
+    val deployedCapital: Double = 99536.77,
+    val availableCapital: Double = 463.23,
     val realizedPnl: Double = 0.00,
     val unrealizedPnl: Double = 9268.80,
     val totalPnl: Double = 9268.80,
@@ -35,7 +37,7 @@ data class PositionItem(
         get() = if (entryPrice > 0) currentPrice / entryPrice else 1.0
 
     val multiplierString: String
-        get() = String.format("%.2fx", returnMultiplier)
+        get() = String.format(Locale.US, "%.2fx", returnMultiplier)
 }
 
 data class TransactionItem(

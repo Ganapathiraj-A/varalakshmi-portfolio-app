@@ -8,7 +8,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
@@ -16,69 +15,36 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.varalakshmiportfolio.data.VaralakshmiRepository
-import com.example.varalakshmiportfolio.model.PortfolioSummary
-import com.example.varalakshmiportfolio.model.PositionItem
-import com.example.varalakshmiportfolio.model.TransactionItem
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.varalakshmiportfolio.theme.*
 import com.example.varalakshmiportfolio.ui.components.HoldingsTable
 import com.example.varalakshmiportfolio.ui.components.PortfolioHeaderCard
 import com.example.varalakshmiportfolio.ui.components.TransactionsTable
-import kotlinx.coroutines.launch
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VaralakshmiDashboardScreen(
-    repository: VaralakshmiRepository = remember { VaralakshmiRepository() },
+    viewModel: VaralakshmiViewModel = viewModel(),
     modifier: Modifier = Modifier
 ) {
-    val coroutineScope = rememberCoroutineScope()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val scrollState = rememberScrollState()
-
-    var summary by remember { mutableStateOf(repository.getCachedSummary()) }
-    var positions by remember { mutableStateOf(repository.getCachedPositions()) }
-    var transactions by remember { mutableStateOf(repository.getCachedTransactions()) }
-
-    var isRefreshing by remember { mutableStateOf(false) }
-    var serverUrl by remember { mutableStateOf("http://10.0.2.2:8088") }
-    var showSettingsDialog by remember { mutableStateOf(false) }
-    var positionToExit by remember { mutableStateOf<PositionItem?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
 
-    fun refresh() {
-        if (isRefreshing) return
-        coroutineScope.launch {
-            isRefreshing = true
-            try {
-                val (newSummary, newPositions, newTransactions) = repository.refreshData(serverUrl)
-                summary = newSummary
-                positions = newPositions
-                transactions = newTransactions
-                snackbarHostState.showSnackbar("Synced with live trading engine")
-            } catch (e: Exception) {
-                snackbarHostState.showSnackbar("Loaded cached portfolio data")
-            } finally {
-                isRefreshing = false
-            }
+    LaunchedEffect(uiState.snackbarMessage) {
+        val message = uiState.snackbarMessage
+        if (message != null) {
+            snackbarHostState.showSnackbar(message)
+            viewModel.clearSnackbarMessage()
         }
     }
-
-    val infiniteTransition = rememberInfiniteTransition(label = "spin")
-    val rotation by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "rotation"
-    )
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -103,17 +69,12 @@ fun VaralakshmiDashboardScreen(
                 },
                 actions = {
                     IconButton(
-                        onClick = { refresh() },
-                        enabled = !isRefreshing
+                        onClick = { viewModel.refresh() },
+                        enabled = !uiState.isRefreshing
                     ) {
-                        Icon(
-                            imageVector = Icons.Filled.Refresh,
-                            contentDescription = "Refresh",
-                            tint = AccentIndigoLight,
-                            modifier = if (isRefreshing) Modifier.rotate(rotation) else Modifier
-                        )
+                        AnimatedRefreshIcon(isRefreshing = uiState.isRefreshing)
                     }
-                    IconButton(onClick = { showSettingsDialog = true }) {
+                    IconButton(onClick = { viewModel.openSettings() }) {
                         Icon(
                             imageVector = Icons.Filled.Settings,
                             contentDescription = "Connection Settings",
@@ -143,30 +104,30 @@ fun VaralakshmiDashboardScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "As of ${summary.lastUpdated}",
+                    text = "As of ${uiState.summary.lastUpdated}",
                     fontSize = 11.sp,
                     color = TextMuted
                 )
                 Text(
-                    text = if (isRefreshing) "Syncing..." else "Connected",
+                    text = if (uiState.isRefreshing) "Syncing..." else if (uiState.isLiveSync) "Connected" else "Cached Snapshot",
                     fontSize = 11.sp,
-                    color = if (isRefreshing) GoldAccent else ProfitGreen,
+                    color = if (uiState.isRefreshing) GoldAccent else if (uiState.isLiveSync) ProfitGreen else TextSecondary,
                     fontWeight = FontWeight.Medium
                 )
             }
 
             // 1. Portfolio Header Card (NAV, Returns, Capital Metrics)
-            PortfolioHeaderCard(summary = summary)
+            PortfolioHeaderCard(summary = uiState.summary)
 
             // 2. Individual Tickers Table (Symbol, % up/down, Value, X)
             HoldingsTable(
-                positions = positions,
-                onExitClick = { positionToExit = it }
+                positions = uiState.positions,
+                onExitClick = { viewModel.requestExit(it) }
             )
 
             // 3. Recent Transactions Table (Date, Buy/Sell, Ticker, Price, Profit/Loss Difference)
             TransactionsTable(
-                transactions = transactions
+                transactions = uiState.transactions
             )
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -174,10 +135,10 @@ fun VaralakshmiDashboardScreen(
     }
 
     // Exit Position Confirmation Modal
-    if (positionToExit != null) {
-        val target = positionToExit!!
+    if (uiState.positionToExit != null) {
+        val target = uiState.positionToExit!!
         AlertDialog(
-            onDismissRequest = { positionToExit = null },
+            onDismissRequest = { viewModel.dismissExit() },
             icon = {
                 Icon(
                     imageVector = Icons.Filled.Warning,
@@ -207,7 +168,7 @@ fun VaralakshmiDashboardScreen(
                     ) {
                         Column(modifier = Modifier.padding(10.dp)) {
                             Text("Quantity: ${target.quantity} shares", color = TextPrimary, fontSize = 12.sp)
-                            Text("Current Price: ₹${target.currentPrice}", color = TextPrimary, fontSize = 12.sp)
+                            Text("Current Price: ₹${String.format(Locale.US, "%.2f", target.currentPrice)}", color = TextPrimary, fontSize = 12.sp)
                             Text("Market Value: ₹${String.format(Locale.US, "%,.2f", target.marketValue)}", color = TextPrimary, fontSize = 12.sp)
                             Text(
                                 "Unrealized P&L: ₹${String.format(Locale.US, "%,.2f", target.unrealizedPnl)} (${target.unrealizedPnlPct}%)",
@@ -221,22 +182,14 @@ fun VaralakshmiDashboardScreen(
             },
             confirmButton = {
                 Button(
-                    onClick = {
-                        val (newSummary, newPositions) = repository.removePosition(target.symbol)
-                        summary = newSummary
-                        positions = newPositions
-                        positionToExit = null
-                        coroutineScope.launch {
-                            snackbarHostState.showSnackbar("Exited ${target.symbol} • Freed up ₹${String.format(Locale.US, "%,.0f", target.marketValue)}")
-                        }
-                    },
+                    onClick = { viewModel.confirmExit() },
                     colors = ButtonDefaults.buttonColors(containerColor = LossRed)
                 ) {
                     Text("Confirm Exit (✕)", color = Color.White, fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
-                OutlinedButton(onClick = { positionToExit = null }) {
+                OutlinedButton(onClick = { viewModel.dismissExit() }) {
                     Text("Cancel", color = TextSecondary)
                 }
             },
@@ -246,10 +199,10 @@ fun VaralakshmiDashboardScreen(
     }
 
     // Server Settings Dialog
-    if (showSettingsDialog) {
-        var tempUrl by remember { mutableStateOf(serverUrl) }
+    if (uiState.showSettingsDialog) {
+        var tempUrl by remember { mutableStateOf(uiState.serverUrl) }
         AlertDialog(
-            onDismissRequest = { showSettingsDialog = false },
+            onDismissRequest = { viewModel.closeSettings() },
             title = {
                 Text(
                     text = "Live Server Settings",
@@ -281,7 +234,7 @@ fun VaralakshmiDashboardScreen(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "• Android Emulator: http://10.0.2.2:8088\n• Physical Phone: http://<PC-LAN-IP>:8088",
+                        text = "• Cloudflare Tunnel (Anywhere / Mobile Data):\n  https://varalakshmi.ghostsoftwaresystems.com\n• Local LAN fallback: http://<LAN-IP>:8000\n• Android Emulator: http://10.0.2.2:8000",
                         color = TextMuted,
                         fontSize = 11.sp
                     )
@@ -290,9 +243,7 @@ fun VaralakshmiDashboardScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        serverUrl = tempUrl
-                        showSettingsDialog = false
-                        refresh()
+                        viewModel.updateServerUrl(tempUrl)
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = AccentIndigo)
                 ) {
@@ -300,12 +251,44 @@ fun VaralakshmiDashboardScreen(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showSettingsDialog = false }) {
+                TextButton(onClick = { viewModel.closeSettings() }) {
                     Text("Close", color = TextSecondary)
                 }
             },
             containerColor = DarkSurface,
             shape = RoundedCornerShape(16.dp)
+        )
+    }
+}
+
+@Composable
+fun AnimatedRefreshIcon(
+    isRefreshing: Boolean,
+    modifier: Modifier = Modifier
+) {
+    if (isRefreshing) {
+        val transition = rememberInfiniteTransition(label = "RefreshSpinTransition")
+        val rotation by transition.animateFloat(
+            initialValue = 0f,
+            targetValue = 360f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(1000, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart
+            ),
+            label = "RefreshSpinAngle"
+        )
+        Icon(
+            imageVector = Icons.Filled.Refresh,
+            contentDescription = "Refreshing",
+            tint = AccentIndigoLight,
+            modifier = modifier.graphicsLayer { rotationZ = rotation }
+        )
+    } else {
+        Icon(
+            imageVector = Icons.Filled.Refresh,
+            contentDescription = "Refresh",
+            tint = AccentIndigoLight,
+            modifier = modifier
         )
     }
 }

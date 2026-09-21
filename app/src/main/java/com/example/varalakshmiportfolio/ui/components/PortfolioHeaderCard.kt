@@ -10,7 +10,7 @@ import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Shield
-import androidx.compose.material.icons.filled.TrendingUp
+import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -133,7 +133,7 @@ fun PortfolioHeaderCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
-                        imageVector = if (isPositive) Icons.Filled.TrendingUp else Icons.Filled.ArrowDownward,
+                        imageVector = if (isPositive) Icons.AutoMirrored.Filled.TrendingUp else Icons.Filled.ArrowDownward,
                         contentDescription = null,
                         tint = pnlColor,
                         modifier = Modifier.size(16.dp)

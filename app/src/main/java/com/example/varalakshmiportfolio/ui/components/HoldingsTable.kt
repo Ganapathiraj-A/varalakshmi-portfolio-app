@@ -140,16 +140,18 @@ fun HoldingsTable(
                 }
             } else {
                 positions.forEachIndexed { index, position ->
-                    HoldingRow(
-                        position = position,
-                        onExitClick = { onExitClick(position) }
-                    )
-                    if (index < positions.size - 1) {
-                        HorizontalDivider(
-                            modifier = Modifier.padding(vertical = 4.dp),
-                            color = DarkCardBorder.copy(alpha = 0.5f),
-                            thickness = 0.8.dp
+                    key(position.positionId) {
+                        HoldingRow(
+                            position = position,
+                            onExitClick = { onExitClick(position) }
                         )
+                        if (index < positions.size - 1) {
+                            HorizontalDivider(
+                                modifier = Modifier.padding(vertical = 4.dp),
+                                color = DarkCardBorder.copy(alpha = 0.5f),
+                                thickness = 0.8.dp
+                            )
+                        }
                     }
                 }
             }
@@ -223,7 +225,7 @@ private fun HoldingRow(
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "@ ₹" + String.format(Locale.US, "%.1f", position.currentPrice),
+                    text = "@ ₹" + String.format(Locale.US, "%.2f", position.currentPrice),
                     color = TextMuted,
                     fontSize = 11.sp
                 )

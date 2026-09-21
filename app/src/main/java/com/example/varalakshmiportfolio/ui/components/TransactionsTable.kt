@@ -141,13 +141,15 @@ fun TransactionsTable(
                 }
             } else {
                 transactions.forEachIndexed { index, tx ->
-                    TransactionRow(transaction = tx)
-                    if (index < transactions.size - 1) {
-                        HorizontalDivider(
-                            modifier = Modifier.padding(vertical = 4.dp),
-                            color = DarkCardBorder.copy(alpha = 0.5f),
-                            thickness = 0.8.dp
-                        )
+                    key(tx.transactionId) {
+                        TransactionRow(transaction = tx)
+                        if (index < transactions.size - 1) {
+                            HorizontalDivider(
+                                modifier = Modifier.padding(vertical = 4.dp),
+                                color = DarkCardBorder.copy(alpha = 0.5f),
+                                thickness = 0.8.dp
+                            )
+                        }
                     }
                 }
             }
@@ -238,7 +240,7 @@ private fun TransactionRow(
             // 4. PRICE
             Column(modifier = Modifier.weight(1.0f)) {
                 Text(
-                    text = "₹" + String.format(Locale.US, "%.1f", transaction.fillPrice),
+                    text = "₹" + String.format(Locale.US, "%.2f", transaction.fillPrice),
                     color = TextPrimary,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold

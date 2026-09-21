@@ -1,3 +1,11 @@
+import java.io.File
+import org.gradle.api.DefaultTask
+import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.provider.Property
+import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.InputFile
+import org.gradle.api.tasks.TaskAction
+
 plugins {
   alias(libs.plugins.android.application)
   alias(libs.plugins.compose.compiler)
@@ -84,3 +92,34 @@ dependencies {
   implementation(libs.androidx.navigation3.runtime)
   implementation(libs.androidx.lifecycle.viewmodel.navigation3)
 }
+
+abstract class CopyApkTask : DefaultTask() {
+    @get:InputFile
+    abstract val sourceApk: RegularFileProperty
+
+    @get:Input
+    abstract val targetFilePath: Property<String>
+
+    @TaskAction
+    fun copyApk() {
+        val src = sourceApk.get().asFile
+        if (src.exists()) {
+            val dst = File(targetFilePath.get())
+            src.copyTo(dst, overwrite = true)
+            logger.lifecycle("Copied release APK to: ${dst.absolutePath}")
+        } else {
+            logger.warn("Source APK does not exist: ${src.absolutePath}")
+        }
+    }
+}
+
+tasks.register<CopyApkTask>("copyReleaseApk") {
+    sourceApk.set(layout.buildDirectory.file("outputs/apk/release/app-release.apk"))
+    targetFilePath.set(rootDir.resolve("varalakshmi-portfolio.apk").absolutePath)
+}
+
+afterEvaluate {
+    tasks.findByName("copyReleaseApk")?.dependsOn("assembleRelease")
+    tasks.findByName("assembleRelease")?.finalizedBy("copyReleaseApk")
+}
+
