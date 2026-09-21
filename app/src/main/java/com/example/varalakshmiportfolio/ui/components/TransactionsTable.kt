@@ -87,7 +87,7 @@ fun TransactionsTable(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                        .padding(horizontal = 8.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
@@ -186,7 +186,7 @@ private fun TransactionRow(
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .clickable { expanded = !expanded }
-            .padding(vertical = 8.dp, horizontal = 2.dp)
+            .padding(vertical = 8.dp, horizontal = 8.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),

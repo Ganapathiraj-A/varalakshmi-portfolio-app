@@ -7,14 +7,17 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
@@ -26,6 +29,10 @@ import com.example.varalakshmiportfolio.theme.*
 import com.example.varalakshmiportfolio.ui.components.HoldingsTable
 import com.example.varalakshmiportfolio.ui.components.PortfolioHeaderCard
 import com.example.varalakshmiportfolio.ui.components.TransactionsTable
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -37,6 +44,17 @@ fun VaralakshmiDashboardScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val scrollState = rememberScrollState()
     val snackbarHostState = remember { SnackbarHostState() }
+
+    // Live clock updating every second
+    val timeFormatter = remember { SimpleDateFormat("dd MMM yyyy, HH:mm:ss", Locale.getDefault()) }
+    var currentTimeString by remember { mutableStateOf(timeFormatter.format(Date())) }
+
+    LaunchedEffect(Unit) {
+        while (isActive) {
+            currentTimeString = timeFormatter.format(Date())
+            delay(1000L)
+        }
+    }
 
     LaunchedEffect(uiState.snackbarMessage) {
         val message = uiState.snackbarMessage
@@ -97,23 +115,76 @@ fun VaralakshmiDashboardScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Last Updated bar
-            Row(
+            // Live Current Time & Sync Status Card
+            Surface(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                shape = RoundedCornerShape(12.dp),
+                color = DarkSurface,
+                border = androidx.compose.foundation.BorderStroke(1.dp, DarkCardBorder)
             ) {
-                Text(
-                    text = "As of ${uiState.summary.lastUpdated}",
-                    fontSize = 11.sp,
-                    color = TextMuted
-                )
-                Text(
-                    text = if (uiState.isRefreshing) "Syncing..." else if (uiState.isLiveSync) "Connected" else "Cached Snapshot",
-                    fontSize = 11.sp,
-                    color = if (uiState.isRefreshing) GoldAccent else if (uiState.isLiveSync) ProfitGreen else TextSecondary,
-                    fontWeight = FontWeight.Medium
-                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 9.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Filled.Schedule,
+                            contentDescription = "Current Time",
+                            tint = AccentIndigoLight,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(7.dp))
+                        Column {
+                            Text(
+                                text = "CURRENT TIME",
+                                fontSize = 9.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextMuted,
+                                letterSpacing = 0.5.sp
+                            )
+                            Text(
+                                text = currentTimeString,
+                                fontSize = 12.5.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = TextPrimary
+                            )
+                        }
+                    }
+
+                    Column(horizontalAlignment = Alignment.End) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(7.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        if (uiState.isRefreshing) GoldAccent
+                                        else if (uiState.isLiveSync) ProfitGreen
+                                        else TextSecondary
+                                    )
+                            )
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Text(
+                                text = if (uiState.isRefreshing) "Syncing..."
+                                else if (uiState.isLiveSync) "Live Cloudflare"
+                                else "Cached Snapshot",
+                                fontSize = 11.sp,
+                                color = if (uiState.isRefreshing) GoldAccent
+                                else if (uiState.isLiveSync) ProfitGreen
+                                else TextSecondary,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Text(
+                            text = "Data: ${uiState.summary.lastUpdated}",
+                            fontSize = 10.sp,
+                            color = TextMuted
+                        )
+                    }
+                }
             }
 
             // 1. Portfolio Header Card (NAV, Returns, Capital Metrics)

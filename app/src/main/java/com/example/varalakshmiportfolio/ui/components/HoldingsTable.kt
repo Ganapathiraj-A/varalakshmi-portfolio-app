@@ -20,6 +20,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.varalakshmiportfolio.model.PositionItem
@@ -93,7 +95,7 @@ fun HoldingsTable(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                        .padding(horizontal = 8.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
@@ -101,28 +103,37 @@ fun HoldingsTable(
                         color = TextMuted,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
-                        modifier = Modifier.weight(1.3f)
+                        modifier = Modifier.weight(1.35f)
                     )
                     Text(
                         text = "% UP/DN",
                         color = TextMuted,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
-                        modifier = Modifier.weight(1.1f)
+                        modifier = Modifier.weight(1.05f)
                     )
                     Text(
                         text = "VALUE",
                         color = TextMuted,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
-                        modifier = Modifier.weight(1.2f)
+                        modifier = Modifier.weight(1.10f)
                     )
                     Text(
                         text = "X",
                         color = TextMuted,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
-                        modifier = Modifier.weight(0.9f)
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.weight(0.65f)
+                    )
+                    Text(
+                        text = "EXIT",
+                        color = TextMuted,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.weight(0.55f)
                     )
                 }
             }
@@ -174,34 +185,38 @@ private fun HoldingRow(
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .clickable { expanded = !expanded }
-            .padding(vertical = 8.dp, horizontal = 4.dp)
+            .padding(vertical = 8.dp, horizontal = 8.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
             // 1. Ticker Column
-            Column(modifier = Modifier.weight(1.3f)) {
+            Column(modifier = Modifier.weight(1.35f)) {
                 Text(
                     text = position.symbol,
                     color = TextPrimary,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.ExtraBold
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     text = "${position.quantity} shares",
                     color = TextMuted,
-                    fontSize = 11.sp
+                    fontSize = 10.5.sp,
+                    maxLines = 1
                 )
             }
 
             // 2. % UP/DOWN Column
             Box(
-                modifier = Modifier.weight(1.1f),
+                modifier = Modifier.weight(1.05f),
                 contentAlignment = Alignment.CenterStart
             ) {
                 Surface(
-                    shape = RoundedCornerShape(8.dp),
+                    shape = RoundedCornerShape(7.dp),
                     color = pnlBg,
                     border = androidx.compose.foundation.BorderStroke(1.dp, pnlColor.copy(alpha = 0.4f))
                 ) {
@@ -209,35 +224,35 @@ private fun HoldingRow(
                         text = (if (isPositive) "+" else "") +
                                 String.format(Locale.US, "%.2f%%", position.unrealizedPnlPct),
                         color = pnlColor,
-                        fontSize = 12.sp,
+                        fontSize = 11.5.sp,
                         fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
                     )
                 }
             }
 
             // 3. VALUE Column
-            Column(modifier = Modifier.weight(1.2f)) {
+            Column(modifier = Modifier.weight(1.10f)) {
                 Text(
                     text = "₹" + String.format(Locale.US, "%,.0f", position.marketValue),
                     color = TextPrimary,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold
+                    fontSize = 12.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1
                 )
                 Text(
                     text = "@ ₹" + String.format(Locale.US, "%.2f", position.currentPrice),
                     color = TextMuted,
-                    fontSize = 11.sp
+                    fontSize = 10.5.sp,
+                    maxLines = 1
                 )
             }
 
-            // 4. X Column (Multiplier + Exit Button 'X')
-            Row(
-                modifier = Modifier.weight(0.9f),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            // 4. X (Multiplier) Column
+            Box(
+                modifier = Modifier.weight(0.65f),
+                contentAlignment = Alignment.Center
             ) {
-                // Multiplier Chip
                 Surface(
                     shape = RoundedCornerShape(6.dp),
                     color = AccentIndigoBg,
@@ -251,21 +266,27 @@ private fun HoldingRow(
                         modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
                     )
                 }
+            }
 
-                // Interactive 'X' Exit Button
-                IconButton(
-                    onClick = onExitClick,
+            // 5. EXIT Action Column
+            Box(
+                modifier = Modifier.weight(0.55f),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
                     modifier = Modifier
-                        .size(24.dp)
+                        .size(26.dp)
                         .clip(CircleShape)
                         .background(LossRedBg)
-                        .border(1.dp, LossRed.copy(alpha = 0.4f), CircleShape)
+                        .border(1.dp, LossRed.copy(alpha = 0.5f), CircleShape)
+                        .clickable(onClick = onExitClick),
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Filled.Close,
                         contentDescription = "Exit / Close Position",
                         tint = LossRedLight,
-                        modifier = Modifier.size(14.dp)
+                        modifier = Modifier.size(13.dp)
                     )
                 }
             }
