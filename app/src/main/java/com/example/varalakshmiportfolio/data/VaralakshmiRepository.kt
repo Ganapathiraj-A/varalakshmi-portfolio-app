@@ -440,6 +440,39 @@ class VaralakshmiRepository {
             // Keep previous transactions if this fails
         }
 
+        var fetchedAllocatedCapital: Double? = null
+        var fetchedAvailableCapital: Double? = null
+
+        try {
+            // 3. Fetch strategies to sync dynamic capital allocation
+            val strategiesUrl = "$cleanUrl/api/live-trading/strategies$tokenQuery"
+            val stratJson = httpGet(strategiesUrl, authToken)
+            if (stratJson != null) {
+                val root = JSONObject(stratJson)
+                val stratArray = root.optJSONArray("strategies")
+                if (stratArray != null) {
+                    for (i in 0 until stratArray.length()) {
+                        val obj = stratArray.optJSONObject(i) ?: continue
+                        if (obj.optString("strategy_id") == "VARALAKSHMI_ALPHA_SCALE_35") {
+                            val alloc = obj.optDouble("allocated_capital", 0.0)
+                            val avail = obj.optDouble("available_capital", 0.0)
+                            if (alloc > 0.0) {
+                                fetchedAllocatedCapital = roundPaise(alloc)
+                            }
+                            if (obj.has("available_capital") && !obj.isNull("available_capital")) {
+                                fetchedAvailableCapital = roundPaise(avail)
+                            }
+                            break
+                        }
+                    }
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Non-fatal, fallback to existing or calculated allocation
+        }
+
         synchronized(lock) {
             if (fetchedPositions != null) {
                 cachedPositions.clear()
@@ -449,13 +482,13 @@ class VaralakshmiRepository {
                     cachedTransactions.addAll(fetchedTransactions)
                 }
 
-                // Recalculate summary metrics from updated live positions
+                // Recalculate summary metrics from updated live positions and dynamic capital allocation
                 val totalMarketValue = roundPaise(cachedPositions.sumOf { it.marketValue })
                 val totalUnrealized = roundPaise(cachedPositions.sumOf { it.unrealizedPnl })
                 val deployed = roundPaise(totalMarketValue - totalUnrealized)
-                val allocated = cachedSummary.allocatedCapital
+                val allocated = fetchedAllocatedCapital ?: cachedSummary.allocatedCapital
                 val realized = cachedSummary.realizedPnl
-                val available = roundPaise((allocated - deployed + realized).coerceAtLeast(0.0))
+                val available = fetchedAvailableCapital ?: roundPaise((allocated - deployed + realized).coerceAtLeast(0.0))
                 val nav = roundPaise(deployed + available + totalUnrealized)
                 val totalPnl = roundPaise(realized + totalUnrealized)
                 val totalPnlPct = if (allocated > 0) (totalPnl / allocated) * 100.0 else 0.0
