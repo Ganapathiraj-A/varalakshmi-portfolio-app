@@ -445,7 +445,8 @@ class VaralakshmiRepository {
 
         try {
             // 3. Fetch strategies to sync dynamic capital allocation
-            val strategiesUrl = "$cleanUrl/api/live-trading/strategies$tokenQuery"
+            val stratTokenQuery = if (authToken.isNotBlank()) "?token=$authToken" else ""
+            val strategiesUrl = "$cleanUrl/api/live-trading/strategies$stratTokenQuery"
             val stratJson = httpGet(strategiesUrl, authToken)
             if (stratJson != null) {
                 val root = JSONObject(stratJson)
