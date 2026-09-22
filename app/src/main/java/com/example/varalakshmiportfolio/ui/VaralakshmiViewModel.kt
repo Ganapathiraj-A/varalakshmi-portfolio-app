@@ -109,6 +109,55 @@ class VaralakshmiViewModel(
         }
     }
 
+    fun toggleProfitTarget(position: PositionItem) {
+        val newEnabled = !position.isProfitTargetEnabled
+        // 1. Immediately update StateFlow (no UI jitter, no full list rebuild)
+        _uiState.update { current ->
+            val updatedPositions = current.positions.map {
+                val matches = (position.positionId.isNotBlank() && it.positionId == position.positionId) ||
+                        it.symbol.equals(position.symbol, ignoreCase = true)
+                if (matches) {
+                    it.copy(isProfitTargetEnabled = newEnabled)
+                } else it
+            }
+            val targetLabel = if (newEnabled) "+35% Cap" else "Uncapped Runner"
+            current.copy(
+                positions = updatedPositions,
+                snackbarMessage = "${position.symbol}: Profit Target set to $targetLabel"
+            )
+        }
+
+        // 2. Persist to repository (disk cache)
+        repository.updateProfitTarget(position.symbol, newEnabled)
+
+        // 3. Asynchronously update backend endpoint
+        try {
+            viewModelScope.launch {
+                val ok = repository.syncProfitTargetToBackend(
+                    strategyId = _uiState.value.summary.strategyId,
+                    symbol = position.symbol,
+                    enabled = newEnabled,
+                    serverBaseUrl = _uiState.value.serverUrl,
+                    authToken = _uiState.value.authToken
+                )
+                if (!ok) {
+                    _uiState.update { current ->
+                        current.copy(
+                            snackbarMessage = "Warning: Failed to sync ${position.symbol} profit target to backend (saved offline)"
+                        )
+                    }
+                }
+            }
+        } catch (e: Throwable) {
+            // Safeguard against unconfigured Main dispatcher in headless JVM tests
+        }
+    }
+
+    fun toggleProfitTarget(symbol: String) {
+        val target = _uiState.value.positions.find { it.symbol.equals(symbol, ignoreCase = true) } ?: return
+        toggleProfitTarget(target)
+    }
+
     fun openSettings() {
         _uiState.update { it.copy(showSettingsDialog = true) }
     }
@@ -125,5 +174,9 @@ class VaralakshmiViewModel(
 
     fun clearSnackbarMessage() {
         _uiState.update { it.copy(snackbarMessage = null) }
+    }
+
+    internal fun setPositionsForTesting(positions: List<PositionItem>) {
+        _uiState.update { it.copy(positions = positions) }
     }
 }

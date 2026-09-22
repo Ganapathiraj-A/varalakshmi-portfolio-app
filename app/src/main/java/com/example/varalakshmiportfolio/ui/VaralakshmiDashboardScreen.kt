@@ -202,10 +202,11 @@ fun VaralakshmiDashboardScreen(
             // 1. Portfolio Header Card (NAV, Returns, Capital Metrics)
             PortfolioHeaderCard(summary = uiState.summary)
 
-            // 2. Individual Tickers Table (Symbol, % up/down, Value, X)
+            // 2. Individual Tickers Table (Symbol, % up/down, Value, Target Toggle)
             HoldingsTable(
                 positions = uiState.positions,
-                onExitClick = { viewModel.requestExit(it) }
+                onExitClick = { viewModel.requestExit(it) },
+                onToggleProfitTarget = { viewModel.toggleProfitTarget(it) }
             )
 
             // 3. Today's Ticker Changes Table (Ticker, Price, Today Chg %, Today Value ₹)

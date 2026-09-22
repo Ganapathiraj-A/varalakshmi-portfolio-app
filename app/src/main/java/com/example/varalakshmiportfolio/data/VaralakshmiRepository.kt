@@ -106,7 +106,8 @@ class VaralakshmiRepository {
                 previousClose = 43.80,
                 todayPriceChange = 1.29,
                 todayPriceChangePct = 2.95,
-                todayValueChange = 1102.95
+                todayValueChange = 1102.95,
+                isProfitTargetEnabled = true
             ),
             PositionItem(
                 positionId = "VARALAKSHMI_ALPHA_SCALE_35_AHCL",
@@ -123,7 +124,8 @@ class VaralakshmiRepository {
                 previousClose = 24.15,
                 todayPriceChange = 0.76,
                 todayPriceChangePct = 3.15,
-                todayValueChange = 1118.72
+                todayValueChange = 1118.72,
+                isProfitTargetEnabled = true
             ),
             PositionItem(
                 positionId = "VARALAKSHMI_ALPHA_SCALE_35_TBZ",
@@ -140,7 +142,8 @@ class VaralakshmiRepository {
                 previousClose = 600.00,
                 todayPriceChange = 33.70,
                 todayPriceChangePct = 5.62,
-                todayValueChange = 1786.10
+                todayValueChange = 1786.10,
+                isProfitTargetEnabled = true
             )
         )
 
@@ -338,6 +341,22 @@ class VaralakshmiRepository {
                             calculatedValChg
                         }
 
+                        val targetEnabled = if (obj.has("target_enabled") && !obj.isNull("target_enabled")) {
+                            obj.optBoolean("target_enabled", true)
+                        } else if (obj.has("is_profit_target_enabled") && !obj.isNull("is_profit_target_enabled")) {
+                            obj.optBoolean("is_profit_target_enabled", true)
+                        } else if (obj.has("profit_target_override")) {
+                            if (obj.isNull("profit_target_override")) {
+                                false
+                            } else {
+                                val override = obj.optDouble("profit_target_override", 0.35)
+                                override > 0.0
+                            }
+                        } else {
+                            val cached = synchronized(lock) { cachedPositions.find { it.symbol == symbol } }
+                            cached?.isProfitTargetEnabled ?: true
+                        }
+
                         parsedPositions.add(
                             PositionItem(
                                 positionId = obj.optString("position_id", ""),
@@ -354,7 +373,8 @@ class VaralakshmiRepository {
                                 previousClose = effectivePrevClose,
                                 todayPriceChange = todayChg,
                                 todayPriceChangePct = todayChgPct,
-                                todayValueChange = todayValChg
+                                todayValueChange = todayValChg,
+                                isProfitTargetEnabled = targetEnabled
                             )
                         )
                     }
@@ -542,6 +562,50 @@ class VaralakshmiRepository {
             Triple(cachedSummary, cachedPositions.toList(), cachedTransactions.toList())
         }
 
+    fun updateProfitTarget(symbol: String, enabled: Boolean): List<PositionItem> = synchronized(lock) {
+        ensureLoaded()
+        val index = cachedPositions.indexOfFirst { it.symbol.equals(symbol, ignoreCase = true) }
+        if (index != -1) {
+            val old = cachedPositions[index]
+            cachedPositions[index] = old.copy(isProfitTargetEnabled = enabled)
+            saveToDisk()
+        }
+        cachedPositions.toList()
+    }
+
+    suspend fun syncProfitTargetToBackend(
+        strategyId: String,
+        symbol: String,
+        enabled: Boolean,
+        serverBaseUrl: String = cachedServerUrl,
+        authToken: String = cachedAuthToken
+    ): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val cleanUrl = serverBaseUrl.trimEnd('/')
+            val tokenQuery = if (authToken.isNotBlank()) "?token=$authToken" else ""
+            val endpoint = "$cleanUrl/api/live-trading/positions/toggle-target$tokenQuery"
+            val payload = JSONObject().apply {
+                put("strategy_id", strategyId)
+                put("symbol", symbol)
+                put("target_enabled", enabled)
+                put("target_rate", if (enabled) 0.35 else JSONObject.NULL)
+            }
+            val res = httpPost(endpoint, payload.toString(), authToken)
+            if (res != null) {
+                try {
+                    val json = JSONObject(res)
+                    json.optBoolean("success", true)
+                } catch (e: Exception) {
+                    true
+                }
+            } else false
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            false
+        }
+    }
+
     private fun httpGet(urlStr: String, authToken: String? = null, timeoutMs: Int = 5000): String? {
         var conn: HttpURLConnection? = null
         return try {
@@ -558,6 +622,47 @@ class VaralakshmiRepository {
             conn.setRequestProperty("User-Agent", "VaralakshmiPortfolio/1.0")
             if (!authToken.isNullOrBlank()) {
                 conn.setRequestProperty("Authorization", "Bearer $authToken")
+            }
+
+            val responseCode = conn.responseCode
+            if (responseCode in 200..299) {
+                conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+            } else {
+                conn.errorStream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+                null
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            null
+        } finally {
+            conn?.disconnect()
+        }
+    }
+
+    private fun httpPost(urlStr: String, jsonBody: String, authToken: String? = null, timeoutMs: Int = 5000): String? {
+        var conn: HttpURLConnection? = null
+        return try {
+            val uri = URI(urlStr)
+            val scheme = uri.scheme?.lowercase(Locale.US)
+            if (scheme != "http" && scheme != "https") {
+                return null
+            }
+            conn = uri.toURL().openConnection() as? HttpURLConnection ?: return null
+            conn.connectTimeout = timeoutMs
+            conn.readTimeout = timeoutMs
+            conn.requestMethod = "POST"
+            conn.doOutput = true
+            conn.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            conn.setRequestProperty("Accept", "application/json")
+            conn.setRequestProperty("User-Agent", "VaralakshmiPortfolio/1.0")
+            if (!authToken.isNullOrBlank()) {
+                conn.setRequestProperty("Authorization", "Bearer $authToken")
+            }
+
+            conn.outputStream.use { os ->
+                os.write(jsonBody.toByteArray(Charsets.UTF_8))
+                os.flush()
             }
 
             val responseCode = conn.responseCode
@@ -626,6 +731,7 @@ class VaralakshmiRepository {
                     put("todayPriceChange", p.todayPriceChange)
                     put("todayPriceChangePct", p.todayPriceChangePct)
                     put("todayValueChange", p.todayValueChange)
+                    put("isProfitTargetEnabled", p.isProfitTargetEnabled)
                 }
                 posArray.put(pObj)
             }
@@ -765,6 +871,23 @@ class VaralakshmiRepository {
                         optSafeDouble(p, "peak_price", currentPrice)
                     } else currentPrice
 
+                    val isProfitTargetEnabled = if (p.has("isProfitTargetEnabled") && !p.isNull("isProfitTargetEnabled")) {
+                        p.optBoolean("isProfitTargetEnabled", true)
+                    } else if (p.has("is_profit_target_enabled") && !p.isNull("is_profit_target_enabled")) {
+                        p.optBoolean("is_profit_target_enabled", true)
+                    } else if (p.has("target_enabled") && !p.isNull("target_enabled")) {
+                        p.optBoolean("target_enabled", true)
+                    } else if (p.has("profit_target_override")) {
+                        if (p.isNull("profit_target_override")) {
+                            false
+                        } else {
+                            val override = p.optDouble("profit_target_override", 0.35)
+                            override > 0.0
+                        }
+                    } else {
+                        true
+                    }
+
                     list.add(
                         PositionItem(
                             positionId = p.optString("positionId", if (p.has("position_id")) p.optString("position_id", "") else ""),
@@ -781,7 +904,8 @@ class VaralakshmiRepository {
                             previousClose = effectivePrevClose,
                             todayPriceChange = todayChg,
                             todayPriceChangePct = todayChgPct,
-                            todayValueChange = todayValChg
+                            todayValueChange = todayValChg,
+                            isProfitTargetEnabled = isProfitTargetEnabled
                         )
                     )
                 }
