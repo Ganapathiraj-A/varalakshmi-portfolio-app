@@ -817,48 +817,48 @@ class VaralakshmiPortfolioTest {
         // 1. Verify Top 5 snapshot candidates count and order
         assertEquals(5, recs.size)
         val symbols = recs.map { it.symbol }
-        assertEquals(listOf("CUPID", "ADANIPOWER", "YASHO", "DEEDEV", "ARIHANT"), symbols)
+        assertEquals(listOf("RAYMOND", "XTRANET", "AAREYDRUGS", "GCSL", "GMMPFAUDLR"), symbols)
 
         // 2. Verify ranks 1 to 5
         assertEquals(listOf(1, 2, 3, 4, 5), recs.map { it.rank })
 
         // 3. Verify prices and scores
-        val cupid = recs[0]
-        assertEquals("CUPID", cupid.symbol)
-        assertEquals(1, cupid.rank)
-        assertEquals(412.50, cupid.price, 0.001)
-        assertEquals(96.8, cupid.score, 0.001)
-        assertEquals(515.00, cupid.targetPrice, 0.001)
-        assertEquals(375.00, cupid.stopLossPrice, 0.001)
-        assertEquals(45, cupid.historical2mPoints.size)
+        val raymond = recs[0]
+        assertEquals("RAYMOND", raymond.symbol)
+        assertEquals(1, raymond.rank)
+        assertEquals(1114.65, raymond.price, 0.001)
+        assertEquals(10.02, raymond.score, 0.001)
+        assertEquals(1390.00, raymond.targetPrice, 0.001)
+        assertEquals(980.00, raymond.stopLossPrice, 0.001)
+        assertEquals(45, raymond.historical2mPoints.size)
 
-        val adani = recs[1]
-        assertEquals("ADANIPOWER", adani.symbol)
-        assertEquals(2, adani.rank)
-        assertEquals(684.20, adani.price, 0.001)
-        assertEquals(94.5, adani.score, 0.001)
-        assertEquals(45, adani.historical2mPoints.size)
+        val xtranet = recs[1]
+        assertEquals("XTRANET", xtranet.symbol)
+        assertEquals(2, xtranet.rank)
+        assertEquals(317.65, xtranet.price, 0.001)
+        assertEquals(8.91, xtranet.score, 0.001)
+        assertEquals(45, xtranet.historical2mPoints.size)
 
-        val yasho = recs[2]
-        assertEquals("YASHO", yasho.symbol)
-        assertEquals(3, yasho.rank)
-        assertEquals(1845.00, yasho.price, 0.001)
-        assertEquals(92.3, yasho.score, 0.001)
-        assertEquals(45, yasho.historical2mPoints.size)
+        val aareydrugs = recs[2]
+        assertEquals("AAREYDRUGS", aareydrugs.symbol)
+        assertEquals(3, aareydrugs.rank)
+        assertEquals(102.00, aareydrugs.price, 0.001)
+        assertEquals(8.87, aareydrugs.score, 0.001)
+        assertEquals(45, aareydrugs.historical2mPoints.size)
 
-        val deedev = recs[3]
-        assertEquals("DEEDEV", deedev.symbol)
-        assertEquals(4, deedev.rank)
-        assertEquals(328.75, deedev.price, 0.001)
-        assertEquals(89.7, deedev.score, 0.001)
-        assertEquals(45, deedev.historical2mPoints.size)
+        val gcsl = recs[3]
+        assertEquals("GCSL", gcsl.symbol)
+        assertEquals(4, gcsl.rank)
+        assertEquals(642.70, gcsl.price, 0.001)
+        assertEquals(8.77, gcsl.score, 0.001)
+        assertEquals(45, gcsl.historical2mPoints.size)
 
-        val arihant = recs[4]
-        assertEquals("ARIHANT", arihant.symbol)
-        assertEquals(5, arihant.rank)
-        assertEquals(92.40, arihant.price, 0.001)
-        assertEquals(87.5, arihant.score, 0.001)
-        assertEquals(45, arihant.historical2mPoints.size)
+        val gmmpfaudlr = recs[4]
+        assertEquals("GMMPFAUDLR", gmmpfaudlr.symbol)
+        assertEquals(5, gmmpfaudlr.rank)
+        assertEquals(1432.60, gmmpfaudlr.price, 0.001)
+        assertEquals(8.76, gmmpfaudlr.score, 0.001)
+        assertEquals(45, gmmpfaudlr.historical2mPoints.size)
 
         // 4. Test JSON parsing from live HTTPS payloads
         val testJson = """
@@ -890,6 +890,26 @@ class VaralakshmiPortfolioTest {
         assertEquals(2, parsed[0].historical2mPoints.size)
         assertEquals(25.0, parsed[0].return2mPct, 0.01)
 
+        // 4b. Test candidates JSON parsing matching web stage/status payload
+        val candidatesJson = """
+            {
+                "success": true,
+                "candidates": [
+                    {
+                        "symbol": "RAYMOND",
+                        "alpha_score": 10.02,
+                        "ltp": 1114.65,
+                        "rank": 1
+                    }
+                ]
+            }
+        """.trimIndent()
+        val parsedCand = VaralakshmiRepository.parseRecommendationsJson(candidatesJson)
+        assertEquals(1, parsedCand.size)
+        assertEquals("RAYMOND", parsedCand[0].symbol)
+        assertEquals(1114.65, parsedCand[0].price, 0.001)
+        assertEquals(10.02, parsedCand[0].score, 0.001)
+
         // 5. Test empty / malformed payload resilience
         assertEquals(0, VaralakshmiRepository.parseRecommendationsJson("").size)
         assertEquals(0, VaralakshmiRepository.parseRecommendationsJson("{ broken json").size)
@@ -898,36 +918,36 @@ class VaralakshmiPortfolioTest {
         // 6. Test ViewModel UI state initialization
         val viewModel = VaralakshmiViewModel(repository, autoRefresh = false)
         assertEquals(5, viewModel.uiState.value.recommendations.size)
-        assertEquals("CUPID", viewModel.uiState.value.recommendations[0].symbol)
+        assertEquals("RAYMOND", viewModel.uiState.value.recommendations[0].symbol)
     }
 
     @Test
     fun testTwoMonthHistoricalDataPointSortingAndMinMaxCalculation() {
         val repository = VaralakshmiRepository()
         val recs = repository.getCachedRecommendations()
-        val cupid = recs.first { it.symbol == "CUPID" }
+        val raymond = recs.first { it.symbol == "RAYMOND" }
 
         // 1. Verify chronological sorting across the 45 trading days
-        for (i in 0 until cupid.historical2mPoints.size - 1) {
-            val curr = cupid.historical2mPoints[i].date
-            val next = cupid.historical2mPoints[i + 1].date
+        for (i in 0 until raymond.historical2mPoints.size - 1) {
+            val curr = raymond.historical2mPoints[i].date
+            val next = raymond.historical2mPoints[i + 1].date
             assertTrue("Dates must be monotonically non-decreasing: $curr <= $next", curr <= next)
         }
 
         // 2. Verify min and max calculation
-        val expectedMax = cupid.historical2mPoints.maxOf { it.price }
-        val expectedMin = cupid.historical2mPoints.minOf { it.price }
-        assertEquals(expectedMax, cupid.high2m, 0.001)
-        assertEquals(expectedMin, cupid.low2m, 0.001)
-        assertEquals(428.00, cupid.high2m, 0.001)
-        assertEquals(318.50, cupid.low2m, 0.001)
+        val expectedMax = raymond.historical2mPoints.maxOf { it.price }
+        val expectedMin = raymond.historical2mPoints.minOf { it.price }
+        assertEquals(expectedMax, raymond.high2m, 0.001)
+        assertEquals(expectedMin, raymond.low2m, 0.001)
+        assertEquals(1116.95, raymond.high2m, 0.001)
+        assertEquals(576.80, raymond.low2m, 0.001)
 
         // 3. Verify return2mPct formula: ((last - first) / first) * 100
-        val firstPrice = cupid.historical2mPoints.first().price // 330.0
-        val lastPrice = cupid.historical2mPoints.last().price   // 412.5
+        val firstPrice = raymond.historical2mPoints.first().price // 605.6
+        val lastPrice = raymond.historical2mPoints.last().price   // 1114.65
         val expectedPct = ((lastPrice - firstPrice) / firstPrice) * 100.0
-        assertEquals(expectedPct, cupid.return2mPct, 0.01)
-        assertEquals(25.00, cupid.return2mPct, 0.01)
+        assertEquals(expectedPct, raymond.return2mPct, 0.01)
+        assertEquals(84.06, raymond.return2mPct, 0.01)
 
         // 4. Edge cases: Empty historical points
         val emptyItem = StockRecommendationItem(
@@ -991,22 +1011,22 @@ class VaralakshmiPortfolioTest {
         val recs = viewModel.uiState.value.recommendations
         assertEquals(5, recs.size)
 
-        // 2. Select Recommendation #1 (CUPID)
+        // 2. Select Recommendation #1 (RAYMOND)
         viewModel.selectRecommendation(recs[0])
         val selected1 = viewModel.uiState.value.selectedRecommendationForChart
         assertNotNull(selected1)
-        assertEquals("CUPID", selected1?.symbol)
+        assertEquals("RAYMOND", selected1?.symbol)
         assertEquals(1, selected1?.rank)
-        assertEquals(412.50, selected1?.price ?: 0.0, 0.001)
+        assertEquals(1114.65, selected1?.price ?: 0.0, 0.001)
         assertEquals(45, selected1?.historical2mPoints?.size)
 
-        // 3. Switch to Recommendation #2 (ADANIPOWER)
+        // 3. Switch to Recommendation #2 (XTRANET)
         viewModel.selectRecommendation(recs[1])
         val selected2 = viewModel.uiState.value.selectedRecommendationForChart
         assertNotNull(selected2)
-        assertEquals("ADANIPOWER", selected2?.symbol)
+        assertEquals("XTRANET", selected2?.symbol)
         assertEquals(2, selected2?.rank)
-        assertEquals(684.20, selected2?.price ?: 0.0, 0.001)
+        assertEquals(317.65, selected2?.price ?: 0.0, 0.001)
 
         // 4. Dismiss modal chart
         viewModel.dismissRecommendationChart()
@@ -1027,19 +1047,19 @@ class VaralakshmiPortfolioTest {
             assertTrue("Cache file must be persisted", cacheFile.exists())
             val content = cacheFile.readText()
             assertTrue("Cache file must contain recommendations", content.contains("recommendations"))
-            assertTrue("Cache file must contain CUPID", content.contains("CUPID"))
-            assertTrue("Cache file must contain ADANIPOWER", content.contains("ADANIPOWER"))
+            assertTrue("Cache file must contain RAYMOND", content.contains("RAYMOND"))
+            assertTrue("Cache file must contain XTRANET", content.contains("XTRANET"))
 
             // Instantiate second repo simulating process restart
             val repo2 = VaralakshmiRepository()
             val restoredRecs = repo2.getCachedRecommendations()
             assertEquals(5, restoredRecs.size)
-            assertEquals("CUPID", restoredRecs[0].symbol)
+            assertEquals("RAYMOND", restoredRecs[0].symbol)
             assertEquals(1, restoredRecs[0].rank)
-            assertEquals(412.50, restoredRecs[0].price, 0.001)
+            assertEquals(1114.65, restoredRecs[0].price, 0.001)
             assertEquals(45, restoredRecs[0].historical2mPoints.size)
-            assertEquals(428.00, restoredRecs[0].high2m, 0.001)
-            assertEquals(318.50, restoredRecs[0].low2m, 0.001)
+            assertEquals(1116.95, restoredRecs[0].high2m, 0.001)
+            assertEquals(576.80, restoredRecs[0].low2m, 0.001)
         } finally {
             VaralakshmiRepository.resetCacheDirectoryForTesting()
             tempDir.deleteRecursively()
@@ -1143,9 +1163,9 @@ class VaralakshmiPortfolioTest {
 
         assertTrue("Must be offline fallback", result is SyncResult.OfflineCacheFallback)
         assertEquals(5, result.recommendations.size)
-        assertEquals("CUPID", result.recommendations[0].symbol)
+        assertEquals("RAYMOND", result.recommendations[0].symbol)
         assertEquals(1, result.recommendations[0].rank)
-        assertEquals("ARIHANT", result.recommendations[4].symbol)
+        assertEquals("GMMPFAUDLR", result.recommendations[4].symbol)
         assertEquals(5, result.recommendations[4].rank)
     }
 

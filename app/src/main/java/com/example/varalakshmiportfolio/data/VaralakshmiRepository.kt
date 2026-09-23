@@ -246,44 +246,44 @@ class VaralakshmiRepository {
         fun createDefaultRecommendations(): List<StockRecommendationItem> {
             val dates = generateTradingDates(45)
 
-            val cupidPrices = doubleArrayOf(
-                330.0, 327.5, 324.0, 321.0, 318.5, 322.0, 326.5, 325.0, 329.0, 334.0,
-                332.5, 338.0, 345.0, 342.0, 348.5, 355.0, 352.0, 359.0, 366.5, 364.0,
-                370.0, 377.5, 375.0, 382.0, 389.5, 386.0, 394.0, 401.5, 398.0, 406.0,
-                412.0, 409.0, 416.5, 423.0, 420.5, 425.0, 428.0, 424.5, 419.0, 422.5,
-                418.0, 415.0, 417.5, 414.0, 412.5
+            val raymondPrices = doubleArrayOf(
+                605.6, 588.4, 595.0, 576.8, 588.5, 582.2, 580.1, 602.0, 605.1, 629.4,
+                627.6, 614.95, 627.0, 624.3, 618.95, 642.0, 635.45, 647.85, 625.0, 630.5,
+                656.65, 643.15, 632.2, 627.2, 621.05, 614.0, 626.85, 631.85, 635.3, 667.25,
+                757.9, 740.85, 772.4, 857.8, 808.45, 853.85, 1002.8, 1002.8, 995.95, 993.9,
+                978.2, 978.0, 1084.95, 1116.95, 1114.65
             )
 
-            val adaniPrices = doubleArrayOf(
-                588.0, 584.5, 580.0, 576.0, 579.5, 585.0, 591.0, 588.5, 594.0, 600.5,
-                597.0, 604.0, 611.5, 608.0, 615.0, 622.5, 619.0, 626.0, 633.5, 630.0,
-                638.0, 645.5, 642.0, 649.0, 657.0, 653.5, 661.0, 668.5, 665.0, 672.0,
-                679.5, 676.0, 683.0, 690.5, 687.0, 693.0, 698.0, 694.5, 689.0, 692.5,
-                688.0, 685.0, 687.5, 685.5, 684.2
+            val xtranetPrices = doubleArrayOf(
+                129.2, 129.2, 129.2, 129.2, 129.2, 129.2, 126.53, 124.01, 127.94, 128.01,
+                129.73, 136.21, 143.02, 150.17, 156.18, 150.4, 172.5, 158.7, 168.97, 169.11,
+                160.18, 167.03, 167.69, 163.09, 159.83, 164.26, 197.11, 194.82, 187.34, 193.68,
+                195.2, 234.24, 279.83, 266.7, 293.37, 285.59, 271.34, 271.34, 276.09, 283.03,
+                302.42, 312.16, 341.43, 334.36, 317.65
             )
 
-            val yashoPrices = doubleArrayOf(
-                1530.0, 1522.0, 1515.0, 1508.0, 1514.0, 1525.0, 1538.0, 1532.0, 1545.0, 1560.0,
-                1552.0, 1568.0, 1584.0, 1576.0, 1592.0, 1610.0, 1602.0, 1620.0, 1638.0, 1630.0,
-                1648.0, 1666.0, 1658.0, 1675.0, 1695.0, 1686.0, 1705.0, 1724.0, 1715.0, 1735.0,
-                1755.0, 1746.0, 1768.0, 1790.0, 1780.0, 1805.0, 1830.0, 1855.0, 1892.0, 1880.0,
-                1865.0, 1852.0, 1860.0, 1848.0, 1845.0
+            val aareydrugsPrices = doubleArrayOf(
+                75.98, 77.2, 77.5, 75.95, 77.15, 75.61, 77.12, 77.86, 81.53, 83.9,
+                84.31, 81.8, 81.47, 83.81, 85.51, 83.1, 84.49, 83.87, 85.58, 82.16,
+                82.59, 80.59, 81.2, 78.1, 76.91, 80.75, 84.78, 89.01, 88.21, 92.49,
+                91.72, 94.44, 95.79, 95.88, 98.03, 99.98, 95.71, 98.89, 98.82, 99.94,
+                101.72, 102.13, 102.37, 102.99, 102.0
             )
 
-            val deedevPrices = doubleArrayOf(
-                275.0, 272.5, 270.0, 268.0, 271.0, 275.5, 280.0, 277.5, 282.0, 287.5,
-                285.0, 290.0, 295.5, 293.0, 298.0, 303.5, 301.0, 306.0, 312.0, 309.5,
-                315.0, 320.5, 318.0, 323.5, 329.0, 326.5, 331.0, 336.5, 334.0, 338.0,
-                341.0, 342.0, 339.5, 336.0, 338.5, 335.0, 332.0, 334.5, 331.0, 333.5,
-                330.0, 328.0, 330.5, 329.0, 328.75
+            val gcslPrices = doubleArrayOf(
+                523.55, 521.05, 531.0, 531.1, 519.6, 517.9, 522.3, 520.55, 508.75, 508.15,
+                523.05, 529.65, 523.95, 517.35, 465.8, 502.2, 515.95, 517.75, 492.4, 512.3,
+                521.7, 482.05, 488.9, 512.15, 523.1, 538.0, 540.55, 541.3, 556.55, 562.9,
+                571.85, 586.7, 595.15, 601.85, 598.25, 601.9, 614.8, 600.7, 601.55, 594.75,
+                594.35, 618.55, 635.1, 639.2, 642.7
             )
 
-            val arihantPrices = doubleArrayOf(
-                79.5, 78.4, 77.5, 76.8, 77.6, 78.8, 80.0, 79.2, 80.5, 82.0,
-                81.2, 82.6, 84.0, 83.2, 84.5, 86.0, 85.2, 86.8, 88.2, 87.4,
-                88.8, 90.2, 89.5, 91.0, 92.5, 91.8, 93.0, 94.4, 93.6, 95.0,
-                96.2, 95.4, 94.5, 93.8, 94.6, 93.8, 93.0, 94.0, 93.2, 92.8,
-                93.5, 92.6, 93.0, 92.5, 92.4
+            val gmmpfaudlrPrices = doubleArrayOf(
+                795.54, 807.08, 829.75, 805.8, 803.65, 814.3, 864.4, 858.45, 847.7, 857.1,
+                979.85, 987.3, 993.6, 1003.8, 997.3, 1012.9, 1048.25, 1056.55, 1031.25, 1019.85,
+                1018.2, 1022.35, 989.3, 1004.9, 1017.4, 1025.15, 1026.7, 1042.45, 1083.8, 1070.0,
+                1073.5, 1147.9, 1235.7, 1285.2, 1305.4, 1319.2, 1307.9, 1307.9, 1348.0, 1335.0,
+                1363.4, 1467.0, 1507.2, 1462.3, 1432.6
             )
 
             fun toPoints(prices: DoubleArray): List<HistoricalPricePoint> {
@@ -298,48 +298,48 @@ class VaralakshmiRepository {
             return listOf(
                 StockRecommendationItem(
                     rank = 1,
-                    symbol = "CUPID",
-                    price = 412.50,
-                    score = 96.8,
-                    targetPrice = 515.00,
-                    stopLossPrice = 375.00,
-                    historical2mPoints = toPoints(cupidPrices)
+                    symbol = "RAYMOND",
+                    price = 1114.65,
+                    score = 10.02,
+                    targetPrice = 1390.00,
+                    stopLossPrice = 980.00,
+                    historical2mPoints = toPoints(raymondPrices)
                 ),
                 StockRecommendationItem(
                     rank = 2,
-                    symbol = "ADANIPOWER",
-                    price = 684.20,
-                    score = 94.5,
-                    targetPrice = 820.00,
-                    stopLossPrice = 625.00,
-                    historical2mPoints = toPoints(adaniPrices)
+                    symbol = "XTRANET",
+                    price = 317.65,
+                    score = 8.91,
+                    targetPrice = 395.00,
+                    stopLossPrice = 275.00,
+                    historical2mPoints = toPoints(xtranetPrices)
                 ),
                 StockRecommendationItem(
                     rank = 3,
-                    symbol = "YASHO",
-                    price = 1845.00,
-                    score = 92.3,
-                    targetPrice = 2280.00,
-                    stopLossPrice = 1690.00,
-                    historical2mPoints = toPoints(yashoPrices)
+                    symbol = "AAREYDRUGS",
+                    price = 102.00,
+                    score = 8.87,
+                    targetPrice = 128.00,
+                    stopLossPrice = 89.00,
+                    historical2mPoints = toPoints(aareydrugsPrices)
                 ),
                 StockRecommendationItem(
                     rank = 4,
-                    symbol = "DEEDEV",
-                    price = 328.75,
-                    score = 89.7,
-                    targetPrice = 410.00,
-                    stopLossPrice = 298.00,
-                    historical2mPoints = toPoints(deedevPrices)
+                    symbol = "GCSL",
+                    price = 642.70,
+                    score = 8.77,
+                    targetPrice = 800.00,
+                    stopLossPrice = 560.00,
+                    historical2mPoints = toPoints(gcslPrices)
                 ),
                 StockRecommendationItem(
                     rank = 5,
-                    symbol = "ARIHANT",
-                    price = 92.40,
-                    score = 87.5,
-                    targetPrice = 118.00,
-                    stopLossPrice = 82.00,
-                    historical2mPoints = toPoints(arihantPrices)
+                    symbol = "GMMPFAUDLR",
+                    price = 1432.60,
+                    score = 8.76,
+                    targetPrice = 1790.00,
+                    stopLossPrice = 1250.00,
+                    historical2mPoints = toPoints(gmmpfaudlrPrices)
                 )
             )
         }
@@ -350,7 +350,9 @@ class VaralakshmiRepository {
                 val recArray = when {
                     trimmed.startsWith("{") -> {
                         val root = JSONObject(trimmed)
-                        root.optJSONArray("recommendations") ?: root.optJSONArray("data")
+                        root.optJSONArray("candidates")
+                            ?: root.optJSONArray("recommendations")
+                            ?: root.optJSONArray("data")
                     }
                     trimmed.startsWith("[") -> JSONArray(trimmed)
                     else -> null
@@ -363,10 +365,28 @@ class VaralakshmiRepository {
                     val rank = obj.optInt("rank", i + 1)
                     val symbol = obj.optString("symbol", "").trim().uppercase(Locale.US)
                     if (symbol.isBlank()) continue
-                    val price = optSafeDouble(obj, "price", 0.0)
-                    val score = optSafeDouble(obj, "score", if (obj.has("alpha_score")) optSafeDouble(obj, "alpha_score", 0.0) else 0.0)
-                    val targetPrice = optSafeDouble(obj, "target_price", if (obj.has("targetPrice")) optSafeDouble(obj, "targetPrice", 0.0) else 0.0)
-                    val stopLossPrice = optSafeDouble(obj, "stop_loss_price", if (obj.has("stopLossPrice")) optSafeDouble(obj, "stopLossPrice", 0.0) else 0.0)
+                    val price = optSafeDouble(
+                        obj, "price",
+                        if (obj.has("ltp")) optSafeDouble(obj, "ltp", 0.0)
+                        else if (obj.has("close")) optSafeDouble(obj, "close", 0.0)
+                        else 0.0
+                    )
+                    val score = optSafeDouble(
+                        obj, "score",
+                        if (obj.has("alpha_score")) optSafeDouble(obj, "alpha_score", 0.0)
+                        else if (obj.has("ml_score")) optSafeDouble(obj, "ml_score", 0.0)
+                        else 0.0
+                    )
+                    val targetPrice = optSafeDouble(
+                        obj, "target_price",
+                        if (obj.has("targetPrice")) optSafeDouble(obj, "targetPrice", 0.0)
+                        else roundPaise(price * 1.25)
+                    )
+                    val stopLossPrice = optSafeDouble(
+                        obj, "stop_loss_price",
+                        if (obj.has("stopLossPrice")) optSafeDouble(obj, "stopLossPrice", 0.0)
+                        else roundPaise(price * 0.88)
+                    )
 
                     val ptsArray = when {
                         obj.has("historical2m_points") -> obj.optJSONArray("historical2m_points")
@@ -836,7 +856,8 @@ class VaralakshmiRepository {
                     )
                 }
 
-                val recArray = root.optJSONArray("recommendations")
+                val recArray = root.optJSONArray("candidates")
+                    ?: root.optJSONArray("recommendations")
                 if (recArray != null && recArray.length() > 0) {
                     val parsedRecs = parseRecommendationsJson(root.toString())
                     if (parsedRecs.isNotEmpty()) {
@@ -1089,6 +1110,23 @@ class VaralakshmiRepository {
                 throw e
             } catch (e: Exception) {
                 // Non-fatal, keep cached nifty
+            }
+        }
+
+        if (fetchedRecommendations == null) {
+            try {
+                val stageUrl = "$cleanUrl/api/live-trading/stage/status?strategy=VARALAKSHMI_ALPHA_SCALE_35$tokenQuery"
+                val stageJson = httpGet(stageUrl, authToken)
+                if (stageJson != null) {
+                    val parsed = parseRecommendationsJson(stageJson)
+                    if (parsed.isNotEmpty()) {
+                        fetchedRecommendations = parsed
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Fallback to recommendations endpoint
             }
         }
 
@@ -1725,7 +1763,8 @@ class VaralakshmiRepository {
                 )
             } else null
 
-            val recArray = root.optJSONArray("recommendations")
+            val recArray = root.optJSONArray("candidates")
+                ?: root.optJSONArray("recommendations")
             val parsedRecommendations = if (recArray != null && recArray.length() > 0) {
                 parseRecommendationsJson(recArray.toString())
             } else null
