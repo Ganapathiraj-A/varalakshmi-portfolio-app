@@ -5,3 +5,5 @@ typealias PortfolioSummary = com.example.varalakshmiportfolio.model.PortfolioSum
 typealias PositionItem = com.example.varalakshmiportfolio.model.PositionItem
 typealias TransactionItem = com.example.varalakshmiportfolio.model.TransactionItem
 typealias MarketIndexItem = com.example.varalakshmiportfolio.model.MarketIndexItem
+typealias StockRecommendationItem = com.example.varalakshmiportfolio.model.StockRecommendationItem
+typealias HistoricalPricePoint = com.example.varalakshmiportfolio.model.HistoricalPricePoint

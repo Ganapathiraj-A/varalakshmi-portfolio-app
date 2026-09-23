@@ -3,6 +3,8 @@ package com.example.varalakshmiportfolio
 import com.example.varalakshmiportfolio.data.SyncResult
 import com.example.varalakshmiportfolio.data.VaralakshmiRepository
 import com.example.varalakshmiportfolio.model.PositionItem
+import com.example.varalakshmiportfolio.model.StockRecommendationItem
+import com.example.varalakshmiportfolio.model.HistoricalPricePoint
 import com.example.varalakshmiportfolio.ui.VaralakshmiViewModel
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
@@ -803,6 +805,512 @@ class VaralakshmiPortfolioTest {
             VaralakshmiRepository.resetCacheDirectoryForTesting()
             tempDir.deleteRecursively()
         }
+    }
+
+    @Test
+    fun testTop5RecommendationsParsingAndStateHandling() {
+        val repository = VaralakshmiRepository()
+        val recs = repository.getCachedRecommendations()
+
+        // 1. Verify Top 5 snapshot candidates count and order
+        assertEquals(5, recs.size)
+        val symbols = recs.map { it.symbol }
+        assertEquals(listOf("CUPID", "ADANIPOWER", "YASHO", "DEEDEV", "ARIHANT"), symbols)
+
+        // 2. Verify ranks 1 to 5
+        assertEquals(listOf(1, 2, 3, 4, 5), recs.map { it.rank })
+
+        // 3. Verify prices and scores
+        val cupid = recs[0]
+        assertEquals("CUPID", cupid.symbol)
+        assertEquals(1, cupid.rank)
+        assertEquals(412.50, cupid.price, 0.001)
+        assertEquals(96.8, cupid.score, 0.001)
+        assertEquals(515.00, cupid.targetPrice, 0.001)
+        assertEquals(375.00, cupid.stopLossPrice, 0.001)
+        assertEquals(45, cupid.historical2mPoints.size)
+
+        val adani = recs[1]
+        assertEquals("ADANIPOWER", adani.symbol)
+        assertEquals(2, adani.rank)
+        assertEquals(684.20, adani.price, 0.001)
+        assertEquals(94.5, adani.score, 0.001)
+        assertEquals(45, adani.historical2mPoints.size)
+
+        val yasho = recs[2]
+        assertEquals("YASHO", yasho.symbol)
+        assertEquals(3, yasho.rank)
+        assertEquals(1845.00, yasho.price, 0.001)
+        assertEquals(92.3, yasho.score, 0.001)
+        assertEquals(45, yasho.historical2mPoints.size)
+
+        val deedev = recs[3]
+        assertEquals("DEEDEV", deedev.symbol)
+        assertEquals(4, deedev.rank)
+        assertEquals(328.75, deedev.price, 0.001)
+        assertEquals(89.7, deedev.score, 0.001)
+        assertEquals(45, deedev.historical2mPoints.size)
+
+        val arihant = recs[4]
+        assertEquals("ARIHANT", arihant.symbol)
+        assertEquals(5, arihant.rank)
+        assertEquals(92.40, arihant.price, 0.001)
+        assertEquals(87.5, arihant.score, 0.001)
+        assertEquals(45, arihant.historical2mPoints.size)
+
+        // 4. Test JSON parsing from live HTTPS payloads
+        val testJson = """
+            {
+                "status": "OK",
+                "recommendations": [
+                    {
+                        "rank": 1,
+                        "symbol": "CUSTOM_TICKER",
+                        "price": 500.0,
+                        "score": 99.0,
+                        "target_price": 650.0,
+                        "stop_loss_price": 460.0,
+                        "historical2m_points": [
+                            {"date": "2026-08-01", "price": 400.0},
+                            {"date": "2026-09-01", "price": 500.0}
+                        ]
+                    }
+                ]
+            }
+        """.trimIndent()
+        val parsed = VaralakshmiRepository.parseRecommendationsJson(testJson)
+        assertEquals(1, parsed.size)
+        assertEquals("CUSTOM_TICKER", parsed[0].symbol)
+        assertEquals(500.0, parsed[0].price, 0.001)
+        assertEquals(99.0, parsed[0].score, 0.001)
+        assertEquals(650.0, parsed[0].targetPrice, 0.001)
+        assertEquals(460.0, parsed[0].stopLossPrice, 0.001)
+        assertEquals(2, parsed[0].historical2mPoints.size)
+        assertEquals(25.0, parsed[0].return2mPct, 0.01)
+
+        // 5. Test empty / malformed payload resilience
+        assertEquals(0, VaralakshmiRepository.parseRecommendationsJson("").size)
+        assertEquals(0, VaralakshmiRepository.parseRecommendationsJson("{ broken json").size)
+        assertEquals(0, VaralakshmiRepository.parseRecommendationsJson("[]").size)
+
+        // 6. Test ViewModel UI state initialization
+        val viewModel = VaralakshmiViewModel(repository, autoRefresh = false)
+        assertEquals(5, viewModel.uiState.value.recommendations.size)
+        assertEquals("CUPID", viewModel.uiState.value.recommendations[0].symbol)
+    }
+
+    @Test
+    fun testTwoMonthHistoricalDataPointSortingAndMinMaxCalculation() {
+        val repository = VaralakshmiRepository()
+        val recs = repository.getCachedRecommendations()
+        val cupid = recs.first { it.symbol == "CUPID" }
+
+        // 1. Verify chronological sorting across the 45 trading days
+        for (i in 0 until cupid.historical2mPoints.size - 1) {
+            val curr = cupid.historical2mPoints[i].date
+            val next = cupid.historical2mPoints[i + 1].date
+            assertTrue("Dates must be monotonically non-decreasing: $curr <= $next", curr <= next)
+        }
+
+        // 2. Verify min and max calculation
+        val expectedMax = cupid.historical2mPoints.maxOf { it.price }
+        val expectedMin = cupid.historical2mPoints.minOf { it.price }
+        assertEquals(expectedMax, cupid.high2m, 0.001)
+        assertEquals(expectedMin, cupid.low2m, 0.001)
+        assertEquals(428.00, cupid.high2m, 0.001)
+        assertEquals(318.50, cupid.low2m, 0.001)
+
+        // 3. Verify return2mPct formula: ((last - first) / first) * 100
+        val firstPrice = cupid.historical2mPoints.first().price // 330.0
+        val lastPrice = cupid.historical2mPoints.last().price   // 412.5
+        val expectedPct = ((lastPrice - firstPrice) / firstPrice) * 100.0
+        assertEquals(expectedPct, cupid.return2mPct, 0.01)
+        assertEquals(25.00, cupid.return2mPct, 0.01)
+
+        // 4. Edge cases: Empty historical points
+        val emptyItem = StockRecommendationItem(
+            rank = 99,
+            symbol = "EMPTY_PTS",
+            price = 150.00,
+            score = 80.0,
+            historical2mPoints = emptyList()
+        )
+        assertEquals(150.00, emptyItem.high2m, 0.001)
+        assertEquals(150.00, emptyItem.low2m, 0.001)
+        assertEquals(0.00, emptyItem.return2mPct, 0.001)
+
+        // 5. Edge cases: Single historical point
+        val singleItem = StockRecommendationItem(
+            rank = 99,
+            symbol = "SINGLE_PT",
+            price = 200.00,
+            score = 85.0,
+            historical2mPoints = listOf(HistoricalPricePoint("2026-09-01", 205.00))
+        )
+        assertEquals(205.00, singleItem.high2m, 0.001)
+        assertEquals(205.00, singleItem.low2m, 0.001)
+        assertEquals(0.00, singleItem.return2mPct, 0.001)
+
+        // 6. Edge cases: Downward trending trajectory (negative return)
+        val dropItem = StockRecommendationItem(
+            rank = 10,
+            symbol = "DOWN_STOCK",
+            price = 80.00,
+            score = 65.0,
+            historical2mPoints = listOf(
+                HistoricalPricePoint("2026-08-01", 100.00),
+                HistoricalPricePoint("2026-08-15", 90.00),
+                HistoricalPricePoint("2026-09-01", 80.00)
+            )
+        )
+        assertEquals(100.00, dropItem.high2m, 0.001)
+        assertEquals(80.00, dropItem.low2m, 0.001)
+        assertEquals(-20.00, dropItem.return2mPct, 0.01)
+
+        // 7. Verify explicit sorting logic
+        val unsortedList = listOf(
+            HistoricalPricePoint("2026-09-10", 120.0),
+            HistoricalPricePoint("2026-07-25", 95.0),
+            HistoricalPricePoint("2026-08-15", 110.0)
+        )
+        val sortedList = unsortedList.sortedBy { it.date }
+        assertEquals("2026-07-25", sortedList[0].date)
+        assertEquals("2026-08-15", sortedList[1].date)
+        assertEquals("2026-09-10", sortedList[2].date)
+    }
+
+    @Test
+    fun testRecommendationClickInteractionStateUpdates() {
+        val repository = VaralakshmiRepository()
+        val viewModel = VaralakshmiViewModel(repository, autoRefresh = false)
+
+        // 1. Initial state: no recommendation selected for chart
+        assertNull(viewModel.uiState.value.selectedRecommendationForChart)
+        val recs = viewModel.uiState.value.recommendations
+        assertEquals(5, recs.size)
+
+        // 2. Select Recommendation #1 (CUPID)
+        viewModel.selectRecommendation(recs[0])
+        val selected1 = viewModel.uiState.value.selectedRecommendationForChart
+        assertNotNull(selected1)
+        assertEquals("CUPID", selected1?.symbol)
+        assertEquals(1, selected1?.rank)
+        assertEquals(412.50, selected1?.price ?: 0.0, 0.001)
+        assertEquals(45, selected1?.historical2mPoints?.size)
+
+        // 3. Switch to Recommendation #2 (ADANIPOWER)
+        viewModel.selectRecommendation(recs[1])
+        val selected2 = viewModel.uiState.value.selectedRecommendationForChart
+        assertNotNull(selected2)
+        assertEquals("ADANIPOWER", selected2?.symbol)
+        assertEquals(2, selected2?.rank)
+        assertEquals(684.20, selected2?.price ?: 0.0, 0.001)
+
+        // 4. Dismiss modal chart
+        viewModel.dismissRecommendationChart()
+        assertNull(viewModel.uiState.value.selectedRecommendationForChart)
+    }
+
+    @Test
+    fun testRecommendationDiskPersistenceAndRestoration() {
+        val tempDir = java.nio.file.Files.createTempDirectory("varalakshmi_rec_test").toFile()
+        try {
+            VaralakshmiRepository.initialize(tempDir)
+            val repo1 = VaralakshmiRepository()
+
+            // Save to disk by updating server config
+            repo1.setServerConfig(repo1.getServerUrl())
+
+            val cacheFile = java.io.File(tempDir, VaralakshmiRepository.CACHE_FILE_NAME)
+            assertTrue("Cache file must be persisted", cacheFile.exists())
+            val content = cacheFile.readText()
+            assertTrue("Cache file must contain recommendations", content.contains("recommendations"))
+            assertTrue("Cache file must contain CUPID", content.contains("CUPID"))
+            assertTrue("Cache file must contain ADANIPOWER", content.contains("ADANIPOWER"))
+
+            // Instantiate second repo simulating process restart
+            val repo2 = VaralakshmiRepository()
+            val restoredRecs = repo2.getCachedRecommendations()
+            assertEquals(5, restoredRecs.size)
+            assertEquals("CUPID", restoredRecs[0].symbol)
+            assertEquals(1, restoredRecs[0].rank)
+            assertEquals(412.50, restoredRecs[0].price, 0.001)
+            assertEquals(45, restoredRecs[0].historical2mPoints.size)
+            assertEquals(428.00, restoredRecs[0].high2m, 0.001)
+            assertEquals(318.50, restoredRecs[0].low2m, 0.001)
+        } finally {
+            VaralakshmiRepository.resetCacheDirectoryForTesting()
+            tempDir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun testRecommendationItemNaNAndInfinityResilience() {
+        // 1. First price is NaN
+        val nanFirst = StockRecommendationItem(
+            rank = 1,
+            symbol = "NAN_FIRST",
+            price = 100.0,
+            score = 90.0,
+            historical2mPoints = listOf(
+                HistoricalPricePoint("2026-08-01", Double.NaN),
+                HistoricalPricePoint("2026-09-01", 120.0)
+            )
+        )
+        // Must NOT throw NumberFormatException: Infinite or NaN
+        assertEquals(0.0, nanFirst.return2mPct, 0.001)
+        assertEquals(120.0, nanFirst.high2m, 0.001)
+        assertEquals(120.0, nanFirst.low2m, 0.001)
+
+        // 2. Last price is Infinity
+        val infLast = StockRecommendationItem(
+            rank = 2,
+            symbol = "INF_LAST",
+            price = 200.0,
+            score = 85.0,
+            historical2mPoints = listOf(
+                HistoricalPricePoint("2026-08-01", 150.0),
+                HistoricalPricePoint("2026-09-01", Double.POSITIVE_INFINITY)
+            )
+        )
+        assertEquals(0.0, infLast.return2mPct, 0.001)
+        assertEquals(150.0, infLast.high2m, 0.001)
+        assertEquals(150.0, infLast.low2m, 0.001)
+
+        // 3. All points NaN - fall back to base price
+        val allNan = StockRecommendationItem(
+            rank = 3,
+            symbol = "ALL_NAN",
+            price = 350.0,
+            score = 75.0,
+            historical2mPoints = listOf(
+                HistoricalPricePoint("2026-08-01", Double.NaN),
+                HistoricalPricePoint("2026-09-01", Double.NaN)
+            )
+        )
+        assertEquals(0.0, allNan.return2mPct, 0.001)
+        assertEquals(350.0, allNan.high2m, 0.001)
+        assertEquals(350.0, allNan.low2m, 0.001)
+
+        // 4. First price <= 0.0
+        val zeroFirst = StockRecommendationItem(
+            rank = 4,
+            symbol = "ZERO_FIRST",
+            price = 50.0,
+            score = 70.0,
+            historical2mPoints = listOf(
+                HistoricalPricePoint("2026-08-01", 0.0),
+                HistoricalPricePoint("2026-09-01", 60.0)
+            )
+        )
+        assertEquals(0.0, zeroFirst.return2mPct, 0.001)
+    }
+
+    @Test
+    fun testRecommendationFlatPriceAndSinglePointTrajectory() {
+        // Completely flat stock price across all 45 days
+        val flatPoints = (1..45).map { HistoricalPricePoint("2026-08-$it", 500.0) }
+        val flatItem = StockRecommendationItem(
+            rank = 1,
+            symbol = "FLAT_STOCK",
+            price = 500.0,
+            score = 88.0,
+            historical2mPoints = flatPoints
+        )
+        assertEquals(0.0, flatItem.return2mPct, 0.001)
+        assertEquals(500.0, flatItem.high2m, 0.001)
+        assertEquals(500.0, flatItem.low2m, 0.001)
+
+        // Single historical price point
+        val singleItem = StockRecommendationItem(
+            rank = 2,
+            symbol = "SINGLE_STOCK",
+            price = 250.0,
+            score = 82.0,
+            historical2mPoints = listOf(HistoricalPricePoint("2026-09-20", 255.0))
+        )
+        assertEquals(0.0, singleItem.return2mPct, 0.001)
+        assertEquals(255.0, singleItem.high2m, 0.001)
+        assertEquals(255.0, singleItem.low2m, 0.001)
+    }
+
+    @Test
+    fun testOfflineSyncResultIncludesRecommendations() = runTest {
+        val repo = VaralakshmiRepository()
+        val result = repo.refreshData("http://127.0.0.1:59998")
+
+        assertTrue("Must be offline fallback", result is SyncResult.OfflineCacheFallback)
+        assertEquals(5, result.recommendations.size)
+        assertEquals("CUPID", result.recommendations[0].symbol)
+        assertEquals(1, result.recommendations[0].rank)
+        assertEquals("ARIHANT", result.recommendations[4].symbol)
+        assertEquals(5, result.recommendations[4].rank)
+    }
+
+    @Test
+    fun testLiveSyncIncludesRecommendationsWhenAvailable() = runTest {
+        val server = com.sun.net.httpserver.HttpServer.create(java.net.InetSocketAddress(0), 0)
+        try {
+            server.createContext("/api/live-trading/positions") { exchange ->
+                val response = """{"status":"OK","active":[]}"""
+                exchange.sendResponseHeaders(200, response.toByteArray().size.toLong())
+                exchange.responseBody.use { it.write(response.toByteArray()) }
+            }
+            server.createContext("/api/live-trading/transactions") { exchange ->
+                val response = """{"status":"OK","transactions":[]}"""
+                exchange.sendResponseHeaders(200, response.toByteArray().size.toLong())
+                exchange.responseBody.use { it.write(response.toByteArray()) }
+            }
+            server.createContext("/api/live-trading/recommendations") { exchange ->
+                val response = """
+                    {
+                        "status": "OK",
+                        "recommendations": [
+                            {
+                                "rank": 1,
+                                "symbol": "LIVE_WINNER",
+                                "price": 777.0,
+                                "score": 99.5,
+                                "target_price": 950.0,
+                                "stop_loss_price": 700.0,
+                                "historical2m_points": [
+                                    {"date": "2026-08-01", "price": 600.0},
+                                    {"date": "2026-09-23", "price": 777.0}
+                                ]
+                            }
+                        ]
+                    }
+                """.trimIndent()
+                exchange.sendResponseHeaders(200, response.toByteArray().size.toLong())
+                exchange.responseBody.use { it.write(response.toByteArray()) }
+            }
+            server.start()
+
+            val repo = VaralakshmiRepository()
+            val result = repo.refreshData("http://localhost:${server.address.port}")
+
+            assertTrue("Must succeed", result is SyncResult.Success)
+            assertEquals(1, result.recommendations.size)
+            assertEquals("LIVE_WINNER", result.recommendations[0].symbol)
+            assertEquals(777.0, result.recommendations[0].price, 0.001)
+            assertEquals(99.5, result.recommendations[0].score, 0.001)
+            assertEquals(29.50, result.recommendations[0].return2mPct, 0.01)
+        } finally {
+            server.stop(0)
+        }
+    }
+
+    @Test
+    fun testRecommendationReverseChronologicalHistoricalPointsCalculation() {
+        // Backend returns descending (newest first) historical dates
+        val reversePoints = listOf(
+            HistoricalPricePoint("2026-09-23", 500.0), // Latest: 500
+            HistoricalPricePoint("2026-08-15", 450.0),
+            HistoricalPricePoint("2026-07-23", 400.0)  // Oldest: 400 (Gain: +25%)
+        )
+        val item = StockRecommendationItem(
+            rank = 1,
+            symbol = "REVERSE_PTS",
+            price = 500.0,
+            score = 91.0,
+            historical2mPoints = reversePoints
+        )
+
+        // return2mPct must sort ascending first: (500 - 400) / 400 * 100 = +25.0% (NOT -20%)
+        assertEquals(25.00, item.return2mPct, 0.01)
+        assertEquals(500.00, item.high2m, 0.001)
+        assertEquals(400.00, item.low2m, 0.001)
+    }
+
+    @Test
+    fun testRecommendationBundledInPositionsPayload() = runTest {
+        val server = com.sun.net.httpserver.HttpServer.create(java.net.InetSocketAddress(0), 0)
+        try {
+            server.createContext("/api/live-trading/positions") { exchange ->
+                val response = """
+                    {
+                        "status": "OK",
+                        "active": [],
+                        "recommendations": [
+                            {
+                                "rank": 1,
+                                "symbol": "BUNDLED_CO",
+                                "price": 1250.0,
+                                "score": 98.2,
+                                "target_price": 1500.0,
+                                "stop_loss_price": 1150.0,
+                                "historical2m_points": [
+                                    {"date": "2026-07-23", "price": 1000.0},
+                                    {"date": "2026-09-23", "price": 1250.0}
+                                ]
+                            }
+                        ]
+                    }
+                """.trimIndent()
+                exchange.sendResponseHeaders(200, response.toByteArray().size.toLong())
+                exchange.responseBody.use { it.write(response.toByteArray()) }
+            }
+            server.createContext("/api/live-trading/transactions") { exchange ->
+                val response = """{"status":"OK","transactions":[]}"""
+                exchange.sendResponseHeaders(200, response.toByteArray().size.toLong())
+                exchange.responseBody.use { it.write(response.toByteArray()) }
+            }
+            server.createContext("/api/live-trading/recommendations") { exchange ->
+                // Simulate separate recommendations endpoint 404 or empty
+                exchange.sendResponseHeaders(404, 0)
+                exchange.responseBody.close()
+            }
+            server.start()
+
+            val repo = VaralakshmiRepository()
+            val result = repo.refreshData("http://localhost:${server.address.port}")
+
+            assertTrue("Must succeed with bundled payload", result is SyncResult.Success)
+            assertEquals(1, result.recommendations.size)
+            assertEquals("BUNDLED_CO", result.recommendations[0].symbol)
+            assertEquals(1250.0, result.recommendations[0].price, 0.001)
+            assertEquals(98.2, result.recommendations[0].score, 0.001)
+            assertEquals(25.00, result.recommendations[0].return2mPct, 0.01)
+        } finally {
+            server.stop(0)
+        }
+    }
+
+    @Test
+    fun testRecommendationFormattedPropertiesWithNaNAndInfiniteValues() {
+        val abnormalItem = StockRecommendationItem(
+            rank = 1,
+            symbol = "BAD_NUMBERS",
+            price = Double.NaN,
+            score = Double.POSITIVE_INFINITY,
+            targetPrice = Double.NaN,
+            stopLossPrice = Double.NEGATIVE_INFINITY
+        )
+
+        assertEquals("₹0.00", abnormalItem.formattedPrice)
+        assertEquals("0.0", abnormalItem.formattedScore)
+        assertEquals("₹0.00", abnormalItem.formattedTarget)
+        assertEquals("₹0.00", abnormalItem.formattedStopLoss)
+    }
+
+    @Test
+    fun testRecommendationHighLowIgnoresZeroAndNegativePrices() {
+        val corruptedPoints = listOf(
+            HistoricalPricePoint("2026-08-01", 0.0),
+            HistoricalPricePoint("2026-08-02", -50.0),
+            HistoricalPricePoint("2026-08-03", 220.0),
+            HistoricalPricePoint("2026-08-04", 260.0)
+        )
+        val item = StockRecommendationItem(
+            rank = 1,
+            symbol = "FILTER_TEST",
+            price = 260.0,
+            score = 80.0,
+            historical2mPoints = corruptedPoints
+        )
+
+        assertEquals(260.0, item.high2m, 0.001)
+        assertEquals(220.0, item.low2m, 0.001)
     }
 }
 

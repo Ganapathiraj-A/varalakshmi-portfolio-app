@@ -8,6 +8,7 @@ import com.example.varalakshmiportfolio.model.PortfolioSummary
 import com.example.varalakshmiportfolio.model.PositionItem
 import com.example.varalakshmiportfolio.model.TransactionItem
 import com.example.varalakshmiportfolio.model.MarketIndexItem
+import com.example.varalakshmiportfolio.model.StockRecommendationItem
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -20,6 +21,8 @@ data class VaralakshmiUiState(
     val positions: List<PositionItem>,
     val transactions: List<TransactionItem>,
     val nifty: MarketIndexItem = MarketIndexItem(),
+    val recommendations: List<StockRecommendationItem> = emptyList(),
+    val selectedRecommendationForChart: StockRecommendationItem? = null,
     val isRefreshing: Boolean = false,
     val serverUrl: String = VaralakshmiRepository.DEFAULT_SERVER_URL,
     val authToken: String = VaralakshmiRepository.DEFAULT_AUTH_TOKEN,
@@ -40,6 +43,7 @@ class VaralakshmiViewModel(
             positions = repository.getCachedPositions(),
             transactions = repository.getCachedTransactions(),
             nifty = repository.getCachedNifty(),
+            recommendations = repository.getCachedRecommendations(),
             serverUrl = repository.getServerUrl(),
             authToken = repository.getAuthToken()
         )
@@ -69,6 +73,7 @@ class VaralakshmiViewModel(
                             positions = syncResult.positions,
                             transactions = syncResult.transactions,
                             nifty = syncResult.nifty,
+                            recommendations = syncResult.recommendations,
                             isRefreshing = false,
                             isLiveSync = true,
                             snackbarMessage = "Synced with live trading engine"
@@ -82,6 +87,7 @@ class VaralakshmiViewModel(
                             positions = syncResult.positions,
                             transactions = syncResult.transactions,
                             nifty = syncResult.nifty,
+                            recommendations = syncResult.recommendations,
                             isRefreshing = false,
                             isLiveSync = false,
                             snackbarMessage = "Offline mode: showing cached snapshot"
@@ -90,6 +96,14 @@ class VaralakshmiViewModel(
                 }
             }
         }
+    }
+
+    fun selectRecommendation(recommendation: StockRecommendationItem) {
+        _uiState.update { it.copy(selectedRecommendationForChart = recommendation) }
+    }
+
+    fun dismissRecommendationChart() {
+        _uiState.update { it.copy(selectedRecommendationForChart = null) }
     }
 
     fun requestExit(position: PositionItem) {

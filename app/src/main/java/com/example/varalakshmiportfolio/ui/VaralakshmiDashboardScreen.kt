@@ -33,6 +33,8 @@ import com.example.varalakshmiportfolio.ui.components.HoldingsTable
 import com.example.varalakshmiportfolio.ui.components.PortfolioHeaderCard
 import com.example.varalakshmiportfolio.ui.components.TodayTickerChangesTable
 import com.example.varalakshmiportfolio.ui.components.TransactionsTable
+import com.example.varalakshmiportfolio.ui.components.StockRecommendationsTable
+import com.example.varalakshmiportfolio.ui.components.StockChartDialog
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -280,8 +282,22 @@ fun VaralakshmiDashboardScreen(
                 transactions = uiState.transactions
             )
 
+            // 5. Top 5 Stock Recommendations Table (Rank, Ticker, Price, Score, Action)
+            StockRecommendationsTable(
+                recommendations = uiState.recommendations,
+                onRecommendationClick = { viewModel.selectRecommendation(it) }
+            )
+
             Spacer(modifier = Modifier.height(24.dp))
         }
+    }
+
+    // Interactive 2-Month Historical Price Chart Modal Dialog
+    uiState.selectedRecommendationForChart?.let { recommendation ->
+        StockChartDialog(
+            recommendation = recommendation,
+            onDismiss = { viewModel.dismissRecommendationChart() }
+        )
     }
 
     // Exit Position Confirmation Modal

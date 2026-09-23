@@ -114,3 +114,60 @@ data class MarketIndexItem(
         get() = change >= 0.0
 }
 
+data class HistoricalPricePoint(
+    val date: String,
+    val price: Double
+)
+
+data class StockRecommendationItem(
+    val rank: Int,
+    val symbol: String,
+    val price: Double,
+    val score: Double,
+    val targetPrice: Double = 0.0,
+    val stopLossPrice: Double = 0.0,
+    val historical2mPoints: List<HistoricalPricePoint> = emptyList()
+) {
+    val return2mPct: Double
+        get() {
+            if (historical2mPoints.size < 2) return 0.0
+            val sorted = historical2mPoints.sortedBy { it.date }
+            val first = sorted.first().price
+            val last = sorted.last().price
+            if (first <= 0.0 || first.isNaN() || first.isInfinite() || last.isNaN() || last.isInfinite()) return 0.0
+            val pct = ((last - first) / first) * 100.0
+            if (pct.isNaN() || pct.isInfinite()) return 0.0
+            return java.math.BigDecimal.valueOf(pct)
+                .setScale(2, java.math.RoundingMode.HALF_EVEN)
+                .toDouble()
+        }
+
+    val high2m: Double
+        get() {
+            val fallback = if (price.isNaN() || price.isInfinite()) 0.0 else price
+            if (historical2mPoints.isEmpty()) return fallback
+            val valid = historical2mPoints.map { it.price }.filter { !it.isNaN() && !it.isInfinite() && it > 0.0 }
+            return valid.maxOrNull() ?: fallback
+        }
+
+    val low2m: Double
+        get() {
+            val fallback = if (price.isNaN() || price.isInfinite()) 0.0 else price
+            if (historical2mPoints.isEmpty()) return fallback
+            val valid = historical2mPoints.map { it.price }.filter { !it.isNaN() && !it.isInfinite() && it > 0.0 }
+            return valid.minOrNull() ?: fallback
+        }
+
+    val formattedPrice: String
+        get() = if (price.isNaN() || price.isInfinite()) "₹0.00" else String.format(Locale.US, "₹%,.2f", price)
+
+    val formattedScore: String
+        get() = if (score.isNaN() || score.isInfinite()) "0.0" else String.format(Locale.US, "%.1f", score)
+
+    val formattedTarget: String
+        get() = if (targetPrice.isNaN() || targetPrice.isInfinite()) "₹0.00" else String.format(Locale.US, "₹%,.2f", targetPrice)
+
+    val formattedStopLoss: String
+        get() = if (stopLossPrice.isNaN() || stopLossPrice.isInfinite()) "₹0.00" else String.format(Locale.US, "₹%,.2f", stopLossPrice)
+}
+

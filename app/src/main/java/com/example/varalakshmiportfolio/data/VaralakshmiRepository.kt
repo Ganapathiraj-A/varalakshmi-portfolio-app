@@ -3,6 +3,8 @@ package com.example.varalakshmiportfolio.data
 import com.example.varalakshmiportfolio.model.PortfolioSummary
 import com.example.varalakshmiportfolio.model.PositionItem
 import com.example.varalakshmiportfolio.model.TransactionItem
+import com.example.varalakshmiportfolio.model.StockRecommendationItem
+import com.example.varalakshmiportfolio.model.HistoricalPricePoint
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -15,6 +17,7 @@ import java.math.RoundingMode
 import java.net.HttpURLConnection
 import java.net.URI
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
@@ -26,12 +29,14 @@ sealed class SyncResult {
     abstract val positions: List<PositionItem>
     abstract val transactions: List<TransactionItem>
     abstract val nifty: MarketIndexItem
+    abstract val recommendations: List<StockRecommendationItem>
 
     data class Success(
         override val summary: PortfolioSummary,
         override val positions: List<PositionItem>,
         override val transactions: List<TransactionItem>,
-        override val nifty: MarketIndexItem = MarketIndexItem()
+        override val nifty: MarketIndexItem = MarketIndexItem(),
+        override val recommendations: List<StockRecommendationItem> = emptyList()
     ) : SyncResult()
 
     data class OfflineCacheFallback(
@@ -39,7 +44,8 @@ sealed class SyncResult {
         override val positions: List<PositionItem>,
         override val transactions: List<TransactionItem>,
         val message: String,
-        override val nifty: MarketIndexItem = MarketIndexItem()
+        override val nifty: MarketIndexItem = MarketIndexItem(),
+        override val recommendations: List<StockRecommendationItem> = emptyList()
     ) : SyncResult()
 }
 
@@ -213,6 +219,191 @@ class VaralakshmiRepository {
                 pnlDifference = "+₹4,180.95 (+12.2%)"
             )
         )
+
+        fun generateTradingDates(count: Int = 45): List<String> {
+            val dates = mutableListOf<String>()
+            val cal = Calendar.getInstance(Locale.US).apply {
+                set(2026, Calendar.SEPTEMBER, 23, 0, 0, 0)
+                set(Calendar.MILLISECOND, 0)
+            }
+            val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+            while (dates.size < count) {
+                val dayOfWeek = cal.get(Calendar.DAY_OF_WEEK)
+                if (dayOfWeek != Calendar.SATURDAY && dayOfWeek != Calendar.SUNDAY) {
+                    dates.add(sdf.format(cal.time))
+                }
+                cal.add(Calendar.DAY_OF_MONTH, -1)
+            }
+            return dates.reversed()
+        }
+
+        fun createDefaultRecommendations(): List<StockRecommendationItem> {
+            val dates = generateTradingDates(45)
+
+            val cupidPrices = doubleArrayOf(
+                330.0, 327.5, 324.0, 321.0, 318.5, 322.0, 326.5, 325.0, 329.0, 334.0,
+                332.5, 338.0, 345.0, 342.0, 348.5, 355.0, 352.0, 359.0, 366.5, 364.0,
+                370.0, 377.5, 375.0, 382.0, 389.5, 386.0, 394.0, 401.5, 398.0, 406.0,
+                412.0, 409.0, 416.5, 423.0, 420.5, 425.0, 428.0, 424.5, 419.0, 422.5,
+                418.0, 415.0, 417.5, 414.0, 412.5
+            )
+
+            val adaniPrices = doubleArrayOf(
+                588.0, 584.5, 580.0, 576.0, 579.5, 585.0, 591.0, 588.5, 594.0, 600.5,
+                597.0, 604.0, 611.5, 608.0, 615.0, 622.5, 619.0, 626.0, 633.5, 630.0,
+                638.0, 645.5, 642.0, 649.0, 657.0, 653.5, 661.0, 668.5, 665.0, 672.0,
+                679.5, 676.0, 683.0, 690.5, 687.0, 693.0, 698.0, 694.5, 689.0, 692.5,
+                688.0, 685.0, 687.5, 685.5, 684.2
+            )
+
+            val yashoPrices = doubleArrayOf(
+                1530.0, 1522.0, 1515.0, 1508.0, 1514.0, 1525.0, 1538.0, 1532.0, 1545.0, 1560.0,
+                1552.0, 1568.0, 1584.0, 1576.0, 1592.0, 1610.0, 1602.0, 1620.0, 1638.0, 1630.0,
+                1648.0, 1666.0, 1658.0, 1675.0, 1695.0, 1686.0, 1705.0, 1724.0, 1715.0, 1735.0,
+                1755.0, 1746.0, 1768.0, 1790.0, 1780.0, 1805.0, 1830.0, 1855.0, 1892.0, 1880.0,
+                1865.0, 1852.0, 1860.0, 1848.0, 1845.0
+            )
+
+            val deedevPrices = doubleArrayOf(
+                275.0, 272.5, 270.0, 268.0, 271.0, 275.5, 280.0, 277.5, 282.0, 287.5,
+                285.0, 290.0, 295.5, 293.0, 298.0, 303.5, 301.0, 306.0, 312.0, 309.5,
+                315.0, 320.5, 318.0, 323.5, 329.0, 326.5, 331.0, 336.5, 334.0, 338.0,
+                341.0, 342.0, 339.5, 336.0, 338.5, 335.0, 332.0, 334.5, 331.0, 333.5,
+                330.0, 328.0, 330.5, 329.0, 328.75
+            )
+
+            val arihantPrices = doubleArrayOf(
+                79.5, 78.4, 77.5, 76.8, 77.6, 78.8, 80.0, 79.2, 80.5, 82.0,
+                81.2, 82.6, 84.0, 83.2, 84.5, 86.0, 85.2, 86.8, 88.2, 87.4,
+                88.8, 90.2, 89.5, 91.0, 92.5, 91.8, 93.0, 94.4, 93.6, 95.0,
+                96.2, 95.4, 94.5, 93.8, 94.6, 93.8, 93.0, 94.0, 93.2, 92.8,
+                93.5, 92.6, 93.0, 92.5, 92.4
+            )
+
+            fun toPoints(prices: DoubleArray): List<HistoricalPricePoint> {
+                val list = mutableListOf<HistoricalPricePoint>()
+                for (i in prices.indices) {
+                    val d = if (i < dates.size) dates[i] else "2026-09-23"
+                    list.add(HistoricalPricePoint(date = d, price = roundPaise(prices[i])))
+                }
+                return list
+            }
+
+            return listOf(
+                StockRecommendationItem(
+                    rank = 1,
+                    symbol = "CUPID",
+                    price = 412.50,
+                    score = 96.8,
+                    targetPrice = 515.00,
+                    stopLossPrice = 375.00,
+                    historical2mPoints = toPoints(cupidPrices)
+                ),
+                StockRecommendationItem(
+                    rank = 2,
+                    symbol = "ADANIPOWER",
+                    price = 684.20,
+                    score = 94.5,
+                    targetPrice = 820.00,
+                    stopLossPrice = 625.00,
+                    historical2mPoints = toPoints(adaniPrices)
+                ),
+                StockRecommendationItem(
+                    rank = 3,
+                    symbol = "YASHO",
+                    price = 1845.00,
+                    score = 92.3,
+                    targetPrice = 2280.00,
+                    stopLossPrice = 1690.00,
+                    historical2mPoints = toPoints(yashoPrices)
+                ),
+                StockRecommendationItem(
+                    rank = 4,
+                    symbol = "DEEDEV",
+                    price = 328.75,
+                    score = 89.7,
+                    targetPrice = 410.00,
+                    stopLossPrice = 298.00,
+                    historical2mPoints = toPoints(deedevPrices)
+                ),
+                StockRecommendationItem(
+                    rank = 5,
+                    symbol = "ARIHANT",
+                    price = 92.40,
+                    score = 87.5,
+                    targetPrice = 118.00,
+                    stopLossPrice = 82.00,
+                    historical2mPoints = toPoints(arihantPrices)
+                )
+            )
+        }
+
+        fun parseRecommendationsJson(jsonStr: String): List<StockRecommendationItem> {
+            return try {
+                val trimmed = jsonStr.trim()
+                val recArray = when {
+                    trimmed.startsWith("{") -> {
+                        val root = JSONObject(trimmed)
+                        root.optJSONArray("recommendations") ?: root.optJSONArray("data")
+                    }
+                    trimmed.startsWith("[") -> JSONArray(trimmed)
+                    else -> null
+                } ?: return emptyList()
+
+                val defaultRecs by lazy { createDefaultRecommendations() }
+                val parsed = mutableListOf<StockRecommendationItem>()
+                for (i in 0 until recArray.length()) {
+                    val obj = recArray.optJSONObject(i) ?: continue
+                    val rank = obj.optInt("rank", i + 1)
+                    val symbol = obj.optString("symbol", "").trim().uppercase(Locale.US)
+                    if (symbol.isBlank()) continue
+                    val price = optSafeDouble(obj, "price", 0.0)
+                    val score = optSafeDouble(obj, "score", if (obj.has("alpha_score")) optSafeDouble(obj, "alpha_score", 0.0) else 0.0)
+                    val targetPrice = optSafeDouble(obj, "target_price", if (obj.has("targetPrice")) optSafeDouble(obj, "targetPrice", 0.0) else 0.0)
+                    val stopLossPrice = optSafeDouble(obj, "stop_loss_price", if (obj.has("stopLossPrice")) optSafeDouble(obj, "stopLossPrice", 0.0) else 0.0)
+
+                    val ptsArray = when {
+                        obj.has("historical2m_points") -> obj.optJSONArray("historical2m_points")
+                        obj.has("historical2mPoints") -> obj.optJSONArray("historical2mPoints")
+                        obj.has("history") -> obj.optJSONArray("history")
+                        obj.has("chart") -> obj.optJSONArray("chart")
+                        else -> null
+                    }
+                    val pointsList = mutableListOf<HistoricalPricePoint>()
+                    if (ptsArray != null) {
+                        for (j in 0 until ptsArray.length()) {
+                            val ptObj = ptsArray.optJSONObject(j) ?: continue
+                            val d = ptObj.optString("date", if (ptObj.has("timestamp")) ptObj.optString("timestamp", "") else "")
+                            val p = optSafeDouble(ptObj, "price", if (ptObj.has("close")) optSafeDouble(ptObj, "close", 0.0) else 0.0)
+                            if (d.isNotBlank() && p > 0.0) {
+                                pointsList.add(HistoricalPricePoint(date = d, price = p))
+                            }
+                        }
+                    }
+
+                    val effectivePoints = if (pointsList.isNotEmpty()) {
+                        pointsList.sortedBy { it.date }
+                    } else {
+                        defaultRecs.find { it.symbol.equals(symbol, ignoreCase = true) }?.historical2mPoints ?: emptyList()
+                    }
+
+                    parsed.add(
+                        StockRecommendationItem(
+                            rank = rank,
+                            symbol = symbol,
+                            price = price,
+                            score = score,
+                            targetPrice = targetPrice,
+                            stopLossPrice = stopLossPrice,
+                            historical2mPoints = effectivePoints
+                        )
+                    )
+                }
+                parsed
+            } catch (e: Exception) {
+                emptyList()
+            }
+        }
     }
 
     private val lock = Any()
@@ -225,6 +416,7 @@ class VaralakshmiRepository {
     private val cachedPositions = createDefaultPositions().toMutableList()
     private val cachedTransactions = createDefaultTransactions().toMutableList()
     private var cachedNifty = createDefaultNifty()
+    private val cachedRecommendations = createDefaultRecommendations().toMutableList()
 
     fun resetToDefaultSeed() = synchronized(lock) {
         cachedSummary = createDefaultSummary()
@@ -233,6 +425,8 @@ class VaralakshmiRepository {
         cachedTransactions.clear()
         cachedTransactions.addAll(createDefaultTransactions())
         cachedNifty = createDefaultNifty()
+        cachedRecommendations.clear()
+        cachedRecommendations.addAll(createDefaultRecommendations())
     }
 
     private var isLoadedFromDisk = false
@@ -275,6 +469,7 @@ class VaralakshmiRepository {
     fun getCachedPositions(): List<PositionItem> = synchronized(lock) { ensureLoaded(); cachedPositions.toList() }
     fun getCachedTransactions(): List<TransactionItem> = synchronized(lock) { ensureLoaded(); cachedTransactions.toList() }
     fun getCachedNifty(): MarketIndexItem = synchronized(lock) { ensureLoaded(); cachedNifty }
+    fun getCachedRecommendations(): List<StockRecommendationItem> = synchronized(lock) { ensureLoaded(); cachedRecommendations.toList() }
 
     suspend fun refreshData(serverBaseUrl: String, authToken: String = DEFAULT_AUTH_TOKEN): SyncResult = withContext(Dispatchers.IO) {
         val cleanUrl = serverBaseUrl.trimEnd('/')
@@ -282,6 +477,7 @@ class VaralakshmiRepository {
         var fetchedPositions: List<PositionItem>? = null
         var fetchedTransactions: List<TransactionItem>? = null
         var fetchedNifty: MarketIndexItem? = null
+        var fetchedRecommendations: List<StockRecommendationItem>? = null
         var networkError: String? = null
 
         val tokenQuery = if (authToken.isNotBlank()) "&token=$authToken" else ""
@@ -316,6 +512,14 @@ class VaralakshmiRepository {
                         timestamp = ts,
                         status = stat
                     )
+                }
+
+                val recArray = root.optJSONArray("recommendations")
+                if (recArray != null && recArray.length() > 0) {
+                    val parsedRecs = parseRecommendationsJson(root.toString())
+                    if (parsedRecs.isNotEmpty()) {
+                        fetchedRecommendations = parsedRecs
+                    }
                 }
 
                 val activeArray = root.optJSONArray("active")
@@ -556,9 +760,31 @@ class VaralakshmiRepository {
             }
         }
 
+        if (fetchedRecommendations == null) {
+            try {
+                val recUrl = "$cleanUrl/api/live-trading/recommendations?limit=5$tokenQuery"
+                val recJson = httpGet(recUrl, authToken)
+                if (recJson != null) {
+                    val parsed = parseRecommendationsJson(recJson)
+                    if (parsed.isNotEmpty()) {
+                        fetchedRecommendations = parsed
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Keep cached recommendations
+            }
+        }
+
         synchronized(lock) {
             if (fetchedNifty != null) {
                 cachedNifty = fetchedNifty
+            }
+
+            if (fetchedRecommendations != null) {
+                cachedRecommendations.clear()
+                cachedRecommendations.addAll(fetchedRecommendations)
             }
 
             if (fetchedPositions != null) {
@@ -605,7 +831,8 @@ class VaralakshmiRepository {
                     summary = cachedSummary,
                     positions = cachedPositions.toList(),
                     transactions = cachedTransactions.toList(),
-                    nifty = cachedNifty
+                    nifty = cachedNifty,
+                    recommendations = cachedRecommendations.toList()
                 )
             } else {
                 // Offline fallback - preserve existing cache and timestamp
@@ -614,7 +841,8 @@ class VaralakshmiRepository {
                     positions = cachedPositions.toList(),
                     transactions = cachedTransactions.toList(),
                     message = networkError ?: "Offline mode: server unreachable",
-                    nifty = cachedNifty
+                    nifty = cachedNifty,
+                    recommendations = cachedRecommendations.toList()
                 )
             }
         }
@@ -895,6 +1123,29 @@ class VaralakshmiRepository {
             }
             root.put("nifty", niftyObj)
 
+            val recArray = JSONArray()
+            for (r in cachedRecommendations) {
+                val rObj = JSONObject().apply {
+                    put("rank", r.rank)
+                    put("symbol", r.symbol)
+                    put("price", r.price)
+                    put("score", r.score)
+                    put("targetPrice", r.targetPrice)
+                    put("stopLossPrice", r.stopLossPrice)
+                    val ptsArray = JSONArray()
+                    for (pt in r.historical2mPoints) {
+                        val ptObj = JSONObject().apply {
+                            put("date", pt.date)
+                            put("price", pt.price)
+                        }
+                        ptsArray.put(ptObj)
+                    }
+                    put("historical2mPoints", ptsArray)
+                }
+                recArray.put(rObj)
+            }
+            root.put("recommendations", recArray)
+
             val targetFile = File(dir, CACHE_FILE_NAME)
             val tempFile = File(dir, "$CACHE_FILE_NAME.tmp")
             tempFile.writeText(root.toString(2), Charsets.UTF_8)
@@ -1095,6 +1346,11 @@ class VaralakshmiRepository {
                 )
             } else null
 
+            val recArray = root.optJSONArray("recommendations")
+            val parsedRecommendations = if (recArray != null && recArray.length() > 0) {
+                parseRecommendationsJson(recArray.toString())
+            } else null
+
             if (root.has("serverUrl") && !root.isNull("serverUrl")) {
                 val url = root.optString("serverUrl", "").trim()
                 if (url.isNotBlank()) cachedServerUrl = url
@@ -1136,6 +1392,10 @@ class VaralakshmiRepository {
             }
             if (parsedNifty != null) {
                 cachedNifty = parsedNifty
+            }
+            if (parsedRecommendations != null && parsedRecommendations.isNotEmpty()) {
+                cachedRecommendations.clear()
+                cachedRecommendations.addAll(parsedRecommendations)
             }
             isLoadedFromDisk = true
             true
