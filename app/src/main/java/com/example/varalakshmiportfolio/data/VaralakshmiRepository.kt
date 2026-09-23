@@ -1817,8 +1817,13 @@ class VaralakshmiRepository {
                 cachedNifty = parsedNifty
             }
             if (parsedRecommendations != null && parsedRecommendations.isNotEmpty()) {
+                val isOldPlaceholder = parsedRecommendations.any { it.symbol == "CUPID" }
                 cachedRecommendations.clear()
-                cachedRecommendations.addAll(parsedRecommendations)
+                if (!isOldPlaceholder) {
+                    cachedRecommendations.addAll(parsedRecommendations)
+                } else {
+                    cachedRecommendations.addAll(createDefaultRecommendations())
+                }
             }
             if (parsedHistory != null && parsedHistory.isNotEmpty()) {
                 cachedRecommendationHistory.clear()

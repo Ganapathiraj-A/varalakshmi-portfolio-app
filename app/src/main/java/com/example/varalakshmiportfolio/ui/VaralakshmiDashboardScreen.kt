@@ -288,7 +288,7 @@ fun VaralakshmiDashboardScreen(
                 recommendations = uiState.recommendations,
                 onRecommendationClick = { viewModel.selectRecommendation(it) },
                 onViewHistoryClick = { viewModel.openRecommendationHistory() },
-                historyWinRateSummary = "${uiState.recommendationHistorySummary.formattedWinRate} Win Rate (${uiState.recommendationHistory.size} Signals)"
+                historyWinRateSummary = "${uiState.recommendationHistorySummary.formattedWinRate} Win Rate"
             )
 
             Spacer(modifier = Modifier.height(24.dp))

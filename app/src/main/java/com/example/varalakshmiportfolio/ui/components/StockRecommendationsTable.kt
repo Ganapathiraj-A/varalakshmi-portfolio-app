@@ -103,47 +103,47 @@ fun StockRecommendationsTable(
                     Text(
                         text = "#",
                         color = TextMuted,
-                        fontSize = 10.5.sp,
+                        fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
-                        modifier = Modifier.weight(0.45f),
+                        modifier = Modifier.weight(0.40f),
                         maxLines = 1,
                         softWrap = false
                     )
                     Text(
                         text = "TICKER",
                         color = TextMuted,
-                        fontSize = 10.5.sp,
+                        fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
-                        modifier = Modifier.weight(1.35f),
+                        modifier = Modifier.weight(1.70f),
                         maxLines = 1,
                         softWrap = false
                     )
                     Text(
                         text = "PRICE",
                         color = TextMuted,
-                        fontSize = 10.5.sp,
+                        fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
-                        modifier = Modifier.weight(1.30f),
+                        modifier = Modifier.weight(1.35f),
                         maxLines = 1,
                         softWrap = false
                     )
                     Text(
                         text = "SCORE",
                         color = TextMuted,
-                        fontSize = 10.5.sp,
+                        fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
                         textAlign = TextAlign.Center,
-                        modifier = Modifier.weight(0.95f),
+                        modifier = Modifier.weight(0.85f),
                         maxLines = 1,
                         softWrap = false
                     )
                     Text(
                         text = "CHART",
                         color = TextMuted,
-                        fontSize = 10.5.sp,
+                        fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
                         textAlign = TextAlign.End,
-                        modifier = Modifier.weight(0.95f),
+                        modifier = Modifier.weight(0.70f),
                         maxLines = 1,
                         softWrap = false
                     )
@@ -199,33 +199,41 @@ fun StockRecommendationsTable(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(
+                        modifier = Modifier.weight(1f, fill = false),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
                             imageVector = Icons.Filled.History,
                             contentDescription = "Recommendation History",
                             tint = AccentIndigoLight,
-                            modifier = Modifier.size(16.dp)
+                            modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Recommendation History",
-                            color = TextPrimary,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Past 3 Months",
-                            color = TextMuted,
-                            fontSize = 10.5.sp
-                        )
+                        Column {
+                            Text(
+                                text = "Recommendation History",
+                                color = TextPrimary,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = "Past 3 Months Track Record",
+                                color = TextMuted,
+                                fontSize = 9.5.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
+
+                    Spacer(modifier = Modifier.width(8.dp))
 
                     Surface(
                         shape = RoundedCornerShape(6.dp),
@@ -237,7 +245,9 @@ fun StockRecommendationsTable(
                             color = ProfitGreen,
                             fontSize = 10.5.sp,
                             fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
                 }
@@ -264,18 +274,18 @@ private fun RecommendationRow(
     ) {
         // 1. Rank (#)
         Box(
-            modifier = Modifier.weight(0.45f),
+            modifier = Modifier.weight(0.40f),
             contentAlignment = Alignment.CenterStart
         ) {
             Surface(
-                shape = RoundedCornerShape(6.dp),
+                shape = RoundedCornerShape(5.dp),
                 color = AccentIndigoBg,
                 border = BorderStroke(0.8.dp, AccentIndigoLight.copy(alpha = 0.35f))
             ) {
                 Text(
                     text = "#${item.rank}",
                     color = AccentIndigoLight,
-                    fontSize = 10.5.sp,
+                    fontSize = 10.sp,
                     fontWeight = FontWeight.ExtraBold,
                     modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
                     maxLines = 1,
@@ -285,23 +295,23 @@ private fun RecommendationRow(
         }
 
         // 2. TICKER
-        Column(modifier = Modifier.weight(1.35f)) {
+        Column(modifier = Modifier.weight(1.70f)) {
             Text(
                 text = item.symbol,
                 color = TextPrimary,
-                fontSize = 12.5.sp,
+                fontSize = 12.sp,
                 fontWeight = FontWeight.ExtraBold,
                 maxLines = 1,
                 softWrap = false,
                 overflow = TextOverflow.Ellipsis
             )
             val subText = if (item.targetPrice > 0.0) {
-                "Tgt: ₹" + String.format(Locale.US, "%.0f", item.targetPrice)
+                "Tgt: ₹" + String.format(Locale.US, "%,.0f", item.targetPrice)
             } else "Momentum"
             Text(
                 text = subText,
                 color = TextMuted,
-                fontSize = 9.5.sp,
+                fontSize = 9.sp,
                 maxLines = 1,
                 softWrap = false,
                 overflow = TextOverflow.Ellipsis
@@ -309,11 +319,11 @@ private fun RecommendationRow(
         }
 
         // 3. PRICE
-        Column(modifier = Modifier.weight(1.30f)) {
+        Column(modifier = Modifier.weight(1.35f)) {
             Text(
                 text = item.formattedPrice,
                 color = TextPrimary,
-                fontSize = 12.sp,
+                fontSize = 11.5.sp,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
                 softWrap = false,
@@ -323,7 +333,7 @@ private fun RecommendationRow(
             Text(
                 text = retStr,
                 color = returnColor,
-                fontSize = 9.5.sp,
+                fontSize = 9.sp,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 softWrap = false,
@@ -333,20 +343,20 @@ private fun RecommendationRow(
 
         // 4. SCORE
         Box(
-            modifier = Modifier.weight(0.95f),
+            modifier = Modifier.weight(0.85f),
             contentAlignment = Alignment.Center
         ) {
             Surface(
-                shape = RoundedCornerShape(6.dp),
+                shape = RoundedCornerShape(5.dp),
                 color = GoldAccentBg,
                 border = BorderStroke(0.8.dp, GoldAccent.copy(alpha = 0.4f))
             ) {
                 Text(
                     text = item.formattedScore,
                     color = GoldAccent,
-                    fontSize = 10.5.sp,
+                    fontSize = 10.sp,
                     fontWeight = FontWeight.ExtraBold,
-                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
                     maxLines = 1,
                     softWrap = false
                 )
@@ -355,7 +365,7 @@ private fun RecommendationRow(
 
         // 5. CHART / Action
         Box(
-            modifier = Modifier.weight(0.95f),
+            modifier = Modifier.weight(0.70f),
             contentAlignment = Alignment.CenterEnd
         ) {
             Surface(
@@ -371,13 +381,13 @@ private fun RecommendationRow(
                         imageVector = Icons.AutoMirrored.Filled.ShowChart,
                         contentDescription = "View 2M Chart",
                         tint = AccentIndigoLight,
-                        modifier = Modifier.size(12.dp)
+                        modifier = Modifier.size(11.dp)
                     )
-                    Spacer(modifier = Modifier.width(3.dp))
+                    Spacer(modifier = Modifier.width(2.dp))
                     Text(
-                        text = "2M ↗",
+                        text = "2M",
                         color = AccentIndigoLight,
-                        fontSize = 10.sp,
+                        fontSize = 9.5.sp,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
                         softWrap = false
