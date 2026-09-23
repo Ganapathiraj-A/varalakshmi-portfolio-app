@@ -8,6 +8,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ShowChart
 import androidx.compose.material.icons.filled.AutoGraph
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
@@ -27,6 +28,8 @@ import java.util.Locale
 fun StockRecommendationsTable(
     recommendations: List<StockRecommendationItem>,
     onRecommendationClick: (StockRecommendationItem) -> Unit,
+    onViewHistoryClick: () -> Unit = {},
+    historyWinRateSummary: String = "",
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -172,6 +175,70 @@ fun StockRecommendationsTable(
                                 thickness = 0.8.dp
                             )
                         }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+            HorizontalDivider(
+                color = DarkCardBorder.copy(alpha = 0.8f),
+                thickness = 1.dp
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // History Button
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable { onViewHistoryClick() },
+                shape = RoundedCornerShape(12.dp),
+                color = DarkCard,
+                border = BorderStroke(1.dp, DarkCardBorder)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.History,
+                            contentDescription = "Recommendation History",
+                            tint = AccentIndigoLight,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Recommendation History",
+                            color = TextPrimary,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Past 3 Months",
+                            color = TextMuted,
+                            fontSize = 10.5.sp
+                        )
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = ProfitGreenBg,
+                        border = BorderStroke(0.8.dp, ProfitGreen.copy(alpha = 0.4f))
+                    ) {
+                        Text(
+                            text = historyWinRateSummary.ifBlank { "73.3% Win Rate" },
+                            color = ProfitGreen,
+                            fontSize = 10.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
                     }
                 }
             }

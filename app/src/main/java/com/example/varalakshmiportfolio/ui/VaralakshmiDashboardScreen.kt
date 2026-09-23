@@ -35,6 +35,7 @@ import com.example.varalakshmiportfolio.ui.components.TodayTickerChangesTable
 import com.example.varalakshmiportfolio.ui.components.TransactionsTable
 import com.example.varalakshmiportfolio.ui.components.StockRecommendationsTable
 import com.example.varalakshmiportfolio.ui.components.StockChartDialog
+import com.example.varalakshmiportfolio.ui.components.RecommendationHistoryDialog
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -282,10 +283,12 @@ fun VaralakshmiDashboardScreen(
                 transactions = uiState.transactions
             )
 
-            // 5. Top 5 Stock Recommendations Table (Rank, Ticker, Price, Score, Action)
+            // 5. Top 5 Stock Recommendations Table (Rank, Ticker, Price, Score, Action, History)
             StockRecommendationsTable(
                 recommendations = uiState.recommendations,
-                onRecommendationClick = { viewModel.selectRecommendation(it) }
+                onRecommendationClick = { viewModel.selectRecommendation(it) },
+                onViewHistoryClick = { viewModel.openRecommendationHistory() },
+                historyWinRateSummary = "${uiState.recommendationHistorySummary.formattedWinRate} Win Rate (${uiState.recommendationHistory.size} Signals)"
             )
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -297,6 +300,17 @@ fun VaralakshmiDashboardScreen(
         StockChartDialog(
             recommendation = recommendation,
             onDismiss = { viewModel.dismissRecommendationChart() }
+        )
+    }
+
+    // Past 3-Month Recommendation Track Record Modal Dialog
+    if (uiState.showRecommendationHistory) {
+        RecommendationHistoryDialog(
+            history = uiState.recommendationHistory,
+            summary = uiState.recommendationHistorySummary,
+            selectedFilter = uiState.selectedHistoryFilter,
+            onFilterChange = { viewModel.setHistoryFilter(it) },
+            onDismiss = { viewModel.closeRecommendationHistory() }
         )
     }
 

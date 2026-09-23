@@ -171,3 +171,53 @@ data class StockRecommendationItem(
         get() = if (stopLossPrice.isNaN() || stopLossPrice.isInfinite()) "₹0.00" else String.format(Locale.US, "₹%,.2f", stopLossPrice)
 }
 
+data class HistoricalRecommendationItem(
+    val id: String,
+    val symbol: String,
+    val sector: String = "General",
+    val entryDate: String,
+    val exitDate: String? = null,
+    val entryPrice: Double,
+    val exitPrice: Double,
+    val pnlPercent: Double,
+    val holdingDays: Int,
+    val status: String,
+    val exitReason: String,
+    val score: Double = 90.0
+) {
+    val isWin: Boolean get() = pnlPercent > 0.0
+    val isActive: Boolean get() = status.equals("ACTIVE", ignoreCase = true) || exitDate == null
+
+    val formattedEntryPrice: String
+        get() = if (entryPrice.isNaN() || entryPrice.isInfinite()) "₹0.00" else String.format(Locale.US, "₹%,.2f", entryPrice)
+
+    val formattedExitPrice: String
+        get() = if (exitPrice.isNaN() || exitPrice.isInfinite()) "₹0.00" else String.format(Locale.US, "₹%,.2f", exitPrice)
+
+    val formattedPnlPercent: String
+        get() {
+            val sign = if (pnlPercent >= 0.0) "+" else ""
+            return String.format(Locale.US, "%s%.2f%%", sign, pnlPercent)
+        }
+}
+
+data class RecommendationHistorySummary(
+    val totalTrades: Int,
+    val winRatePercent: Double,
+    val avgReturnPercent: Double,
+    val profitableTrades: Int,
+    val lossTrades: Int,
+    val activeTrades: Int = 0,
+    val bestTradePercent: Double = 0.0,
+    val maxLossPercent: Double = 0.0
+) {
+    val formattedWinRate: String
+        get() = String.format(Locale.US, "%.1f%%", winRatePercent)
+
+    val formattedAvgReturn: String
+        get() {
+            val sign = if (avgReturnPercent >= 0.0) "+" else ""
+            return String.format(Locale.US, "%s%.2f%%", sign, avgReturnPercent)
+        }
+}
+

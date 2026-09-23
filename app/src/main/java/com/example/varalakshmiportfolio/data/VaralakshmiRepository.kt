@@ -30,13 +30,17 @@ sealed class SyncResult {
     abstract val transactions: List<TransactionItem>
     abstract val nifty: MarketIndexItem
     abstract val recommendations: List<StockRecommendationItem>
+    abstract val recommendationHistory: List<HistoricalRecommendationItem>
+    abstract val recommendationHistorySummary: RecommendationHistorySummary
 
     data class Success(
         override val summary: PortfolioSummary,
         override val positions: List<PositionItem>,
         override val transactions: List<TransactionItem>,
         override val nifty: MarketIndexItem = MarketIndexItem(),
-        override val recommendations: List<StockRecommendationItem> = emptyList()
+        override val recommendations: List<StockRecommendationItem> = emptyList(),
+        override val recommendationHistory: List<HistoricalRecommendationItem> = emptyList(),
+        override val recommendationHistorySummary: RecommendationHistorySummary = RecommendationHistorySummary(0, 0.0, 0.0, 0, 0)
     ) : SyncResult()
 
     data class OfflineCacheFallback(
@@ -45,7 +49,9 @@ sealed class SyncResult {
         override val transactions: List<TransactionItem>,
         val message: String,
         override val nifty: MarketIndexItem = MarketIndexItem(),
-        override val recommendations: List<StockRecommendationItem> = emptyList()
+        override val recommendations: List<StockRecommendationItem> = emptyList(),
+        override val recommendationHistory: List<HistoricalRecommendationItem> = emptyList(),
+        override val recommendationHistorySummary: RecommendationHistorySummary = RecommendationHistorySummary(0, 0.0, 0.0, 0, 0)
     ) : SyncResult()
 }
 
@@ -404,6 +410,314 @@ class VaralakshmiRepository {
                 emptyList()
             }
         }
+
+        fun calculateRecommendationHistorySummary(items: List<HistoricalRecommendationItem>): RecommendationHistorySummary {
+            if (items.isEmpty()) {
+                return RecommendationHistorySummary(
+                    totalTrades = 0,
+                    winRatePercent = 0.0,
+                    avgReturnPercent = 0.0,
+                    profitableTrades = 0,
+                    lossTrades = 0,
+                    activeTrades = 0,
+                    bestTradePercent = 0.0,
+                    maxLossPercent = 0.0
+                )
+            }
+            val total = items.size
+            val wins = items.count { it.pnlPercent > 0.0 }
+            val losses = items.count { it.pnlPercent < 0.0 }
+            val active = items.count { it.isActive }
+            val winRate = if (total > 0) (wins.toDouble() / total) * 100.0 else 0.0
+            val avgReturn = items.map { it.pnlPercent }.average()
+            val best = items.maxOfOrNull { it.pnlPercent } ?: 0.0
+            val worst = items.minOfOrNull { it.pnlPercent } ?: 0.0
+            return RecommendationHistorySummary(
+                totalTrades = total,
+                winRatePercent = roundPaise(winRate),
+                avgReturnPercent = roundPaise(avgReturn),
+                profitableTrades = wins,
+                lossTrades = losses,
+                activeTrades = active,
+                bestTradePercent = roundPaise(best),
+                maxLossPercent = roundPaise(worst)
+            )
+        }
+
+        fun createDefaultRecommendationHistory(): List<HistoricalRecommendationItem> {
+            return listOf(
+                HistoricalRecommendationItem(
+                    id = "REC-2026-0908",
+                    symbol = "YASHO",
+                    sector = "Specialty Chemicals",
+                    entryDate = "2026-09-08",
+                    exitDate = null,
+                    entryPrice = 1690.00,
+                    exitPrice = 1845.00,
+                    pnlPercent = 9.17,
+                    holdingDays = 11,
+                    status = "ACTIVE",
+                    exitReason = "Trailing Stop Armed at ₹1,697.40",
+                    score = 92.3
+                ),
+                HistoricalRecommendationItem(
+                    id = "REC-2026-0902",
+                    symbol = "ADANIPOWER",
+                    sector = "Power & Infrastructure",
+                    entryDate = "2026-09-02",
+                    exitDate = null,
+                    entryPrice = 615.00,
+                    exitPrice = 684.20,
+                    pnlPercent = 11.25,
+                    holdingDays = 15,
+                    status = "ACTIVE",
+                    exitReason = "Trailing Stop Armed at ₹629.46",
+                    score = 94.5
+                ),
+                HistoricalRecommendationItem(
+                    id = "REC-2026-0817",
+                    symbol = "INDSWFTLAB",
+                    sector = "Pharmaceuticals",
+                    entryDate = "2026-08-17",
+                    exitDate = "2026-08-20",
+                    entryPrice = 112.50,
+                    exitPrice = 117.25,
+                    pnlPercent = 4.21,
+                    holdingDays = 4,
+                    status = "TRAILING_STOP",
+                    exitReason = "Trailing Stop (-8% from Peak)",
+                    score = 88.4
+                ),
+                HistoricalRecommendationItem(
+                    id = "REC-2026-0806",
+                    symbol = "CUPID",
+                    sector = "Healthcare & Consumer",
+                    entryDate = "2026-08-06",
+                    exitDate = "2026-08-18",
+                    entryPrice = 330.00,
+                    exitPrice = 353.75,
+                    pnlPercent = 7.20,
+                    holdingDays = 8,
+                    status = "TRAILING_STOP",
+                    exitReason = "Trailing Stop (-8% from Peak)",
+                    score = 96.8
+                ),
+                HistoricalRecommendationItem(
+                    id = "REC-2026-0805",
+                    symbol = "ARIHANT",
+                    sector = "Services & Media",
+                    entryDate = "2026-08-05",
+                    exitDate = "2026-08-07",
+                    entryPrice = 82.50,
+                    exitPrice = 78.75,
+                    pnlPercent = -4.55,
+                    holdingDays = 2,
+                    status = "CUT_LOSS",
+                    exitReason = "Cut Loss (-4% from Entry)",
+                    score = 86.2
+                ),
+                HistoricalRecommendationItem(
+                    id = "REC-2026-0731",
+                    symbol = "YASHO",
+                    sector = "Specialty Chemicals",
+                    entryDate = "2026-07-31",
+                    exitDate = "2026-08-04",
+                    entryPrice = 1530.00,
+                    exitPrice = 1873.30,
+                    pnlPercent = 22.44,
+                    holdingDays = 4,
+                    status = "TRAILING_STOP",
+                    exitReason = "Trailing Stop (-8% from Peak)",
+                    score = 94.0
+                ),
+                HistoricalRecommendationItem(
+                    id = "REC-2026-0724",
+                    symbol = "ARIHANT",
+                    sector = "Services & Media",
+                    entryDate = "2026-07-24",
+                    exitDate = "2026-07-31",
+                    entryPrice = 930.10,
+                    exitPrice = 1087.05,
+                    pnlPercent = 16.58,
+                    holdingDays = 5,
+                    status = "TRAILING_STOP",
+                    exitReason = "Trailing Stop (-8% from Peak)",
+                    score = 91.5
+                ),
+                HistoricalRecommendationItem(
+                    id = "REC-2026-0722",
+                    symbol = "CEMPRO",
+                    sector = "Building Materials",
+                    entryDate = "2026-07-22",
+                    exitDate = "2026-07-24",
+                    entryPrice = 280.00,
+                    exitPrice = 248.30,
+                    pnlPercent = -11.31,
+                    holdingDays = 2,
+                    status = "CUT_LOSS",
+                    exitReason = "Gap Down / Cut Loss",
+                    score = 85.0
+                ),
+                HistoricalRecommendationItem(
+                    id = "REC-2026-0717",
+                    symbol = "HFCL",
+                    sector = "Telecom & Infrastructure",
+                    entryDate = "2026-07-17",
+                    exitDate = "2026-07-21",
+                    entryPrice = 128.00,
+                    exitPrice = 122.80,
+                    pnlPercent = -4.06,
+                    holdingDays = 2,
+                    status = "CUT_LOSS",
+                    exitReason = "Cut Loss (-4% from Entry)",
+                    score = 87.1
+                ),
+                HistoricalRecommendationItem(
+                    id = "REC-2026-0713",
+                    symbol = "NOVARTIND",
+                    sector = "Healthcare & Pharma",
+                    entryDate = "2026-07-13",
+                    exitDate = "2026-07-16",
+                    entryPrice = 1120.00,
+                    exitPrice = 1139.15,
+                    pnlPercent = 1.71,
+                    holdingDays = 3,
+                    status = "TRAILING_STOP",
+                    exitReason = "Trailing Stop (-8% from Peak)",
+                    score = 89.2
+                ),
+                HistoricalRecommendationItem(
+                    id = "REC-2026-0710",
+                    symbol = "NINSYS",
+                    sector = "Technology",
+                    entryDate = "2026-07-10",
+                    exitDate = "2026-07-27",
+                    entryPrice = 410.00,
+                    exitPrice = 382.30,
+                    pnlPercent = -6.76,
+                    holdingDays = 11,
+                    status = "CUT_LOSS",
+                    exitReason = "Cut Loss (-4% from Entry)",
+                    score = 84.8
+                ),
+                HistoricalRecommendationItem(
+                    id = "REC-2026-0610",
+                    symbol = "KOVAI",
+                    sector = "Healthcare",
+                    entryDate = "2026-06-10",
+                    exitDate = "2026-07-23",
+                    entryPrice = 4500.00,
+                    exitPrice = 4503.60,
+                    pnlPercent = 0.08,
+                    holdingDays = 30,
+                    status = "TRAILING_STOP",
+                    exitReason = "Breakeven Trailing Stop",
+                    score = 88.0
+                ),
+                HistoricalRecommendationItem(
+                    id = "REC-2026-0612",
+                    symbol = "CUPID",
+                    sector = "Healthcare & Consumer",
+                    entryDate = "2026-06-12",
+                    exitDate = "2026-07-09",
+                    entryPrice = 245.00,
+                    exitPrice = 303.80,
+                    pnlPercent = 24.01,
+                    holdingDays = 19,
+                    status = "TRAILING_STOP",
+                    exitReason = "Trailing Stop (-8% from Peak)",
+                    score = 97.2
+                ),
+                HistoricalRecommendationItem(
+                    id = "REC-2026-0522",
+                    symbol = "DEEDEV",
+                    sector = "Capital Goods",
+                    entryDate = "2026-05-22",
+                    exitDate = "2026-06-12",
+                    entryPrice = 220.00,
+                    exitPrice = 266.05,
+                    pnlPercent = 20.93,
+                    holdingDays = 14,
+                    status = "TRAILING_STOP",
+                    exitReason = "Trailing Stop (-8% from Peak)",
+                    score = 93.4
+                ),
+                HistoricalRecommendationItem(
+                    id = "REC-2026-0519",
+                    symbol = "BBOX",
+                    sector = "IT Services",
+                    entryDate = "2026-05-19",
+                    exitDate = "2026-06-09",
+                    entryPrice = 315.00,
+                    exitPrice = 337.00,
+                    pnlPercent = 6.98,
+                    holdingDays = 14,
+                    status = "TRAILING_STOP",
+                    exitReason = "Trailing Stop (-8% from Peak)",
+                    score = 90.1
+                )
+            )
+        }
+
+        fun parseRecommendationHistoryJson(jsonStr: String): List<HistoricalRecommendationItem> {
+            return try {
+                val trimmed = jsonStr.trim()
+                val array = when {
+                    trimmed.startsWith("{") -> {
+                        val root = JSONObject(trimmed)
+                        root.optJSONArray("recommendation_history")
+                            ?: root.optJSONArray("recommendations_history")
+                            ?: root.optJSONArray("history")
+                            ?: root.optJSONArray("trades")
+                            ?: root.optJSONArray("data")
+                    }
+                    trimmed.startsWith("[") -> JSONArray(trimmed)
+                    else -> null
+                } ?: return emptyList()
+
+                val list = mutableListOf<HistoricalRecommendationItem>()
+                for (i in 0 until array.length()) {
+                    val obj = array.optJSONObject(i) ?: continue
+                    val sym = obj.optString("symbol", "").trim().uppercase(Locale.US)
+                    if (sym.isBlank()) continue
+                    val id = obj.optString("id", "REC-${i + 1}")
+                    val sector = obj.optString("sector", "General")
+                    val entryDate = obj.optString("entry_date", if (obj.has("buy_date")) obj.optString("buy_date", "2026-06-01") else "2026-06-01")
+                    val exitDate = when {
+                        obj.has("exit_date") && !obj.isNull("exit_date") -> obj.optString("exit_date").takeIf { it.isNotBlank() }
+                        obj.has("sell_date") && !obj.isNull("sell_date") -> obj.optString("sell_date").takeIf { it.isNotBlank() }
+                        else -> null
+                    }
+                    val entryPx = optSafeDouble(obj, "entry_price", if (obj.has("buy_px")) optSafeDouble(obj, "buy_px", 0.0) else optSafeDouble(obj, "buy_price", 0.0))
+                    val exitPx = optSafeDouble(obj, "exit_price", if (obj.has("sell_px")) optSafeDouble(obj, "sell_px", entryPx) else optSafeDouble(obj, "sell_price", entryPx))
+                    val pnlPct = optSafeDouble(obj, "pnl_percent", if (obj.has("ret_pct")) optSafeDouble(obj, "ret_pct", 0.0) else 0.0)
+                    val holdDays = obj.optInt("holding_days", if (obj.has("hold_days")) obj.optInt("hold_days", 5) else 5)
+                    val status = obj.optString("status", if (exitDate == null) "ACTIVE" else "CLOSED")
+                    val exitReason = obj.optString("exit_reason", if (obj.has("decision")) obj.optString("decision", "") else "")
+                    val score = optSafeDouble(obj, "score", 90.0)
+
+                    list.add(
+                        HistoricalRecommendationItem(
+                            id = id,
+                            symbol = sym,
+                            sector = sector,
+                            entryDate = entryDate,
+                            exitDate = exitDate,
+                            entryPrice = roundPaise(entryPx),
+                            exitPrice = roundPaise(exitPx),
+                            pnlPercent = roundPaise(pnlPct),
+                            holdingDays = holdDays,
+                            status = status,
+                            exitReason = exitReason,
+                            score = roundPaise(score)
+                        )
+                    )
+                }
+                list
+            } catch (e: Exception) {
+                emptyList()
+            }
+        }
     }
 
     private val lock = Any()
@@ -417,6 +731,8 @@ class VaralakshmiRepository {
     private val cachedTransactions = createDefaultTransactions().toMutableList()
     private var cachedNifty = createDefaultNifty()
     private val cachedRecommendations = createDefaultRecommendations().toMutableList()
+    private val cachedRecommendationHistory = createDefaultRecommendationHistory().toMutableList()
+    private var cachedRecommendationHistorySummary = calculateRecommendationHistorySummary(cachedRecommendationHistory)
 
     fun resetToDefaultSeed() = synchronized(lock) {
         cachedSummary = createDefaultSummary()
@@ -427,6 +743,9 @@ class VaralakshmiRepository {
         cachedNifty = createDefaultNifty()
         cachedRecommendations.clear()
         cachedRecommendations.addAll(createDefaultRecommendations())
+        cachedRecommendationHistory.clear()
+        cachedRecommendationHistory.addAll(createDefaultRecommendationHistory())
+        cachedRecommendationHistorySummary = calculateRecommendationHistorySummary(cachedRecommendationHistory)
     }
 
     private var isLoadedFromDisk = false
@@ -470,6 +789,8 @@ class VaralakshmiRepository {
     fun getCachedTransactions(): List<TransactionItem> = synchronized(lock) { ensureLoaded(); cachedTransactions.toList() }
     fun getCachedNifty(): MarketIndexItem = synchronized(lock) { ensureLoaded(); cachedNifty }
     fun getCachedRecommendations(): List<StockRecommendationItem> = synchronized(lock) { ensureLoaded(); cachedRecommendations.toList() }
+    fun getCachedRecommendationHistory(): List<HistoricalRecommendationItem> = synchronized(lock) { ensureLoaded(); cachedRecommendationHistory.toList() }
+    fun getCachedRecommendationHistorySummary(): RecommendationHistorySummary = synchronized(lock) { ensureLoaded(); cachedRecommendationHistorySummary }
 
     suspend fun refreshData(serverBaseUrl: String, authToken: String = DEFAULT_AUTH_TOKEN): SyncResult = withContext(Dispatchers.IO) {
         val cleanUrl = serverBaseUrl.trimEnd('/')
@@ -478,6 +799,7 @@ class VaralakshmiRepository {
         var fetchedTransactions: List<TransactionItem>? = null
         var fetchedNifty: MarketIndexItem? = null
         var fetchedRecommendations: List<StockRecommendationItem>? = null
+        var fetchedRecommendationHistory: List<HistoricalRecommendationItem>? = null
         var networkError: String? = null
 
         val tokenQuery = if (authToken.isNotBlank()) "&token=$authToken" else ""
@@ -519,6 +841,16 @@ class VaralakshmiRepository {
                     val parsedRecs = parseRecommendationsJson(root.toString())
                     if (parsedRecs.isNotEmpty()) {
                         fetchedRecommendations = parsedRecs
+                    }
+                }
+
+                val histArray = root.optJSONArray("recommendation_history")
+                    ?: root.optJSONArray("recommendations_history")
+                    ?: root.optJSONArray("history")
+                if (histArray != null && histArray.length() > 0) {
+                    val parsedHist = parseRecommendationHistoryJson(root.toString())
+                    if (parsedHist.isNotEmpty()) {
+                        fetchedRecommendationHistory = parsedHist
                     }
                 }
 
@@ -777,6 +1109,23 @@ class VaralakshmiRepository {
             }
         }
 
+        if (fetchedRecommendationHistory == null) {
+            try {
+                val histUrl = "$cleanUrl/api/live-trading/recommendations/history?months=3$tokenQuery"
+                val histJson = httpGet(histUrl, authToken)
+                if (histJson != null) {
+                    val parsed = parseRecommendationHistoryJson(histJson)
+                    if (parsed.isNotEmpty()) {
+                        fetchedRecommendationHistory = parsed
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Keep cached recommendation history
+            }
+        }
+
         synchronized(lock) {
             if (fetchedNifty != null) {
                 cachedNifty = fetchedNifty
@@ -785,6 +1134,12 @@ class VaralakshmiRepository {
             if (fetchedRecommendations != null) {
                 cachedRecommendations.clear()
                 cachedRecommendations.addAll(fetchedRecommendations)
+            }
+
+            if (fetchedRecommendationHistory != null) {
+                cachedRecommendationHistory.clear()
+                cachedRecommendationHistory.addAll(fetchedRecommendationHistory)
+                cachedRecommendationHistorySummary = calculateRecommendationHistorySummary(cachedRecommendationHistory)
             }
 
             if (fetchedPositions != null) {
@@ -832,7 +1187,9 @@ class VaralakshmiRepository {
                     positions = cachedPositions.toList(),
                     transactions = cachedTransactions.toList(),
                     nifty = cachedNifty,
-                    recommendations = cachedRecommendations.toList()
+                    recommendations = cachedRecommendations.toList(),
+                    recommendationHistory = cachedRecommendationHistory.toList(),
+                    recommendationHistorySummary = cachedRecommendationHistorySummary
                 )
             } else {
                 // Offline fallback - preserve existing cache and timestamp
@@ -842,7 +1199,9 @@ class VaralakshmiRepository {
                     transactions = cachedTransactions.toList(),
                     message = networkError ?: "Offline mode: server unreachable",
                     nifty = cachedNifty,
-                    recommendations = cachedRecommendations.toList()
+                    recommendations = cachedRecommendations.toList(),
+                    recommendationHistory = cachedRecommendationHistory.toList(),
+                    recommendationHistorySummary = cachedRecommendationHistorySummary
                 )
             }
         }
@@ -1146,6 +1505,26 @@ class VaralakshmiRepository {
             }
             root.put("recommendations", recArray)
 
+            val histArray = JSONArray()
+            for (h in cachedRecommendationHistory) {
+                val hObj = JSONObject().apply {
+                    put("id", h.id)
+                    put("symbol", h.symbol)
+                    put("sector", h.sector)
+                    put("entry_date", h.entryDate)
+                    if (h.exitDate != null) put("exit_date", h.exitDate)
+                    put("entry_price", h.entryPrice)
+                    put("exit_price", h.exitPrice)
+                    put("pnl_percent", h.pnlPercent)
+                    put("holding_days", h.holdingDays)
+                    put("status", h.status)
+                    put("exit_reason", h.exitReason)
+                    put("score", h.score)
+                }
+                histArray.put(hObj)
+            }
+            root.put("recommendation_history", histArray)
+
             val targetFile = File(dir, CACHE_FILE_NAME)
             val tempFile = File(dir, "$CACHE_FILE_NAME.tmp")
             tempFile.writeText(root.toString(2), Charsets.UTF_8)
@@ -1351,6 +1730,11 @@ class VaralakshmiRepository {
                 parseRecommendationsJson(recArray.toString())
             } else null
 
+            val histArray = root.optJSONArray("recommendation_history")
+            val parsedHistory = if (histArray != null && histArray.length() > 0) {
+                parseRecommendationHistoryJson(histArray.toString())
+            } else null
+
             if (root.has("serverUrl") && !root.isNull("serverUrl")) {
                 val url = root.optString("serverUrl", "").trim()
                 if (url.isNotBlank()) cachedServerUrl = url
@@ -1396,6 +1780,11 @@ class VaralakshmiRepository {
             if (parsedRecommendations != null && parsedRecommendations.isNotEmpty()) {
                 cachedRecommendations.clear()
                 cachedRecommendations.addAll(parsedRecommendations)
+            }
+            if (parsedHistory != null && parsedHistory.isNotEmpty()) {
+                cachedRecommendationHistory.clear()
+                cachedRecommendationHistory.addAll(parsedHistory)
+                cachedRecommendationHistorySummary = calculateRecommendationHistorySummary(cachedRecommendationHistory)
             }
             isLoadedFromDisk = true
             true

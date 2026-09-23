@@ -5,6 +5,8 @@ import com.example.varalakshmiportfolio.data.VaralakshmiRepository
 import com.example.varalakshmiportfolio.model.PositionItem
 import com.example.varalakshmiportfolio.model.StockRecommendationItem
 import com.example.varalakshmiportfolio.model.HistoricalPricePoint
+import com.example.varalakshmiportfolio.model.HistoricalRecommendationItem
+import com.example.varalakshmiportfolio.model.RecommendationHistorySummary
 import com.example.varalakshmiportfolio.ui.VaralakshmiViewModel
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
@@ -1311,6 +1313,147 @@ class VaralakshmiPortfolioTest {
 
         assertEquals(260.0, item.high2m, 0.001)
         assertEquals(220.0, item.low2m, 0.001)
+    }
+
+    @Test
+    fun testRecommendationHistoryDefaultSeedLoadsAndCalculatesSummary() {
+        val repository = VaralakshmiRepository()
+        val history = repository.getCachedRecommendationHistory()
+        val summary = repository.getCachedRecommendationHistorySummary()
+
+        assertTrue("Recommendation history should contain past 3 months signals", history.isNotEmpty())
+        assertEquals(15, history.size)
+        assertEquals(15, summary.totalTrades)
+        assertTrue("Win rate should be positive", summary.winRatePercent > 50.0)
+        assertEquals(11, summary.profitableTrades)
+        assertEquals(4, summary.lossTrades)
+        assertEquals(2, summary.activeTrades)
+        assertTrue("Best trade return should be greater than 20%", summary.bestTradePercent >= 20.0)
+        assertTrue("Max loss should be bounded", summary.maxLossPercent < 0.0)
+    }
+
+    @Test
+    fun testRecommendationHistoryFiltering() {
+        val repository = VaralakshmiRepository()
+        val history = repository.getCachedRecommendationHistory()
+
+        val profitable = history.filter { it.pnlPercent > 0.0 }
+        val losses = history.filter { it.pnlPercent < 0.0 }
+        val active = history.filter { it.isActive }
+
+        assertEquals(11, profitable.size)
+        assertEquals(4, losses.size)
+        assertEquals(2, active.size)
+        assertTrue(active.any { it.symbol == "ADANIPOWER" })
+        assertTrue(active.any { it.symbol == "YASHO" })
+    }
+
+    @Test
+    fun testRecommendationHistoryJsonParsing() {
+        val sampleJson = """
+            {
+                "recommendation_history": [
+                    {
+                        "id": "REC-TEST-1",
+                        "symbol": "INFY",
+                        "sector": "Information Technology",
+                        "entry_date": "2026-07-01",
+                        "exit_date": "2026-07-20",
+                        "entry_price": 1800.0,
+                        "exit_price": 2070.0,
+                        "pnl_percent": 15.0,
+                        "holding_days": 14,
+                        "status": "TRAILING_STOP",
+                        "exit_reason": "Trailing Stop (-8%)",
+                        "score": 95.0
+                    },
+                    {
+                        "id": "REC-TEST-2",
+                        "symbol": "TCS",
+                        "sector": "Information Technology",
+                        "entry_date": "2026-08-01",
+                        "entry_price": 4200.0,
+                        "exit_price": 4032.0,
+                        "pnl_percent": -4.0,
+                        "holding_days": 3,
+                        "status": "CUT_LOSS",
+                        "exit_reason": "Cut Loss (-4%)",
+                        "score": 90.0
+                    }
+                ]
+            }
+        """.trimIndent()
+
+        val parsed = VaralakshmiRepository.parseRecommendationHistoryJson(sampleJson)
+        assertEquals(2, parsed.size)
+        assertEquals("INFY", parsed[0].symbol)
+        assertEquals(15.0, parsed[0].pnlPercent, 0.001)
+        assertTrue(parsed[0].isWin)
+        assertFalse(parsed[0].isActive)
+
+        assertEquals("TCS", parsed[1].symbol)
+        assertEquals(-4.0, parsed[1].pnlPercent, 0.001)
+        assertFalse(parsed[1].isWin)
+        assertTrue(parsed[1].isActive) // exit_date is null/omitted
+
+        val summary = VaralakshmiRepository.calculateRecommendationHistorySummary(parsed)
+        assertEquals(2, summary.totalTrades)
+        assertEquals(50.0, summary.winRatePercent, 0.001)
+        assertEquals(5.5, summary.avgReturnPercent, 0.001)
+        assertEquals(1, summary.profitableTrades)
+        assertEquals(1, summary.lossTrades)
+    }
+
+    @Test
+    fun testRecommendationHistoryViewModelStateTransitions() = runTest {
+        val repository = VaralakshmiRepository()
+        val viewModel = VaralakshmiViewModel(repository = repository, autoRefresh = false)
+
+        assertFalse(viewModel.uiState.value.showRecommendationHistory)
+        assertEquals("ALL", viewModel.uiState.value.selectedHistoryFilter)
+
+        viewModel.openRecommendationHistory()
+        assertTrue(viewModel.uiState.value.showRecommendationHistory)
+
+        viewModel.setHistoryFilter("PROFITABLE")
+        assertEquals("PROFITABLE", viewModel.uiState.value.selectedHistoryFilter)
+        assertEquals(11, viewModel.uiState.value.filteredRecommendationHistory.size)
+
+        viewModel.setHistoryFilter("LOSS")
+        assertEquals(4, viewModel.uiState.value.filteredRecommendationHistory.size)
+
+        viewModel.setHistoryFilter("ACTIVE")
+        assertEquals(2, viewModel.uiState.value.filteredRecommendationHistory.size)
+
+        viewModel.closeRecommendationHistory()
+        assertFalse(viewModel.uiState.value.showRecommendationHistory)
+    }
+
+    @Test
+    fun testHistoricalRecommendationItemFormatting() {
+        val item = HistoricalRecommendationItem(
+            id = "REC-FMT",
+            symbol = "TEST",
+            sector = "Test Sector",
+            entryDate = "2026-06-01",
+            exitDate = "2026-06-15",
+            entryPrice = 1250.50,
+            exitPrice = 1438.075,
+            pnlPercent = 15.0,
+            holdingDays = 10,
+            status = "TRAILING_STOP",
+            exitReason = "Trailing Stop"
+        )
+
+        assertEquals("₹1,250.50", item.formattedEntryPrice)
+        assertEquals("₹1,438.08", item.formattedExitPrice)
+        assertEquals("+15.00%", item.formattedPnlPercent)
+        assertTrue(item.isWin)
+        assertFalse(item.isActive)
+
+        val lossItem = item.copy(pnlPercent = -4.25)
+        assertEquals("-4.25%", lossItem.formattedPnlPercent)
+        assertFalse(lossItem.isWin)
     }
 }
 

@@ -9,6 +9,8 @@ import com.example.varalakshmiportfolio.model.PositionItem
 import com.example.varalakshmiportfolio.model.TransactionItem
 import com.example.varalakshmiportfolio.model.MarketIndexItem
 import com.example.varalakshmiportfolio.model.StockRecommendationItem
+import com.example.varalakshmiportfolio.model.HistoricalRecommendationItem
+import com.example.varalakshmiportfolio.model.RecommendationHistorySummary
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -22,7 +24,11 @@ data class VaralakshmiUiState(
     val transactions: List<TransactionItem>,
     val nifty: MarketIndexItem = MarketIndexItem(),
     val recommendations: List<StockRecommendationItem> = emptyList(),
+    val recommendationHistory: List<HistoricalRecommendationItem> = emptyList(),
+    val recommendationHistorySummary: RecommendationHistorySummary = RecommendationHistorySummary(0, 0.0, 0.0, 0, 0),
     val selectedRecommendationForChart: StockRecommendationItem? = null,
+    val showRecommendationHistory: Boolean = false,
+    val selectedHistoryFilter: String = "ALL",
     val isRefreshing: Boolean = false,
     val serverUrl: String = VaralakshmiRepository.DEFAULT_SERVER_URL,
     val authToken: String = VaralakshmiRepository.DEFAULT_AUTH_TOKEN,
@@ -30,7 +36,15 @@ data class VaralakshmiUiState(
     val positionToExit: PositionItem? = null,
     val snackbarMessage: String? = null,
     val isLiveSync: Boolean = false
-)
+) {
+    val filteredRecommendationHistory: List<HistoricalRecommendationItem>
+        get() = when (selectedHistoryFilter.uppercase(Locale.US)) {
+            "PROFITABLE", "WINS" -> recommendationHistory.filter { it.pnlPercent > 0.0 }
+            "LOSS", "LOSSES" -> recommendationHistory.filter { it.pnlPercent < 0.0 }
+            "ACTIVE" -> recommendationHistory.filter { it.isActive }
+            else -> recommendationHistory
+        }
+}
 
 class VaralakshmiViewModel(
     private val repository: VaralakshmiRepository = VaralakshmiRepository(),
@@ -44,6 +58,8 @@ class VaralakshmiViewModel(
             transactions = repository.getCachedTransactions(),
             nifty = repository.getCachedNifty(),
             recommendations = repository.getCachedRecommendations(),
+            recommendationHistory = repository.getCachedRecommendationHistory(),
+            recommendationHistorySummary = repository.getCachedRecommendationHistorySummary(),
             serverUrl = repository.getServerUrl(),
             authToken = repository.getAuthToken()
         )
@@ -74,6 +90,8 @@ class VaralakshmiViewModel(
                             transactions = syncResult.transactions,
                             nifty = syncResult.nifty,
                             recommendations = syncResult.recommendations,
+                            recommendationHistory = syncResult.recommendationHistory,
+                            recommendationHistorySummary = syncResult.recommendationHistorySummary,
                             isRefreshing = false,
                             isLiveSync = true,
                             snackbarMessage = "Synced with live trading engine"
@@ -88,6 +106,8 @@ class VaralakshmiViewModel(
                             transactions = syncResult.transactions,
                             nifty = syncResult.nifty,
                             recommendations = syncResult.recommendations,
+                            recommendationHistory = syncResult.recommendationHistory,
+                            recommendationHistorySummary = syncResult.recommendationHistorySummary,
                             isRefreshing = false,
                             isLiveSync = false,
                             snackbarMessage = "Offline mode: showing cached snapshot"
@@ -96,6 +116,18 @@ class VaralakshmiViewModel(
                 }
             }
         }
+    }
+
+    fun openRecommendationHistory() {
+        _uiState.update { it.copy(showRecommendationHistory = true) }
+    }
+
+    fun closeRecommendationHistory() {
+        _uiState.update { it.copy(showRecommendationHistory = false) }
+    }
+
+    fun setHistoryFilter(filter: String) {
+        _uiState.update { it.copy(selectedHistoryFilter = filter) }
     }
 
     fun selectRecommendation(recommendation: StockRecommendationItem) {
