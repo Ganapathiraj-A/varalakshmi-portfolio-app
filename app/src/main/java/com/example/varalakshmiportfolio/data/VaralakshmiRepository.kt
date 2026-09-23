@@ -467,32 +467,46 @@ class VaralakshmiRepository {
         fun createDefaultRecommendationHistory(): List<HistoricalRecommendationItem> {
             return listOf(
                 HistoricalRecommendationItem(
-                    id = "REC-2026-0908",
-                    symbol = "YASHO",
-                    sector = "Specialty Chemicals",
-                    entryDate = "2026-09-08",
+                    id = "REC-LIVE-TBZ-20260921",
+                    symbol = "TBZ",
+                    sector = "Gems & Jewellery",
+                    entryDate = "2026-09-21",
                     exitDate = null,
-                    entryPrice = 1690.00,
-                    exitPrice = 1845.00,
-                    pnlPercent = 9.17,
-                    holdingDays = 11,
+                    entryPrice = 600.00,
+                    exitPrice = 692.45,
+                    pnlPercent = 15.41,
+                    holdingDays = 2,
                     status = "ACTIVE",
-                    exitReason = "Trailing Stop Armed at ₹1,697.40",
-                    score = 92.3
+                    exitReason = "Active Momentum Runner (Target: ₹810.00)",
+                    score = 96.5
                 ),
                 HistoricalRecommendationItem(
-                    id = "REC-2026-0902",
-                    symbol = "ADANIPOWER",
-                    sector = "Power & Infrastructure",
-                    entryDate = "2026-09-02",
+                    id = "REC-LIVE-AHCL-20260918",
+                    symbol = "AHCL",
+                    sector = "Real Estate & Construction",
+                    entryDate = "2026-09-18",
                     exitDate = null,
-                    entryPrice = 615.00,
-                    exitPrice = 684.20,
-                    pnlPercent = 11.25,
-                    holdingDays = 15,
+                    entryPrice = 22.67,
+                    exitPrice = 29.68,
+                    pnlPercent = 30.94,
+                    holdingDays = 5,
                     status = "ACTIVE",
-                    exitReason = "Trailing Stop Armed at ₹629.46",
-                    score = 94.5
+                    exitReason = "Active Momentum Runner (Target: ₹30.60)",
+                    score = 95.8
+                ),
+                HistoricalRecommendationItem(
+                    id = "REC-LIVE-STLNETWORK-20260917",
+                    symbol = "STLNETWORK",
+                    sector = "Telecommunication Equipment",
+                    entryDate = "2026-09-17",
+                    exitDate = null,
+                    entryPrice = 40.20,
+                    exitPrice = 49.70,
+                    pnlPercent = 23.63,
+                    holdingDays = 6,
+                    status = "ACTIVE",
+                    exitReason = "Active Momentum Runner (Target: ₹54.27)",
+                    score = 94.2
                 ),
                 HistoricalRecommendationItem(
                     id = "REC-2026-0817",
@@ -500,10 +514,10 @@ class VaralakshmiRepository {
                     sector = "Pharmaceuticals",
                     entryDate = "2026-08-17",
                     exitDate = "2026-08-20",
-                    entryPrice = 112.50,
-                    exitPrice = 117.25,
+                    entryPrice = 312.00,
+                    exitPrice = 326.00,
                     pnlPercent = 4.21,
-                    holdingDays = 4,
+                    holdingDays = 3,
                     status = "TRAILING_STOP",
                     exitReason = "Trailing Stop (-8% from Peak)",
                     score = 88.4
@@ -514,8 +528,8 @@ class VaralakshmiRepository {
                     sector = "Healthcare & Consumer",
                     entryDate = "2026-08-06",
                     exitDate = "2026-08-18",
-                    entryPrice = 330.00,
-                    exitPrice = 353.75,
+                    entryPrice = 254.00,
+                    exitPrice = 273.00,
                     pnlPercent = 7.20,
                     holdingDays = 8,
                     status = "TRAILING_STOP",
@@ -525,11 +539,11 @@ class VaralakshmiRepository {
                 HistoricalRecommendationItem(
                     id = "REC-2026-0805",
                     symbol = "ARIHANT",
-                    sector = "Services & Media",
+                    sector = "Financial Services",
                     entryDate = "2026-08-05",
                     exitDate = "2026-08-07",
-                    entryPrice = 82.50,
-                    exitPrice = 78.75,
+                    entryPrice = 1180.00,
+                    exitPrice = 1129.50,
                     pnlPercent = -4.55,
                     holdingDays = 2,
                     status = "CUT_LOSS",
@@ -542,10 +556,10 @@ class VaralakshmiRepository {
                     sector = "Specialty Chemicals",
                     entryDate = "2026-07-31",
                     exitDate = "2026-08-04",
-                    entryPrice = 1530.00,
-                    exitPrice = 1873.30,
+                    entryPrice = 3258.90,
+                    exitPrice = 4000.00,
                     pnlPercent = 22.44,
-                    holdingDays = 4,
+                    holdingDays = 2,
                     status = "TRAILING_STOP",
                     exitReason = "Trailing Stop (-8% from Peak)",
                     score = 94.0
@@ -553,7 +567,7 @@ class VaralakshmiRepository {
                 HistoricalRecommendationItem(
                     id = "REC-2026-0724",
                     symbol = "ARIHANT",
-                    sector = "Services & Media",
+                    sector = "Financial Services",
                     entryDate = "2026-07-24",
                     exitDate = "2026-07-31",
                     entryPrice = 930.10,
@@ -570,22 +584,22 @@ class VaralakshmiRepository {
                     sector = "Building Materials",
                     entryDate = "2026-07-22",
                     exitDate = "2026-07-24",
-                    entryPrice = 280.00,
-                    exitPrice = 248.30,
+                    entryPrice = 1620.10,
+                    exitPrice = 1441.00,
                     pnlPercent = -11.31,
                     holdingDays = 2,
                     status = "CUT_LOSS",
-                    exitReason = "Gap Down / Cut Loss",
+                    exitReason = "Cut Loss (-4% from Entry)",
                     score = 85.0
                 ),
                 HistoricalRecommendationItem(
                     id = "REC-2026-0717",
                     symbol = "HFCL",
-                    sector = "Telecom & Infrastructure",
+                    sector = "Telecom Equipment",
                     entryDate = "2026-07-17",
                     exitDate = "2026-07-21",
-                    entryPrice = 128.00,
-                    exitPrice = 122.80,
+                    entryPrice = 217.24,
+                    exitPrice = 209.00,
                     pnlPercent = -4.06,
                     holdingDays = 2,
                     status = "CUT_LOSS",
@@ -595,11 +609,11 @@ class VaralakshmiRepository {
                 HistoricalRecommendationItem(
                     id = "REC-2026-0713",
                     symbol = "NOVARTIND",
-                    sector = "Healthcare & Pharma",
+                    sector = "Pharmaceuticals",
                     entryDate = "2026-07-13",
                     exitDate = "2026-07-16",
-                    entryPrice = 1120.00,
-                    exitPrice = 1139.15,
+                    entryPrice = 1509.00,
+                    exitPrice = 1539.00,
                     pnlPercent = 1.71,
                     holdingDays = 3,
                     status = "TRAILING_STOP",
@@ -609,11 +623,11 @@ class VaralakshmiRepository {
                 HistoricalRecommendationItem(
                     id = "REC-2026-0710",
                     symbol = "NINSYS",
-                    sector = "Technology",
+                    sector = "IT & Software",
                     entryDate = "2026-07-10",
                     exitDate = "2026-07-27",
-                    entryPrice = 410.00,
-                    exitPrice = 382.30,
+                    entryPrice = 904.00,
+                    exitPrice = 845.30,
                     pnlPercent = -6.76,
                     holdingDays = 11,
                     status = "CUT_LOSS",
@@ -626,12 +640,12 @@ class VaralakshmiRepository {
                     sector = "Healthcare",
                     entryDate = "2026-06-10",
                     exitDate = "2026-07-23",
-                    entryPrice = 4500.00,
-                    exitPrice = 4503.60,
+                    entryPrice = 5736.65,
+                    exitPrice = 5756.60,
                     pnlPercent = 0.08,
-                    holdingDays = 30,
+                    holdingDays = 31,
                     status = "TRAILING_STOP",
-                    exitReason = "Breakeven Trailing Stop",
+                    exitReason = "Trailing Stop (-8% from Peak)",
                     score = 88.0
                 ),
                 HistoricalRecommendationItem(
@@ -640,13 +654,13 @@ class VaralakshmiRepository {
                     sector = "Healthcare & Consumer",
                     entryDate = "2026-06-12",
                     exitDate = "2026-07-09",
-                    entryPrice = 245.00,
-                    exitPrice = 303.80,
+                    entryPrice = 157.66,
+                    exitPrice = 196.00,
                     pnlPercent = 24.01,
                     holdingDays = 19,
                     status = "TRAILING_STOP",
                     exitReason = "Trailing Stop (-8% from Peak)",
-                    score = 97.2
+                    score = 95.5
                 ),
                 HistoricalRecommendationItem(
                     id = "REC-2026-0522",
@@ -654,10 +668,10 @@ class VaralakshmiRepository {
                     sector = "Capital Goods",
                     entryDate = "2026-05-22",
                     exitDate = "2026-06-12",
-                    entryPrice = 220.00,
-                    exitPrice = 266.05,
+                    entryPrice = 523.80,
+                    exitPrice = 635.00,
                     pnlPercent = 20.93,
-                    holdingDays = 14,
+                    holdingDays = 15,
                     status = "TRAILING_STOP",
                     exitReason = "Trailing Stop (-8% from Peak)",
                     score = 93.4
@@ -668,10 +682,10 @@ class VaralakshmiRepository {
                     sector = "IT Services",
                     entryDate = "2026-05-19",
                     exitDate = "2026-06-09",
-                    entryPrice = 315.00,
-                    exitPrice = 337.00,
+                    entryPrice = 940.00,
+                    exitPrice = 1008.30,
                     pnlPercent = 6.98,
-                    holdingDays = 14,
+                    holdingDays = 15,
                     status = "TRAILING_STOP",
                     exitReason = "Trailing Stop (-8% from Peak)",
                     score = 90.1
@@ -1826,8 +1840,13 @@ class VaralakshmiRepository {
                 }
             }
             if (parsedHistory != null && parsedHistory.isNotEmpty()) {
+                val isOldHistory = parsedHistory.any { it.symbol == "ADANIPOWER" || it.id.startsWith("REC-2026-0908") || it.id.startsWith("REC-2026-0902") }
                 cachedRecommendationHistory.clear()
-                cachedRecommendationHistory.addAll(parsedHistory)
+                if (!isOldHistory) {
+                    cachedRecommendationHistory.addAll(parsedHistory)
+                } else {
+                    cachedRecommendationHistory.addAll(createDefaultRecommendationHistory())
+                }
                 cachedRecommendationHistorySummary = calculateRecommendationHistorySummary(cachedRecommendationHistory)
             }
             isLoadedFromDisk = true

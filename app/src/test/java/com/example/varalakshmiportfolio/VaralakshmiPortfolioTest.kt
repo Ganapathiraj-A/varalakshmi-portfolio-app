@@ -1342,12 +1342,12 @@ class VaralakshmiPortfolioTest {
         val summary = repository.getCachedRecommendationHistorySummary()
 
         assertTrue("Recommendation history should contain past 3 months signals", history.isNotEmpty())
-        assertEquals(15, history.size)
-        assertEquals(15, summary.totalTrades)
+        assertEquals(16, history.size)
+        assertEquals(16, summary.totalTrades)
         assertTrue("Win rate should be positive", summary.winRatePercent > 50.0)
-        assertEquals(11, summary.profitableTrades)
+        assertEquals(12, summary.profitableTrades)
         assertEquals(4, summary.lossTrades)
-        assertEquals(2, summary.activeTrades)
+        assertEquals(3, summary.activeTrades)
         assertTrue("Best trade return should be greater than 20%", summary.bestTradePercent >= 20.0)
         assertTrue("Max loss should be bounded", summary.maxLossPercent < 0.0)
     }
@@ -1361,11 +1361,12 @@ class VaralakshmiPortfolioTest {
         val losses = history.filter { it.pnlPercent < 0.0 }
         val active = history.filter { it.isActive }
 
-        assertEquals(11, profitable.size)
+        assertEquals(12, profitable.size)
         assertEquals(4, losses.size)
-        assertEquals(2, active.size)
-        assertTrue(active.any { it.symbol == "ADANIPOWER" })
-        assertTrue(active.any { it.symbol == "YASHO" })
+        assertEquals(3, active.size)
+        assertTrue(active.any { it.symbol == "TBZ" })
+        assertTrue(active.any { it.symbol == "AHCL" })
+        assertTrue(active.any { it.symbol == "STLNETWORK" })
     }
 
     @Test
@@ -1437,13 +1438,13 @@ class VaralakshmiPortfolioTest {
 
         viewModel.setHistoryFilter("PROFITABLE")
         assertEquals("PROFITABLE", viewModel.uiState.value.selectedHistoryFilter)
-        assertEquals(11, viewModel.uiState.value.filteredRecommendationHistory.size)
+        assertEquals(12, viewModel.uiState.value.filteredRecommendationHistory.size)
 
         viewModel.setHistoryFilter("LOSS")
         assertEquals(4, viewModel.uiState.value.filteredRecommendationHistory.size)
 
         viewModel.setHistoryFilter("ACTIVE")
-        assertEquals(2, viewModel.uiState.value.filteredRecommendationHistory.size)
+        assertEquals(3, viewModel.uiState.value.filteredRecommendationHistory.size)
 
         viewModel.closeRecommendationHistory()
         assertFalse(viewModel.uiState.value.showRecommendationHistory)
