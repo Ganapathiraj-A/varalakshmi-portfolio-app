@@ -765,4 +765,44 @@ class VaralakshmiPortfolioTest {
             tempDir.deleteRecursively()
         }
     }
+
+    @Test
+    fun testMarketIndexNiftyDataMappingAndFormatting() {
+        val repository = VaralakshmiRepository()
+        val nifty = repository.getCachedNifty()
+
+        assertEquals("NIFTY 50", nifty.symbol)
+        assertTrue(nifty.ltp > 20000.0)
+        assertEquals(72.05, nifty.change, 0.001)
+        assertEquals(0.31, nifty.changePct, 0.01)
+        assertTrue(nifty.isPositive)
+        assertEquals("▲ +72.05 (+0.31%)", nifty.formattedChange)
+        assertEquals("23,401.05", nifty.formattedLtp)
+    }
+
+    @Test
+    fun testNiftyDiskPersistenceAndRestoration() {
+        val tempDir = java.nio.file.Files.createTempDirectory("varalakshmi_nifty_test").toFile()
+        try {
+            VaralakshmiRepository.initialize(tempDir)
+            val repo1 = VaralakshmiRepository()
+            // Force save to disk by updating server config
+            repo1.setServerConfig(repo1.getServerUrl())
+
+            val cacheFile = java.io.File(tempDir, VaralakshmiRepository.CACHE_FILE_NAME)
+            assertTrue(cacheFile.exists())
+            val content = cacheFile.readText()
+            assertTrue(content.contains("NIFTY 50"))
+
+            val repo2 = VaralakshmiRepository()
+            val restoredNifty = repo2.getCachedNifty()
+            assertEquals("NIFTY 50", restoredNifty.symbol)
+            assertEquals(23401.05, restoredNifty.ltp, 0.01)
+            assertEquals(72.05, restoredNifty.change, 0.01)
+        } finally {
+            VaralakshmiRepository.resetCacheDirectoryForTesting()
+            tempDir.deleteRecursively()
+        }
+    }
 }
+

@@ -87,3 +87,30 @@ data class TransactionItem(
     val realizedPnl: Double = 0.0,
     val pnlDifference: String = ""
 )
+
+data class MarketIndexItem(
+    val symbol: String = "NIFTY 50",
+    val ltp: Double = 23401.05,
+    val change: Double = 72.05,
+    val changePct: Double = 0.31,
+    val open: Double = 23352.15,
+    val high: Double = 23404.90,
+    val low: Double = 23351.75,
+    val previousClose: Double = 23329.00,
+    val timestamp: String = "",
+    val status: String = "LIVE"
+) {
+    val formattedLtp: String
+        get() = String.format(Locale.US, "%,.2f", ltp)
+
+    val formattedChange: String
+        get() {
+            val sign = if (change >= 0) "+" else ""
+            val arrow = if (change >= 0) "▲ " else "▼ "
+            return "$arrow$sign${String.format(Locale.US, "%.2f", change)} ($sign${String.format(Locale.US, "%.2f", changePct)}%)"
+        }
+
+    val isPositive: Boolean
+        get() = change >= 0.0
+}
+

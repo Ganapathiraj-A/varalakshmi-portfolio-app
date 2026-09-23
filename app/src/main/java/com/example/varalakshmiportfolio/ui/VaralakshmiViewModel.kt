@@ -7,6 +7,7 @@ import com.example.varalakshmiportfolio.data.VaralakshmiRepository
 import com.example.varalakshmiportfolio.model.PortfolioSummary
 import com.example.varalakshmiportfolio.model.PositionItem
 import com.example.varalakshmiportfolio.model.TransactionItem
+import com.example.varalakshmiportfolio.model.MarketIndexItem
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -18,6 +19,7 @@ data class VaralakshmiUiState(
     val summary: PortfolioSummary,
     val positions: List<PositionItem>,
     val transactions: List<TransactionItem>,
+    val nifty: MarketIndexItem = MarketIndexItem(),
     val isRefreshing: Boolean = false,
     val serverUrl: String = VaralakshmiRepository.DEFAULT_SERVER_URL,
     val authToken: String = VaralakshmiRepository.DEFAULT_AUTH_TOKEN,
@@ -37,6 +39,7 @@ class VaralakshmiViewModel(
             summary = repository.getCachedSummary(),
             positions = repository.getCachedPositions(),
             transactions = repository.getCachedTransactions(),
+            nifty = repository.getCachedNifty(),
             serverUrl = repository.getServerUrl(),
             authToken = repository.getAuthToken()
         )
@@ -65,6 +68,7 @@ class VaralakshmiViewModel(
                             summary = syncResult.summary,
                             positions = syncResult.positions,
                             transactions = syncResult.transactions,
+                            nifty = syncResult.nifty,
                             isRefreshing = false,
                             isLiveSync = true,
                             snackbarMessage = "Synced with live trading engine"
@@ -77,6 +81,7 @@ class VaralakshmiViewModel(
                             summary = syncResult.summary,
                             positions = syncResult.positions,
                             transactions = syncResult.transactions,
+                            nifty = syncResult.nifty,
                             isRefreshing = false,
                             isLiveSync = false,
                             snackbarMessage = "Offline mode: showing cached snapshot"

@@ -25,18 +25,21 @@ sealed class SyncResult {
     abstract val summary: PortfolioSummary
     abstract val positions: List<PositionItem>
     abstract val transactions: List<TransactionItem>
+    abstract val nifty: MarketIndexItem
 
     data class Success(
         override val summary: PortfolioSummary,
         override val positions: List<PositionItem>,
-        override val transactions: List<TransactionItem>
+        override val transactions: List<TransactionItem>,
+        override val nifty: MarketIndexItem = MarketIndexItem()
     ) : SyncResult()
 
     data class OfflineCacheFallback(
         override val summary: PortfolioSummary,
         override val positions: List<PositionItem>,
         override val transactions: List<TransactionItem>,
-        val message: String
+        val message: String,
+        override val nifty: MarketIndexItem = MarketIndexItem()
     ) : SyncResult()
 }
 
@@ -88,6 +91,19 @@ class VaralakshmiRepository {
             activeSlots = 3,
             maxSlots = 3,
             lastUpdated = "2026-09-21 09:26:07"
+        )
+
+        fun createDefaultNifty() = MarketIndexItem(
+            symbol = "NIFTY 50",
+            ltp = 23401.05,
+            change = 72.05,
+            changePct = 0.31,
+            open = 23352.15,
+            high = 23404.90,
+            low = 23351.75,
+            previousClose = 23329.00,
+            timestamp = "2026-09-23 09:20:00",
+            status = "LIVE"
         )
 
         fun createDefaultPositions() = listOf(
@@ -208,6 +224,7 @@ class VaralakshmiRepository {
     private var cachedSummary = createDefaultSummary()
     private val cachedPositions = createDefaultPositions().toMutableList()
     private val cachedTransactions = createDefaultTransactions().toMutableList()
+    private var cachedNifty = createDefaultNifty()
 
     fun resetToDefaultSeed() = synchronized(lock) {
         cachedSummary = createDefaultSummary()
@@ -215,6 +232,7 @@ class VaralakshmiRepository {
         cachedPositions.addAll(createDefaultPositions())
         cachedTransactions.clear()
         cachedTransactions.addAll(createDefaultTransactions())
+        cachedNifty = createDefaultNifty()
     }
 
     private var isLoadedFromDisk = false
@@ -256,12 +274,14 @@ class VaralakshmiRepository {
     fun getCachedSummary(): PortfolioSummary = synchronized(lock) { ensureLoaded(); cachedSummary }
     fun getCachedPositions(): List<PositionItem> = synchronized(lock) { ensureLoaded(); cachedPositions.toList() }
     fun getCachedTransactions(): List<TransactionItem> = synchronized(lock) { ensureLoaded(); cachedTransactions.toList() }
+    fun getCachedNifty(): MarketIndexItem = synchronized(lock) { ensureLoaded(); cachedNifty }
 
     suspend fun refreshData(serverBaseUrl: String, authToken: String = DEFAULT_AUTH_TOKEN): SyncResult = withContext(Dispatchers.IO) {
         val cleanUrl = serverBaseUrl.trimEnd('/')
 
         var fetchedPositions: List<PositionItem>? = null
         var fetchedTransactions: List<TransactionItem>? = null
+        var fetchedNifty: MarketIndexItem? = null
         var networkError: String? = null
 
         val tokenQuery = if (authToken.isNotBlank()) "&token=$authToken" else ""
@@ -272,6 +292,32 @@ class VaralakshmiRepository {
             val positionsJson = httpGet(positionsUrl, authToken)
             if (positionsJson != null) {
                 val root = JSONObject(positionsJson)
+
+                val niftyObj = root.optJSONObject("nifty")
+                if (niftyObj != null) {
+                    val ltp = optSafeDouble(niftyObj, "ltp", cachedNifty.ltp)
+                    val change = optSafeDouble(niftyObj, "change", cachedNifty.change)
+                    val changePct = optSafeDouble(niftyObj, "change_pct", cachedNifty.changePct)
+                    val open = optSafeDouble(niftyObj, "open", cachedNifty.open)
+                    val high = optSafeDouble(niftyObj, "high", cachedNifty.high)
+                    val low = optSafeDouble(niftyObj, "low", cachedNifty.low)
+                    val prev = optSafeDouble(niftyObj, "previous_close", cachedNifty.previousClose)
+                    val ts = niftyObj.optString("timestamp", cachedNifty.timestamp)
+                    val stat = niftyObj.optString("status", "LIVE")
+                    fetchedNifty = MarketIndexItem(
+                        symbol = niftyObj.optString("symbol", "NIFTY 50"),
+                        ltp = ltp,
+                        change = change,
+                        changePct = changePct,
+                        open = open,
+                        high = high,
+                        low = low,
+                        previousClose = prev,
+                        timestamp = ts,
+                        status = stat
+                    )
+                }
+
                 val activeArray = root.optJSONArray("active")
                 if (activeArray != null) {
                     val parsedPositions = mutableListOf<PositionItem>()
@@ -474,7 +520,47 @@ class VaralakshmiRepository {
             // Non-fatal, fallback to existing or calculated allocation
         }
 
+        if (fetchedNifty == null) {
+            try {
+                val stratTokenQuery = if (authToken.isNotBlank()) "?token=$authToken" else ""
+                val niftyUrl = "$cleanUrl/api/live-trading/nifty$stratTokenQuery"
+                val niftyJson = httpGet(niftyUrl, authToken)
+                if (niftyJson != null) {
+                    val nObj = JSONObject(niftyJson)
+                    val ltp = optSafeDouble(nObj, "ltp", cachedNifty.ltp)
+                    val change = optSafeDouble(nObj, "change", cachedNifty.change)
+                    val changePct = optSafeDouble(nObj, "change_pct", cachedNifty.changePct)
+                    val open = optSafeDouble(nObj, "open", cachedNifty.open)
+                    val high = optSafeDouble(nObj, "high", cachedNifty.high)
+                    val low = optSafeDouble(nObj, "low", cachedNifty.low)
+                    val prev = optSafeDouble(nObj, "previous_close", cachedNifty.previousClose)
+                    val ts = nObj.optString("timestamp", cachedNifty.timestamp)
+                    val stat = nObj.optString("status", "LIVE")
+                    fetchedNifty = MarketIndexItem(
+                        symbol = nObj.optString("symbol", "NIFTY 50"),
+                        ltp = ltp,
+                        change = change,
+                        changePct = changePct,
+                        open = open,
+                        high = high,
+                        low = low,
+                        previousClose = prev,
+                        timestamp = ts,
+                        status = stat
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Non-fatal, keep cached nifty
+            }
+        }
+
         synchronized(lock) {
+            if (fetchedNifty != null) {
+                cachedNifty = fetchedNifty
+            }
+
             if (fetchedPositions != null) {
                 cachedPositions.clear()
                 cachedPositions.addAll(fetchedPositions)
@@ -515,14 +601,20 @@ class VaralakshmiRepository {
                 )
                 saveToDisk()
 
-                SyncResult.Success(cachedSummary, cachedPositions.toList(), cachedTransactions.toList())
+                SyncResult.Success(
+                    summary = cachedSummary,
+                    positions = cachedPositions.toList(),
+                    transactions = cachedTransactions.toList(),
+                    nifty = cachedNifty
+                )
             } else {
                 // Offline fallback - preserve existing cache and timestamp
                 SyncResult.OfflineCacheFallback(
                     summary = cachedSummary,
                     positions = cachedPositions.toList(),
                     transactions = cachedTransactions.toList(),
-                    message = networkError ?: "Offline mode: server unreachable"
+                    message = networkError ?: "Offline mode: server unreachable",
+                    nifty = cachedNifty
                 )
             }
         }
@@ -789,6 +881,20 @@ class VaralakshmiRepository {
             }
             root.put("transactions", txArray)
 
+            val niftyObj = JSONObject().apply {
+                put("symbol", cachedNifty.symbol)
+                put("ltp", cachedNifty.ltp)
+                put("change", cachedNifty.change)
+                put("changePct", cachedNifty.changePct)
+                put("open", cachedNifty.open)
+                put("high", cachedNifty.high)
+                put("low", cachedNifty.low)
+                put("previousClose", cachedNifty.previousClose)
+                put("timestamp", cachedNifty.timestamp)
+                put("status", cachedNifty.status)
+            }
+            root.put("nifty", niftyObj)
+
             val targetFile = File(dir, CACHE_FILE_NAME)
             val tempFile = File(dir, "$CACHE_FILE_NAME.tmp")
             tempFile.writeText(root.toString(2), Charsets.UTF_8)
@@ -973,6 +1079,22 @@ class VaralakshmiRepository {
                 list
             } else null
 
+            val niftyObj = root.optJSONObject("nifty")
+            val parsedNifty = if (niftyObj != null) {
+                MarketIndexItem(
+                    symbol = niftyObj.optString("symbol", cachedNifty.symbol),
+                    ltp = optSafeDouble(niftyObj, "ltp", cachedNifty.ltp),
+                    change = optSafeDouble(niftyObj, "change", cachedNifty.change),
+                    changePct = optSafeDouble(niftyObj, "changePct", optSafeDouble(niftyObj, "change_pct", cachedNifty.changePct)),
+                    open = optSafeDouble(niftyObj, "open", cachedNifty.open),
+                    high = optSafeDouble(niftyObj, "high", cachedNifty.high),
+                    low = optSafeDouble(niftyObj, "low", cachedNifty.low),
+                    previousClose = optSafeDouble(niftyObj, "previousClose", optSafeDouble(niftyObj, "previous_close", cachedNifty.previousClose)),
+                    timestamp = niftyObj.optString("timestamp", cachedNifty.timestamp),
+                    status = niftyObj.optString("status", cachedNifty.status)
+                )
+            } else null
+
             if (root.has("serverUrl") && !root.isNull("serverUrl")) {
                 val url = root.optString("serverUrl", "").trim()
                 if (url.isNotBlank()) cachedServerUrl = url
@@ -1011,6 +1133,9 @@ class VaralakshmiRepository {
             if (parsedTransactions != null) {
                 cachedTransactions.clear()
                 cachedTransactions.addAll(parsedTransactions)
+            }
+            if (parsedNifty != null) {
+                cachedNifty = parsedNifty
             }
             isLoadedFromDisk = true
             true

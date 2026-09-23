@@ -120,81 +120,142 @@ fun VaralakshmiDashboardScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Live Current Time & Sync Status Card
+            // Live Current Time & Today's Nifty 50 Card
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
                 color = DarkSurface,
                 border = androidx.compose.foundation.BorderStroke(1.dp, DarkCardBorder)
             ) {
-                Row(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 9.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(horizontal = 14.dp, vertical = 10.dp)
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Filled.Schedule,
-                            contentDescription = "Current Time",
-                            tint = AccentIndigoLight,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(7.dp))
-                        Column {
-                            Text(
-                                text = "CURRENT TIME",
-                                fontSize = 9.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = TextMuted,
-                                letterSpacing = 0.5.sp
+                    // Row 1: Current Time on left, Sync Status on right
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Filled.Schedule,
+                                contentDescription = "Current Time",
+                                tint = AccentIndigoLight,
+                                modifier = Modifier.size(15.dp)
                             )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Column {
+                                Text(
+                                    text = "CURRENT TIME",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TextMuted,
+                                    letterSpacing = 0.5.sp
+                                )
+                                Text(
+                                    text = currentTimeString,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = TextPrimary,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
+                        }
+
+                        Column(horizontalAlignment = Alignment.End) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(7.dp)
+                                        .clip(CircleShape)
+                                        .background(
+                                            if (uiState.isRefreshing) GoldAccent
+                                            else if (uiState.isLiveSync) ProfitGreen
+                                            else TextSecondary
+                                        )
+                                )
+                                Spacer(modifier = Modifier.width(5.dp))
+                                Text(
+                                    text = if (uiState.isRefreshing) "Syncing..."
+                                    else if (uiState.isLiveSync) "Live Cloudflare"
+                                    else "Cached Snapshot",
+                                    fontSize = 11.sp,
+                                    color = if (uiState.isRefreshing) GoldAccent
+                                    else if (uiState.isLiveSync) ProfitGreen
+                                    else TextSecondary,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
                             Text(
-                                text = currentTimeString,
-                                fontSize = 12.5.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = TextPrimary,
+                                text = "Data: ${uiState.summary.lastUpdated}",
+                                fontSize = 9.5.sp,
+                                color = TextMuted,
                                 maxLines = 1,
-                                softWrap = false
+                                softWrap = false,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                             )
                         }
                     }
 
-                    Column(horizontalAlignment = Alignment.End) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    HorizontalDivider(color = DarkCardBorder.copy(alpha = 0.6f), thickness = 0.8.dp)
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Row 2: Today's Nifty 50 Benchmark Data
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(7.dp)
-                                    .clip(CircleShape)
-                                    .background(
-                                        if (uiState.isRefreshing) GoldAccent
-                                        else if (uiState.isLiveSync) ProfitGreen
-                                        else TextSecondary
-                                    )
-                            )
-                            Spacer(modifier = Modifier.width(5.dp))
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = AccentIndigoLight.copy(alpha = 0.15f),
+                                border = androidx.compose.foundation.BorderStroke(0.8.dp, AccentIndigoLight.copy(alpha = 0.4f))
+                            ) {
+                                Text(
+                                    text = uiState.nifty.symbol,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = AccentIndigoLight,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = if (uiState.isRefreshing) "Syncing..."
-                                else if (uiState.isLiveSync) "Live Cloudflare"
-                                else "Cached Snapshot",
-                                fontSize = 11.sp,
-                                color = if (uiState.isRefreshing) GoldAccent
-                                else if (uiState.isLiveSync) ProfitGreen
-                                else TextSecondary,
+                                text = uiState.nifty.formattedLtp,
+                                fontSize = 14.5.sp,
                                 fontWeight = FontWeight.Bold,
+                                color = TextPrimary
+                            )
+                        }
+
+                        Column(horizontalAlignment = Alignment.End) {
+                            val isPos = uiState.nifty.isPositive
+                            val changeColor = if (isPos) ProfitGreen else LossRed
+                            Text(
+                                text = uiState.nifty.formattedChange,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = changeColor,
                                 maxLines = 1,
                                 softWrap = false
                             )
+                            if (uiState.nifty.high > 0 && uiState.nifty.low > 0) {
+                                Text(
+                                    text = "H: ${String.format(Locale.US, "%,.1f", uiState.nifty.high)}  L: ${String.format(Locale.US, "%,.1f", uiState.nifty.low)}",
+                                    fontSize = 9.5.sp,
+                                    color = TextMuted,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
                         }
-                        Text(
-                            text = "Data: ${uiState.summary.lastUpdated}",
-                            fontSize = 10.sp,
-                            color = TextMuted,
-                            maxLines = 1,
-                            softWrap = false,
-                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                        )
                     }
                 }
             }
@@ -351,7 +412,7 @@ fun VaralakshmiDashboardScreen(
                     )
 
                     Text(
-                        text = "App Updates & Releases (Current: v1.4.1)",
+                        text = "App Updates & Releases (Current: v1.5.0)",
                         color = TextPrimary,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold
