@@ -1059,6 +1059,7 @@ class VaralakshmiRepository {
 
         var fetchedAllocatedCapital: Double? = null
         var fetchedAvailableCapital: Double? = null
+        var fetchedRealizedPnl: Double? = null
 
         try {
             // 3. Fetch strategies to sync dynamic capital allocation
@@ -1079,6 +1080,9 @@ class VaralakshmiRepository {
                             }
                             if (obj.has("available_capital") && !obj.isNull("available_capital")) {
                                 fetchedAvailableCapital = roundPaise(avail)
+                            }
+                            if (obj.has("realized_pnl") && !obj.isNull("realized_pnl")) {
+                                fetchedRealizedPnl = roundPaise(obj.optDouble("realized_pnl", 0.0))
                             }
                             break
                         }
@@ -1207,7 +1211,7 @@ class VaralakshmiRepository {
                 val totalUnrealized = roundPaise(cachedPositions.sumOf { it.unrealizedPnl })
                 val deployed = roundPaise(totalMarketValue - totalUnrealized)
                 val allocated = fetchedAllocatedCapital ?: cachedSummary.allocatedCapital
-                val realized = cachedSummary.realizedPnl
+                val realized = fetchedRealizedPnl ?: cachedSummary.realizedPnl
                 val available = fetchedAvailableCapital ?: roundPaise((allocated - deployed + realized).coerceAtLeast(0.0))
                 val nav = roundPaise(deployed + available + totalUnrealized)
                 val totalPnl = roundPaise(realized + totalUnrealized)
