@@ -1371,6 +1371,49 @@ class VaralakshmiRepository {
         }
     }
 
+    suspend fun exitPosition(
+        strategyId: String,
+        symbol: String,
+        serverBaseUrl: String = cachedServerUrl,
+        authToken: String = cachedAuthToken
+    ): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            val cleanUrl = serverBaseUrl.trimEnd('/')
+            val tokenQuery = if (authToken.isNotBlank()) "?token=$authToken" else ""
+            val endpoint = "$cleanUrl/api/live-trading/positions/exit$tokenQuery"
+            val payload = JSONObject().apply {
+                put("strategy_id", strategyId)
+                put("symbol", symbol)
+            }
+            val res = httpPost(endpoint, payload.toString(), authToken)
+            if (res != null) {
+                val json = JSONObject(res)
+                val success = json.optBoolean("success", false)
+                val msg = json.optString("message", if (success) "Exit order submitted to broker" else "Exit order rejected")
+                if (success) {
+                    removePosition(symbol)
+                    Result.success(msg)
+                } else {
+                    val err = json.optString("error", msg)
+                    if (json.optString("status") == "NOT_FOUND" || err.contains("No open position", ignoreCase = true)) {
+                        removePosition(symbol)
+                        Result.success("Position already closed on server")
+                    } else {
+                        Result.failure(Exception(err))
+                    }
+                }
+            } else {
+                removePosition(symbol)
+                Result.failure(Exception("Offline: Position removed locally. Verify Zerodha broker order."))
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            removePosition(symbol)
+            Result.failure(e)
+        }
+    }
+
     private fun httpGet(urlStr: String, authToken: String? = null, timeoutMs: Int = 5000): String? {
         var conn: HttpURLConnection? = null
         return try {

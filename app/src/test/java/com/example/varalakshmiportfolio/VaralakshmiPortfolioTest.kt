@@ -1476,5 +1476,26 @@ class VaralakshmiPortfolioTest {
         assertEquals("-4.25%", lossItem.formattedPnlPercent)
         assertFalse(lossItem.isWin)
     }
+
+    @Test
+    fun testRepositoryExitPositionOfflineFallback() = runTest {
+        val repository = VaralakshmiRepository()
+        // Ensure AHCL exists initially
+        assertTrue(repository.getCachedPositions().any { it.symbol == "AHCL" })
+        
+        // Calling exitPosition with unreachable server base URL should cleanly fallback to local removal
+        val result = repository.exitPosition(
+            strategyId = "VARALAKSHMI_ALPHA_SCALE_35",
+            symbol = "AHCL",
+            serverBaseUrl = "http://127.0.0.1:59999"
+        )
+        
+        // Verify AHCL is removed from cached holdings
+        assertFalse(repository.getCachedPositions().any { it.symbol == "AHCL" })
+        assertEquals(2, repository.getCachedPositions().size)
+        // Verify result is a failure indicating offline status
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull()?.message?.contains("Offline") == true)
+    }
 }
 

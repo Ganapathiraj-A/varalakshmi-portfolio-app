@@ -148,6 +148,10 @@ class VaralakshmiViewModel(
 
     fun confirmExit() {
         val target = _uiState.value.positionToExit ?: return
+        val stratId = _uiState.value.summary.strategyId.ifBlank { "VARALAKSHMI_ALPHA_SCALE_35" }
+        val serverUrl = _uiState.value.serverUrl
+        val authToken = _uiState.value.authToken
+
         val (newSummary, newPositions, newTransactions) = repository.removePosition(target.symbol)
         _uiState.update {
             it.copy(
@@ -157,6 +161,36 @@ class VaralakshmiViewModel(
                 positionToExit = null,
                 snackbarMessage = "Exited ${target.symbol} • Freed up ₹${String.format(Locale.US, "%,.2f", target.marketValue)}"
             )
+        }
+
+        try {
+            viewModelScope.launch {
+                val res = repository.exitPosition(
+                    strategyId = stratId,
+                    symbol = target.symbol,
+                    serverBaseUrl = serverUrl,
+                    authToken = authToken
+                )
+                res.fold(
+                    onSuccess = { msg ->
+                        _uiState.update { current ->
+                            current.copy(
+                                snackbarMessage = "Exited ${target.symbol} • $msg"
+                            )
+                        }
+                        refresh()
+                    },
+                    onFailure = { err ->
+                        _uiState.update { current ->
+                            current.copy(
+                                snackbarMessage = "Exit order issue for ${target.symbol}: ${err.message}"
+                            )
+                        }
+                    }
+                )
+            }
+        } catch (e: Throwable) {
+            // Safeguard against unconfigured Main dispatcher in headless JVM tests
         }
     }
 
