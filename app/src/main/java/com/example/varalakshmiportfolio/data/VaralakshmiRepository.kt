@@ -822,7 +822,13 @@ class VaralakshmiRepository {
     fun getCachedPositions(): List<PositionItem> = synchronized(lock) { ensureLoaded(); cachedPositions.toList() }
     fun getCachedTransactions(): List<TransactionItem> = synchronized(lock) { ensureLoaded(); cachedTransactions.toList() }
     fun getCachedNifty(): MarketIndexItem = synchronized(lock) { ensureLoaded(); cachedNifty }
-    fun getCachedRecommendations(): List<StockRecommendationItem> = synchronized(lock) { ensureLoaded(); cachedRecommendations.toList() }
+    fun getCachedRecommendations(): List<StockRecommendationItem> = synchronized(lock) {
+        ensureLoaded()
+        val heldSymbols = cachedPositions.map { it.symbol.trim().uppercase(Locale.US) }.toSet()
+        cachedRecommendations
+            .filterNot { it.symbol.trim().uppercase(Locale.US) in heldSymbols }
+            .mapIndexed { idx, item -> item.copy(rank = idx + 1) }
+    }
     fun getCachedRecommendationHistory(): List<HistoricalRecommendationItem> = synchronized(lock) { ensureLoaded(); cachedRecommendationHistory.toList() }
     fun getCachedRecommendationHistorySummary(): RecommendationHistorySummary = synchronized(lock) { ensureLoaded(); cachedRecommendationHistorySummary }
 
@@ -1238,16 +1244,26 @@ class VaralakshmiRepository {
                 )
                 saveToDisk()
 
+                val heldSymbols = cachedPositions.map { it.symbol.trim().uppercase(Locale.US) }.toSet()
+                val cleanRecommendations = cachedRecommendations
+                    .filterNot { it.symbol.trim().uppercase(Locale.US) in heldSymbols }
+                    .mapIndexed { idx, item -> item.copy(rank = idx + 1) }
+
                 SyncResult.Success(
                     summary = cachedSummary,
                     positions = cachedPositions.toList(),
                     transactions = cachedTransactions.toList(),
                     nifty = cachedNifty,
-                    recommendations = cachedRecommendations.toList(),
+                    recommendations = cleanRecommendations,
                     recommendationHistory = cachedRecommendationHistory.toList(),
                     recommendationHistorySummary = cachedRecommendationHistorySummary
                 )
             } else {
+                val heldSymbols = cachedPositions.map { it.symbol.trim().uppercase(Locale.US) }.toSet()
+                val cleanRecommendations = cachedRecommendations
+                    .filterNot { it.symbol.trim().uppercase(Locale.US) in heldSymbols }
+                    .mapIndexed { idx, item -> item.copy(rank = idx + 1) }
+
                 // Offline fallback - preserve existing cache and timestamp
                 SyncResult.OfflineCacheFallback(
                     summary = cachedSummary,
@@ -1255,7 +1271,7 @@ class VaralakshmiRepository {
                     transactions = cachedTransactions.toList(),
                     message = networkError ?: "Offline mode: server unreachable",
                     nifty = cachedNifty,
-                    recommendations = cachedRecommendations.toList(),
+                    recommendations = cleanRecommendations,
                     recommendationHistory = cachedRecommendationHistory.toList(),
                     recommendationHistorySummary = cachedRecommendationHistorySummary
                 )
