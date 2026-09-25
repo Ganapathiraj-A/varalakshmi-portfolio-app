@@ -394,8 +394,11 @@ class VaralakshmiRepository {
                     )
 
                     val ptsArray = when {
+                        obj.has("historical_2m") -> obj.optJSONArray("historical_2m")
                         obj.has("historical2m_points") -> obj.optJSONArray("historical2m_points")
                         obj.has("historical2mPoints") -> obj.optJSONArray("historical2mPoints")
+                        obj.has("price_history") -> obj.optJSONArray("price_history")
+                        obj.has("historical2m") -> obj.optJSONArray("historical2m")
                         obj.has("history") -> obj.optJSONArray("history")
                         obj.has("chart") -> obj.optJSONArray("chart")
                         else -> null
