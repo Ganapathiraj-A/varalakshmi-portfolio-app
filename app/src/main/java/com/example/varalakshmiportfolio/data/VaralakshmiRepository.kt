@@ -85,6 +85,11 @@ class VaralakshmiRepository {
             return if (v.isNaN() || v.isInfinite()) default else roundPaise(v)
         }
 
+        fun isBoughtToday(entryDate: String): Boolean = isPositionBoughtToday(entryDate)
+
+        fun calculateReferencePrice(entryDate: String, entryPrice: Double, previousClose: Double): Double =
+            com.example.varalakshmiportfolio.model.calculateReferencePrice(entryDate, entryPrice, previousClose)
+
         fun createDefaultSummary() = PortfolioSummary(
             strategyId = "VARALAKSHMI_ALPHA_SCALE_35",
             strategyName = "VaraLakshmi Alpha (80%+ Fast Rotation Compounder)",
@@ -832,6 +837,9 @@ class VaralakshmiRepository {
     fun getCachedRecommendationHistory(): List<HistoricalRecommendationItem> = synchronized(lock) { ensureLoaded(); cachedRecommendationHistory.toList() }
     fun getCachedRecommendationHistorySummary(): RecommendationHistorySummary = synchronized(lock) { ensureLoaded(); cachedRecommendationHistorySummary }
 
+    suspend fun syncWithServer(serverBaseUrl: String = getServerUrl(), authToken: String = getAuthToken()): SyncResult =
+        refreshData(serverBaseUrl, authToken)
+
     suspend fun refreshData(serverBaseUrl: String, authToken: String = DEFAULT_AUTH_TOKEN): SyncResult = withContext(Dispatchers.IO) {
         val cleanUrl = serverBaseUrl.trimEnd('/')
 
@@ -939,30 +947,31 @@ class VaralakshmiRepository {
                             entryPrice
                         }
 
-                        val refPrice = if (effectivePrevClose > 0.0) effectivePrevClose else entryPrice
+                        val isBoughtToday = isPositionBoughtToday(entryDate)
+                        val refPrice = calculateReferencePrice(entryDate, entryPrice, effectivePrevClose)
 
-                        val todayChg = if (obj.has("today_price_change") && !obj.isNull("today_price_change")) {
+                        val todayChg = if (refPrice > 0.0) {
+                            roundPaise(currentPrice - refPrice)
+                        } else if (obj.has("today_price_change") && !obj.isNull("today_price_change")) {
                             roundPaise(obj.optDouble("today_price_change", 0.0))
                         } else if (obj.has("change") && !obj.isNull("change")) {
                             roundPaise(obj.optDouble("change", 0.0))
                         } else {
-                            roundPaise(currentPrice - refPrice)
+                            0.0
                         }
 
-                        val todayChgPct = if (obj.has("today_price_change_pct") && !obj.isNull("today_price_change_pct")) {
+                        val todayChgPct = if (refPrice > 0.0) {
+                            roundPaise(((currentPrice - refPrice) / refPrice) * 100.0)
+                        } else if (obj.has("today_price_change_pct") && !obj.isNull("today_price_change_pct")) {
                             roundPaise(obj.optDouble("today_price_change_pct", 0.0))
                         } else if (obj.has("change_pct") && !obj.isNull("change_pct")) {
                             roundPaise(obj.optDouble("change_pct", 0.0))
                         } else {
-                            if (refPrice > 0.0) roundPaise(((currentPrice - refPrice) / refPrice) * 100.0) else 0.0
+                            0.0
                         }
 
                         val calculatedValChg = roundPaise(quantity * todayChg)
-                        val todayValChg = if (obj.has("today_value_change") && !obj.isNull("today_value_change") && obj.optDouble("today_value_change", 0.0) != 0.0) {
-                            roundPaise(obj.optDouble("today_value_change", 0.0))
-                        } else {
-                            calculatedValChg
-                        }
+                        val todayValChg = calculatedValChg
 
                         val targetEnabled = if (obj.has("target_enabled") && !obj.isNull("target_enabled")) {
                             obj.optBoolean("target_enabled", true)
@@ -994,6 +1003,8 @@ class VaralakshmiRepository {
                                 entryDate = entryDate,
                                 status = status,
                                 previousClose = effectivePrevClose,
+                                referencePrice = refPrice,
+                                isBoughtToday = isBoughtToday,
                                 todayPriceChange = todayChg,
                                 todayPriceChangePct = todayChgPct,
                                 todayValueChange = todayValChg,
@@ -1556,6 +1567,8 @@ class VaralakshmiRepository {
                     put("entryDate", p.entryDate)
                     put("status", p.status)
                     put("previousClose", p.previousClose)
+                    put("referencePrice", p.referencePrice)
+                    put("isBoughtToday", p.isBoughtToday)
                     put("todayPriceChange", p.todayPriceChange)
                     put("todayPriceChangePct", p.todayPriceChangePct)
                     put("todayValueChange", p.todayValueChange)
@@ -1652,17 +1665,8 @@ class VaralakshmiRepository {
         }
     }
 
-    private fun loadFromDisk(): Boolean {
-        val dir = cacheDirectory ?: return false
-        val cacheFile = File(dir, CACHE_FILE_NAME)
-        if (!cacheFile.exists() || !cacheFile.isFile) return false
-
-        return try {
-            val jsonStr = cacheFile.readText(Charsets.UTF_8)
-            if (jsonStr.isBlank()) {
-                cacheFile.delete()
-                return false
-            }
+    fun applyCachedJsonState(jsonStr: String): Boolean = synchronized(lock) {
+        try {
             val root = JSONObject(jsonStr)
 
             val summaryObj = root.optJSONObject("summary")
@@ -1697,38 +1701,38 @@ class VaralakshmiRepository {
                     val quantity = p.optInt("quantity", 0)
                     val entryPrice = optSafeDouble(p, "entryPrice", if (p.has("entry_price")) optSafeDouble(p, "entry_price", 0.0) else 0.0)
                     val currentPrice = optSafeDouble(p, "currentPrice", if (p.has("current_price")) optSafeDouble(p, "current_price", 0.0) else 0.0)
+                    val entryDate = p.optString("entryDate", p.optString("entry_date", ""))
+                    val isBoughtToday = isPositionBoughtToday(entryDate)
                     val prevClose = if (p.has("previousClose") && !p.isNull("previousClose")) {
                         optSafeDouble(p, "previousClose", 0.0)
                     } else if (p.has("previous_close") && !p.isNull("previous_close")) {
                         optSafeDouble(p, "previous_close", 0.0)
                     } else 0.0
                     val effectivePrevClose = if (prevClose > 0.0) prevClose else entryPrice
-                    val refPrice = if (effectivePrevClose > 0.0) effectivePrevClose else entryPrice
+                    val refPrice = calculateReferencePrice(entryDate, entryPrice, effectivePrevClose)
 
-                    val todayChg = if (p.has("todayPriceChange") && !p.isNull("todayPriceChange")) {
+                    val todayChg = if (refPrice > 0.0) {
+                        roundPaise(currentPrice - refPrice)
+                    } else if (p.has("todayPriceChange") && !p.isNull("todayPriceChange")) {
                         optSafeDouble(p, "todayPriceChange", 0.0)
                     } else if (p.has("today_price_change") && !p.isNull("today_price_change")) {
                         optSafeDouble(p, "today_price_change", 0.0)
                     } else {
-                        roundPaise(currentPrice - refPrice)
+                        0.0
                     }
 
-                    val todayChgPct = if (p.has("todayPriceChangePct") && !p.isNull("todayPriceChangePct")) {
+                    val todayChgPct = if (refPrice > 0.0) {
+                        roundPaise(((currentPrice - refPrice) / refPrice) * 100.0)
+                    } else if (p.has("todayPriceChangePct") && !p.isNull("todayPriceChangePct")) {
                         optSafeDouble(p, "todayPriceChangePct", 0.0)
                     } else if (p.has("today_price_change_pct") && !p.isNull("today_price_change_pct")) {
                         optSafeDouble(p, "today_price_change_pct", 0.0)
                     } else {
-                        if (refPrice > 0.0) roundPaise(((currentPrice - refPrice) / refPrice) * 100.0) else 0.0
+                        0.0
                     }
 
                     val calculatedValChg = roundPaise(quantity * todayChg)
-                    val todayValChg = if (p.has("todayValueChange") && !p.isNull("todayValueChange") && p.optDouble("todayValueChange", 0.0) != 0.0) {
-                        optSafeDouble(p, "todayValueChange", calculatedValChg)
-                    } else if (p.has("today_value_change") && !p.isNull("today_value_change") && p.optDouble("today_value_change", 0.0) != 0.0) {
-                        optSafeDouble(p, "today_value_change", calculatedValChg)
-                    } else {
-                        calculatedValChg
-                    }
+                    val todayValChg = calculatedValChg
 
                     val marketValue = if (p.has("marketValue") && !p.isNull("marketValue")) {
                         optSafeDouble(p, "marketValue", roundPaise(quantity * currentPrice))
@@ -1784,9 +1788,11 @@ class VaralakshmiRepository {
                             unrealizedPnl = unrealizedPnl,
                             unrealizedPnlPct = unrealizedPnlPct,
                             peakPrice = peakPrice,
-                            entryDate = p.optString("entryDate", p.optString("entry_date", "")),
+                            entryDate = entryDate,
                             status = p.optString("status", "OPEN"),
                             previousClose = effectivePrevClose,
+                            referencePrice = refPrice,
+                            isBoughtToday = isBoughtToday,
                             todayPriceChange = todayChg,
                             todayPriceChangePct = todayChgPct,
                             todayValueChange = todayValChg,
@@ -1865,27 +1871,33 @@ class VaralakshmiRepository {
                 cachedPositions.clear()
                 cachedPositions.addAll(parsedPositions)
             }
-            if (parsedSummary != null) {
-                // Ensure todayPnl strictly matches parsedPositions to prevent calculation drift
-                val effectiveTodayPnl = if (parsedPositions != null) {
-                    if (summaryObj != null && summaryObj.has("todayPnl") && !summaryObj.isNull("todayPnl")) {
-                        optSafeDouble(summaryObj, "todayPnl", roundPaise(parsedPositions.sumOf { it.todayValueChange }))
-                    } else {
-                        roundPaise(parsedPositions.sumOf { it.todayValueChange })
-                    }
-                } else {
-                    parsedSummary.todayPnl
-                }
-                val prevNav = parsedSummary.totalNav - effectiveTodayPnl
-                val effectiveTodayPnlPct = if (prevNav > 0.0) roundPaise((effectiveTodayPnl / prevNav) * 100.0)
-                else if (parsedSummary.allocatedCapital > 0.0) roundPaise((effectiveTodayPnl / parsedSummary.allocatedCapital) * 100.0)
-                else 0.0
+            // Ensure todayPnl strictly matches active positions to prevent calculation drift
+            val effectiveTodayPnl = if (cachedPositions.isNotEmpty()) {
+                roundPaise(cachedPositions.sumOf { it.todayValueChange })
+            } else if (parsedSummary != null) {
+                parsedSummary.todayPnl
+            } else {
+                0.0
+            }
+            val baseNav = parsedSummary?.totalNav ?: cachedSummary.totalNav
+            val baseAllocated = parsedSummary?.allocatedCapital ?: cachedSummary.allocatedCapital
+            val prevNav = baseNav - effectiveTodayPnl
+            val effectiveTodayPnlPct = if (prevNav > 0.0) roundPaise((effectiveTodayPnl / prevNav) * 100.0)
+            else if (baseAllocated > 0.0) roundPaise((effectiveTodayPnl / baseAllocated) * 100.0)
+            else 0.0
 
+            if (parsedSummary != null) {
                 cachedSummary = parsedSummary.copy(
                     todayPnl = effectiveTodayPnl,
-                    todayPnlPct = if (summaryObj != null && summaryObj.has("todayPnlPct") && !summaryObj.isNull("todayPnlPct")) parsedSummary.todayPnlPct else effectiveTodayPnlPct
+                    todayPnlPct = effectiveTodayPnlPct
+                )
+            } else if (cachedPositions.isNotEmpty()) {
+                cachedSummary = cachedSummary.copy(
+                    todayPnl = effectiveTodayPnl,
+                    todayPnlPct = effectiveTodayPnlPct
                 )
             }
+
             if (parsedTransactions != null) {
                 cachedTransactions.clear()
                 cachedTransactions.addAll(parsedTransactions)
@@ -1913,6 +1925,27 @@ class VaralakshmiRepository {
                 cachedRecommendationHistorySummary = calculateRecommendationHistorySummary(cachedRecommendationHistory)
             }
             isLoadedFromDisk = true
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    private fun loadFromDisk(): Boolean {
+        val dir = cacheDirectory ?: return false
+        val cacheFile = File(dir, CACHE_FILE_NAME)
+        if (!cacheFile.exists() || !cacheFile.isFile) return false
+
+        return try {
+            val jsonStr = cacheFile.readText(Charsets.UTF_8)
+            if (jsonStr.isBlank()) {
+                cacheFile.delete()
+                return false
+            }
+            val success = applyCachedJsonState(jsonStr)
+            if (!success) {
+                throw IOException("Corrupt cache payload")
+            }
             true
         } catch (e: Exception) {
             // Corrupt file recovery: quarantine or delete corrupt file so app continues safely

@@ -26,7 +26,8 @@ import java.util.Locale
 @Composable
 fun TodayTickerChangesTable(
     positions: List<PositionItem>,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    summaryTodayPnl: Double? = null
 ) {
     Card(
         modifier = modifier
@@ -155,6 +156,85 @@ fun TodayTickerChangesTable(
                                 thickness = 0.8.dp
                             )
                         }
+                    }
+                }
+
+                // Summary footer row confirming total daily delta matches header card exactly
+                val totalTodayValChg = java.math.BigDecimal.valueOf(positions.sumOf { it.todayValueChange })
+                    .setScale(2, java.math.RoundingMode.HALF_EVEN).toDouble()
+                val isTotalValPositive = totalTodayValChg > 0
+                val isTotalValNegative = totalTodayValChg < 0
+
+                val totalValColor = when {
+                    isTotalValPositive -> ProfitGreen
+                    isTotalValNegative -> LossRed
+                    else -> TextSecondary
+                }
+
+                val totalValChgStr = when {
+                    isTotalValPositive -> "+₹" + String.format(Locale.US, "%,.2f", totalTodayValChg)
+                    isTotalValNegative -> "-₹" + String.format(Locale.US, "%,.2f", kotlin.math.abs(totalTodayValChg))
+                    else -> "₹0.00"
+                }
+
+                val isHeaderMatched = summaryTodayPnl == null || kotlin.math.abs(totalTodayValChg - summaryTodayPnl) < 0.005
+
+                Spacer(modifier = Modifier.height(10.dp))
+                HorizontalDivider(
+                    color = DarkCardBorder.copy(alpha = 0.8f),
+                    thickness = 1.dp
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    color = DarkCard,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, DarkCardBorder)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "TOTAL TODAY'S DELTA",
+                                color = TextMuted,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 0.5.sp
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = if (isHeaderMatched) ProfitGreenBg else LossRedBg,
+                                border = androidx.compose.foundation.BorderStroke(
+                                    1.dp,
+                                    if (isHeaderMatched) ProfitGreen.copy(alpha = 0.4f) else LossRed.copy(alpha = 0.4f)
+                                )
+                            ) {
+                                Text(
+                                    text = if (isHeaderMatched) "Header Match ✓" else "Delta Mismatch",
+                                    color = if (isHeaderMatched) ProfitGreen else LossRed,
+                                    fontSize = 9.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+
+                        Text(
+                            text = totalValChgStr,
+                            color = totalValColor,
+                            fontSize = 13.5.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            textAlign = TextAlign.End
+                        )
                     }
                 }
             }
@@ -363,8 +443,10 @@ private fun TodayTickerRow(
                         value = "${position.quantity} shs × $formulaPriceStr"
                     )
                     DetailItem(
-                        label = "Previous Close",
-                        value = if (position.previousClose > 0.0) "₹" + String.format(Locale.US, "%.2f", position.previousClose) else "N/A (Entry ref)"
+                        label = if (position.isBoughtToday) "Baseline Source" else "Previous Close",
+                        value = if (position.isBoughtToday) "Entry Execution (Bought Today)"
+                                else if (position.previousClose > 0.0) "₹" + String.format(Locale.US, "%.2f", position.previousClose)
+                                else "N/A (Entry ref)"
                     )
                 }
             }

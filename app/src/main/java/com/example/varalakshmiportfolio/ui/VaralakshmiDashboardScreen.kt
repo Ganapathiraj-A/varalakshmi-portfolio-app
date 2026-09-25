@@ -275,7 +275,8 @@ fun VaralakshmiDashboardScreen(
 
             // 3. Today's Ticker Changes Table (Ticker, Price, Today Chg %, Today Value ₹)
             TodayTickerChangesTable(
-                positions = uiState.positions
+                positions = uiState.positions,
+                summaryTodayPnl = uiState.summary.todayPnl
             )
 
             // 4. Recent Transactions Table (Date, Buy/Sell, Ticker, Price, Profit/Loss Difference)

@@ -25,6 +25,113 @@ data class PortfolioSummary(
     val todayNavChangePct: Double get() = todayPnlPct
 }
 
+fun isPositionBoughtToday(entryDate: String): Boolean {
+    if (entryDate.isBlank()) return false
+    val trimmed = entryDate.trim()
+    if (trimmed.equals("today", ignoreCase = true)) return true
+
+    val todayLocal = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
+
+    // If string has ISO timestamp indicators ('T', 'Z', '+', or an offset like '-' after date),
+    // we must parse with timezone awareness FIRST so that dates from other timezones (e.g. UTC near midnight)
+    // are converted to the local calendar day rather than falsely matching a raw string prefix.
+    val hasTimezoneOrIso = trimmed.contains('T') || trimmed.contains('Z') || trimmed.contains('+') ||
+            (trimmed.length > 10 && trimmed.substring(10).contains('-'))
+
+    if (hasTimezoneOrIso) {
+        // Normalize fractional seconds beyond milliseconds (e.g. .123456 -> .123) for SimpleDateFormat compatibility
+        val normalized = trimmed.replace(Regex("""\.(\d{3})\d+"""), ".$1")
+
+        val patterns = arrayOf(
+            "yyyy-MM-dd'T'HH:mm:ss.SSSXXX",
+            "yyyy-MM-dd'T'HH:mm:ss.SSSXX",
+            "yyyy-MM-dd'T'HH:mm:ss.SSSZ",
+            "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
+            "yyyy-MM-dd'T'HH:mm:ss.SSS",
+            "yyyy-MM-dd'T'HH:mm:ssXXX",
+            "yyyy-MM-dd'T'HH:mm:ssXX",
+            "yyyy-MM-dd'T'HH:mm:ssZ",
+            "yyyy-MM-dd'T'HH:mm:ss'Z'",
+            "yyyy-MM-dd'T'HH:mm:ss",
+            "yyyy-MM-dd'T'HH:mmXXX",
+            "yyyy-MM-dd'T'HH:mmXX",
+            "yyyy-MM-dd'T'HH:mm'Z'",
+            "yyyy-MM-dd'T'HH:mm",
+            "yyyy-MM-dd HH:mm:ss.SSSXXX",
+            "yyyy-MM-dd HH:mm:ss.SSSXX",
+            "yyyy-MM-dd HH:mm:ss.SSSZ",
+            "yyyy-MM-dd HH:mm:ss.SSS'Z'",
+            "yyyy-MM-dd HH:mm:ss.SSS",
+            "yyyy-MM-dd HH:mm:ssXXX",
+            "yyyy-MM-dd HH:mm:ssXX",
+            "yyyy-MM-dd HH:mm:ssZ",
+            "yyyy-MM-dd HH:mm:ss'Z'",
+            "yyyy-MM-dd HH:mm:ss",
+            "yyyy-MM-dd HH:mm",
+            "dd-MM-yyyy'T'HH:mm:ssXXX",
+            "dd-MM-yyyy'T'HH:mm:ssXX",
+            "dd-MM-yyyy'T'HH:mm:ssZ",
+            "dd-MM-yyyy'T'HH:mm:ss'Z'",
+            "dd-MM-yyyy'T'HH:mm:ss",
+            "dd-MM-yyyy HH:mm:ssXXX",
+            "dd-MM-yyyy HH:mm:ssXX",
+            "dd-MM-yyyy HH:mm:ssZ",
+            "dd-MM-yyyy HH:mm:ss'Z'",
+            "dd-MM-yyyy HH:mm:ss",
+            "dd-MM-yyyy HH:mm",
+            "dd/MM/yyyy HH:mm:ssXXX",
+            "dd/MM/yyyy HH:mm:ssXX",
+            "dd/MM/yyyy HH:mm:ssZ",
+            "dd/MM/yyyy HH:mm:ss'Z'",
+            "dd/MM/yyyy HH:mm:ss",
+            "dd/MM/yyyy HH:mm",
+            "yyyy/MM/dd HH:mm:ss",
+            "yyyy/MM/dd HH:mm"
+        )
+        for (pattern in patterns) {
+            try {
+                val parser = java.text.SimpleDateFormat(pattern, java.util.Locale.US)
+                if (pattern.endsWith("'Z'")) {
+                    parser.timeZone = java.util.TimeZone.getTimeZone("UTC")
+                }
+                val parsedDate = parser.parse(normalized)
+                if (parsedDate != null) {
+                    val localFormat = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+                    val dateStr = localFormat.format(parsedDate)
+                    return dateStr == todayLocal
+                }
+            } catch (_: Exception) {
+                // Continue trying remaining formats
+            }
+        }
+        // Timezone/ISO format was indicated but could not be parsed; do NOT fall back to naive prefix match
+        return false
+    }
+
+    // Direct prefix match against local ISO date yyyy-MM-dd
+    if (trimmed.startsWith(todayLocal)) return true
+
+    // Support Indian / European date conventions (dd-MM-yyyy, dd/MM/yyyy, yyyy/MM/dd)
+    val altPatterns = arrayOf("dd-MM-yyyy", "dd/MM/yyyy", "yyyy/MM/dd")
+    for (altPattern in altPatterns) {
+        val altToday = java.text.SimpleDateFormat(altPattern, java.util.Locale.US).format(java.util.Date())
+        if (trimmed.startsWith(altToday)) return true
+    }
+
+    return false
+}
+
+fun calculateReferencePrice(entryDate: String, entryPrice: Double, previousClose: Double): Double {
+    val validEntry = if (entryPrice > 0.0 && !entryPrice.isNaN() && !entryPrice.isInfinite()) entryPrice else 0.0
+    val validPrevClose = if (previousClose > 0.0 && !previousClose.isNaN() && !previousClose.isInfinite()) previousClose else 0.0
+
+    return if (isPositionBoughtToday(entryDate)) {
+        if (validEntry > 0.0) validEntry else validPrevClose
+    } else {
+        if (validPrevClose > 0.0) validPrevClose else validEntry
+    }
+}
+
 data class PositionItem(
     val positionId: String,
     val symbol: String,
@@ -38,24 +145,20 @@ data class PositionItem(
     val entryDate: String,
     val status: String = "OPEN",
     val previousClose: Double = 0.0,
+    val referencePrice: Double = calculateReferencePrice(entryDate, entryPrice, previousClose),
+    val isBoughtToday: Boolean = isPositionBoughtToday(entryDate),
     val todayPriceChange: Double = run {
         if (currentPrice.isNaN() || currentPrice.isInfinite()) 0.0
         else {
-            val ref = if (previousClose > 0.0 && !previousClose.isNaN() && !previousClose.isInfinite()) previousClose
-            else if (entryPrice > 0.0 && !entryPrice.isNaN() && !entryPrice.isInfinite()) entryPrice
-            else 0.0
-            if (ref <= 0.0) 0.0
-            else java.math.BigDecimal.valueOf(currentPrice - ref).setScale(2, java.math.RoundingMode.HALF_EVEN).toDouble()
+            if (referencePrice <= 0.0) 0.0
+            else java.math.BigDecimal.valueOf(currentPrice - referencePrice).setScale(2, java.math.RoundingMode.HALF_EVEN).toDouble()
         }
     },
     val todayPriceChangePct: Double = run {
         if (currentPrice.isNaN() || currentPrice.isInfinite()) 0.0
         else {
-            val ref = if (previousClose > 0.0 && !previousClose.isNaN() && !previousClose.isInfinite()) previousClose
-            else if (entryPrice > 0.0 && !entryPrice.isNaN() && !entryPrice.isInfinite()) entryPrice
-            else 0.0
-            if (ref > 0.0) {
-                java.math.BigDecimal.valueOf(((currentPrice - ref) / ref) * 100.0).setScale(2, java.math.RoundingMode.HALF_EVEN).toDouble()
+            if (referencePrice > 0.0) {
+                java.math.BigDecimal.valueOf(((currentPrice - referencePrice) / referencePrice) * 100.0).setScale(2, java.math.RoundingMode.HALF_EVEN).toDouble()
             } else 0.0
         }
     },
@@ -71,8 +174,11 @@ data class PositionItem(
     val multiplierString: String
         get() = String.format(Locale.US, "%.2fx", returnMultiplier)
 
-    val referencePrice: Double
-        get() = if (previousClose > 0.0) previousClose else if (entryPrice > 0.0) entryPrice else 0.0
+    companion object {
+        fun isBoughtToday(entryDate: String): Boolean = isPositionBoughtToday(entryDate)
+        fun calculateReferencePrice(entryDate: String, entryPrice: Double, previousClose: Double): Double =
+            com.example.varalakshmiportfolio.model.calculateReferencePrice(entryDate, entryPrice, previousClose)
+    }
 }
 
 data class TransactionItem(

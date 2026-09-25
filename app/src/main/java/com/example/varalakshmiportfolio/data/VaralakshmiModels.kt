@@ -9,3 +9,9 @@ typealias StockRecommendationItem = com.example.varalakshmiportfolio.model.Stock
 typealias HistoricalPricePoint = com.example.varalakshmiportfolio.model.HistoricalPricePoint
 typealias HistoricalRecommendationItem = com.example.varalakshmiportfolio.model.HistoricalRecommendationItem
 typealias RecommendationHistorySummary = com.example.varalakshmiportfolio.model.RecommendationHistorySummary
+ 
+fun isPositionBoughtToday(entryDate: String): Boolean =
+    com.example.varalakshmiportfolio.model.isPositionBoughtToday(entryDate)
+
+fun calculateReferencePrice(entryDate: String, entryPrice: Double, previousClose: Double): Double =
+    com.example.varalakshmiportfolio.model.calculateReferencePrice(entryDate, entryPrice, previousClose)

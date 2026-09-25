@@ -7,6 +7,8 @@ import com.example.varalakshmiportfolio.model.StockRecommendationItem
 import com.example.varalakshmiportfolio.model.HistoricalPricePoint
 import com.example.varalakshmiportfolio.model.HistoricalRecommendationItem
 import com.example.varalakshmiportfolio.model.RecommendationHistorySummary
+import com.example.varalakshmiportfolio.model.isPositionBoughtToday
+import com.example.varalakshmiportfolio.model.calculateReferencePrice
 import com.example.varalakshmiportfolio.ui.VaralakshmiViewModel
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
@@ -1496,6 +1498,615 @@ class VaralakshmiPortfolioTest {
         // Verify result is a failure indicating offline status
         assertTrue(result.isFailure)
         assertTrue(result.exceptionOrNull()?.message?.contains("Offline") == true)
+    }
+
+    @Test
+    fun testPositionBoughtTodayUsesEntryExecutionPriceAsBaseline() {
+        val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
+        // Position bought today (e.g. entryDate = today, entryPrice = 1183.36, currentPrice = 1182.55, previousClose = 1203.85)
+        val posToday = PositionItem(
+            positionId = "POS_TODAY_RAYMOND",
+            symbol = "RAYMOND",
+            quantity = 25,
+            entryPrice = 1183.36,
+            currentPrice = 1182.55,
+            marketValue = 29563.75,
+            unrealizedPnl = -20.25,
+            unrealizedPnlPct = -0.07,
+            peakPrice = 1183.36,
+            entryDate = today,
+            previousClose = 1203.85
+        )
+
+        // 1. Reference price must reflect entry execution price, not yesterday's close
+        assertEquals(1183.36, posToday.referencePrice, 0.001)
+        assertTrue(posToday.isBoughtToday)
+
+        // 2. todayPriceChange == -0.81 (1182.55 - 1183.36)
+        assertEquals(-0.81, posToday.todayPriceChange, 0.001)
+
+        // 3. todayValueChange == roundPaise(quantity * -0.81), NOT based on 1203.85
+        val expectedValChange = VaralakshmiRepository.roundPaise(posToday.quantity * -0.81) // 25 * -0.81 = -20.25
+        assertEquals(-20.25, expectedValChange, 0.001)
+        assertEquals(expectedValChange, posToday.todayValueChange, 0.001)
+        assertNotEquals(VaralakshmiRepository.roundPaise(25 * (1182.55 - 1203.85)), posToday.todayValueChange, 0.001)
+
+        // Also test with explicit "today" string
+        val posLiteralToday = posToday.copy(entryDate = "today")
+        assertEquals(1183.36, posLiteralToday.referencePrice, 0.001)
+        assertEquals(-0.81, posLiteralToday.todayPriceChange, 0.001)
+        assertEquals(expectedValChange, posLiteralToday.todayValueChange, 0.001)
+    }
+
+    @Test
+    fun testPositionHeldPriorToTodayUsesPreviousCloseAsReferencePrice() {
+        // Position held prior to today (e.g. entryDate = 2026-09-21, previousClose = 692.45, currentPrice = 674.85)
+        val posPrior = PositionItem(
+            positionId = "POS_PRIOR_HOLDING",
+            symbol = "PRIOR_CORP",
+            quantity = 40,
+            entryPrice = 650.00,
+            currentPrice = 674.85,
+            marketValue = 26994.00,
+            unrealizedPnl = 994.00,
+            unrealizedPnlPct = 3.82,
+            peakPrice = 680.00,
+            entryDate = "2026-09-21 09:30:00",
+            previousClose = 692.45
+        )
+
+        // 1. Reference price must use previousClose
+        assertFalse(posPrior.isBoughtToday)
+        assertEquals(692.45, posPrior.referencePrice, 0.001)
+
+        // 2. todayPriceChange is computed against previousClose (674.85 - 692.45 = -17.60)
+        assertEquals(-17.60, posPrior.todayPriceChange, 0.001)
+
+        // 3. todayValueChange == roundPaise(quantity * todayPriceChange)
+        val expectedValChange = VaralakshmiRepository.roundPaise(40 * -17.60) // -704.00
+        assertEquals(-704.00, expectedValChange, 0.001)
+        assertEquals(expectedValChange, posPrior.todayValueChange, 0.001)
+    }
+
+    @Test
+    fun testSummaryTodayPnlStrictlyEqualsPositionsSumOfTodayValueChange() {
+        val repository = VaralakshmiRepository()
+        val summary = repository.getCachedSummary()
+        val positions = repository.getCachedPositions()
+
+        // Exact equivalence invariant: summary.todayPnl strictly equals positions.sumOf { it.todayValueChange }
+        val sumTodayValueChange = VaralakshmiRepository.roundPaise(positions.sumOf { it.todayValueChange })
+        assertEquals(summary.todayPnl, sumTodayValueChange, 0.0001)
+
+        // todayPnlPct calculation against previous NAV
+        val prevNav = summary.totalNav - summary.todayPnl
+        val expectedPct = VaralakshmiRepository.roundPaise((summary.todayPnl / prevNav) * 100.0)
+        assertEquals(expectedPct, summary.todayPnlPct, 0.01)
+    }
+
+    @Test
+    fun testApplyCachedJsonStateRecomputesTodayPnlIgnoringStaleSummaryOverride() {
+        val repository = VaralakshmiRepository()
+        val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
+
+        // JSON payload containing stale/bogus summary todayPnl (99999.00) and positions
+        val jsonPayload = """
+            {
+                "summary": {
+                    "strategyId": "VARALAKSHMI_ALPHA_SCALE_35",
+                    "totalNav": 100000.00,
+                    "allocatedCapital": 100000.00,
+                    "deployedCapital": 80000.00,
+                    "availableCapital": 20000.00,
+                    "realizedPnl": 0.00,
+                    "unrealizedPnl": 500.00,
+                    "totalPnl": 500.00,
+                    "totalPnlPct": 0.50,
+                    "todayPnl": 99999.00,
+                    "todayPnlPct": 99.99
+                },
+                "positions": [
+                    {
+                        "positionId": "POS_1",
+                        "symbol": "RAYMOND",
+                        "quantity": 10,
+                        "entryPrice": 1183.36,
+                        "currentPrice": 1182.55,
+                        "entryDate": "$today",
+                        "previousClose": 1203.85,
+                        "todayPriceChange": -21.30,
+                        "todayValueChange": -213.00
+                    },
+                    {
+                        "positionId": "POS_2",
+                        "symbol": "TCS",
+                        "quantity": 20,
+                        "entryPrice": 3000.00,
+                        "currentPrice": 3050.00,
+                        "entryDate": "2026-09-20",
+                        "previousClose": 3020.00,
+                        "todayPriceChange": 30.00,
+                        "todayValueChange": 600.00
+                    }
+                ],
+                "transactions": []
+            }
+        """.trimIndent()
+
+        val applied = repository.applyCachedJsonState(jsonPayload)
+        assertTrue(applied)
+
+        val positions = repository.getCachedPositions()
+        val summary = repository.getCachedSummary()
+
+        // Position 1 bought today uses entryPrice (1183.36) -> change = -0.81, value change = -8.10
+        val raymond = positions.first { it.symbol == "RAYMOND" }
+        assertEquals(1183.36, raymond.referencePrice, 0.001)
+        assertEquals(-0.81, raymond.todayPriceChange, 0.001)
+        assertEquals(-8.10, raymond.todayValueChange, 0.001)
+
+        // Position 2 held prior uses previousClose (3020.00) -> change = 30.00, value change = 600.00
+        val tcs = positions.first { it.symbol == "TCS" }
+        assertEquals(3020.00, tcs.referencePrice, 0.001)
+        assertEquals(30.00, tcs.todayPriceChange, 0.001)
+        assertEquals(600.00, tcs.todayValueChange, 0.001)
+
+        // Summary todayPnl MUST strictly equal sum of positions: -8.10 + 600.00 = 591.90
+        val expectedTodayPnl = VaralakshmiRepository.roundPaise(positions.sumOf { it.todayValueChange })
+        assertEquals(591.90, expectedTodayPnl, 0.001)
+        assertEquals(expectedTodayPnl, summary.todayPnl, 0.001)
+        assertNotEquals(99999.00, summary.todayPnl, 0.001)
+
+        // todayPnlPct must be calculated against prevNav = totalNav - todayPnl
+        val prevNav = summary.totalNav - summary.todayPnl
+        val expectedPct = VaralakshmiRepository.roundPaise((summary.todayPnl / prevNav) * 100.0)
+        assertEquals(expectedPct, summary.todayPnlPct, 0.01)
+    }
+
+    @Test
+    fun testLiveSyncDynamicReferenceAndStrictDailyDeltaEquivalence() = runTest {
+        val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
+        val server = com.sun.net.httpserver.HttpServer.create(java.net.InetSocketAddress(0), 0)
+        try {
+            server.createContext("/api/live-trading/positions") { exchange ->
+                val response = """
+                    {
+                        "status": "OK",
+                        "active": [
+                            {
+                                "position_id": "POS_LIVE_1",
+                                "symbol": "RAYMOND",
+                                "quantity": 10,
+                                "entry_price": 1183.36,
+                                "current_price": 1182.55,
+                                "entry_date": "$today 10:15:00",
+                                "previous_close": 1203.85,
+                                "today_price_change": -21.30,
+                                "today_value_change": -213.00
+                            },
+                            {
+                                "position_id": "POS_LIVE_2",
+                                "symbol": "INFY",
+                                "quantity": 50,
+                                "entry_price": 1800.00,
+                                "current_price": 1820.00,
+                                "entry_date": "2026-09-20 09:30:00",
+                                "previous_close": 1810.00,
+                                "today_price_change": 10.00,
+                                "today_value_change": 500.00
+                            }
+                        ]
+                    }
+                """.trimIndent()
+                exchange.sendResponseHeaders(200, response.toByteArray().size.toLong())
+                exchange.responseBody.use { it.write(response.toByteArray()) }
+            }
+            server.createContext("/api/live-trading/transactions") { exchange ->
+                val response = """{"status":"OK","transactions":[]}"""
+                exchange.sendResponseHeaders(200, response.toByteArray().size.toLong())
+                exchange.responseBody.use { it.write(response.toByteArray()) }
+            }
+            server.start()
+
+            val repo = VaralakshmiRepository()
+            val result = repo.syncWithServer("http://localhost:${server.address.port}")
+
+            assertTrue(result is SyncResult.Success)
+            val positions = result.positions
+            assertEquals(2, positions.size)
+
+            val raymond = positions.first { it.symbol == "RAYMOND" }
+            assertEquals(1183.36, raymond.referencePrice, 0.001)
+            assertEquals(-0.81, raymond.todayPriceChange, 0.001)
+            assertEquals(-8.10, raymond.todayValueChange, 0.001)
+
+            val infy = positions.first { it.symbol == "INFY" }
+            assertEquals(1810.00, infy.referencePrice, 0.001)
+            assertEquals(10.00, infy.todayPriceChange, 0.001)
+            assertEquals(500.00, infy.todayValueChange, 0.001)
+
+            val expectedSum = VaralakshmiRepository.roundPaise(positions.sumOf { it.todayValueChange })
+            assertEquals(491.90, expectedSum, 0.001)
+            assertEquals(expectedSum, result.summary.todayPnl, 0.001)
+        } finally {
+            server.stop(0)
+        }
+    }
+
+    @Test
+    fun testPositionBoughtTodayWithZeroOrNegativeEntryPriceFallsBackToPreviousClose() {
+        val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
+        val pos = PositionItem(
+            positionId = "POS_ZERO_ENTRY",
+            symbol = "BAD_ENTRY",
+            quantity = 50,
+            entryPrice = 0.0,
+            currentPrice = 125.0,
+            marketValue = 6250.0,
+            unrealizedPnl = 0.0,
+            unrealizedPnlPct = 0.0,
+            peakPrice = 125.0,
+            entryDate = today,
+            previousClose = 120.0
+        )
+        // Since entryPrice is 0.0, calculateReferencePrice falls back to previousClose (120.0)
+        assertEquals(120.0, pos.referencePrice, 0.001)
+        assertEquals(5.0, pos.todayPriceChange, 0.001)
+        assertEquals(250.0, pos.todayValueChange, 0.001)
+    }
+
+    @Test
+    fun testPositionWithBothZeroEntryPriceAndZeroPreviousCloseProducesZeroPriceAndValueChange() {
+        val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
+        val pos = PositionItem(
+            positionId = "POS_BOTH_ZERO",
+            symbol = "NO_REF",
+            quantity = 100,
+            entryPrice = 0.0,
+            currentPrice = 200.0,
+            marketValue = 20000.0,
+            unrealizedPnl = 0.0,
+            unrealizedPnlPct = 0.0,
+            peakPrice = 200.0,
+            entryDate = today,
+            previousClose = 0.0
+        )
+        // Both entryPrice and previousClose are 0.0 -> referencePrice must be 0.0 and today's changes 0.0
+        assertEquals(0.0, pos.referencePrice, 0.001)
+        assertEquals(0.0, pos.todayPriceChange, 0.001)
+        assertEquals(0.0, pos.todayPriceChangePct, 0.001)
+        assertEquals(0.0, pos.todayValueChange, 0.001)
+
+        // Also test through applyCachedJsonState to ensure it does not drift to currentPrice (200.0)
+        val jsonPayload = """
+            {
+                "summary": { "strategyId": "S", "totalNav": 100000.0, "todayPnl": 0.0 },
+                "positions": [
+                    {
+                        "positionId": "POS_BOTH_ZERO",
+                        "symbol": "NO_REF",
+                        "quantity": 100,
+                        "entryPrice": 0.0,
+                        "currentPrice": 200.0,
+                        "entryDate": "$today",
+                        "previousClose": 0.0
+                    }
+                ]
+            }
+        """.trimIndent()
+        val repo = VaralakshmiRepository()
+        repo.applyCachedJsonState(jsonPayload)
+        val parsed = repo.getCachedPositions().first { it.symbol == "NO_REF" }
+        assertEquals(0.0, parsed.referencePrice, 0.001)
+        assertEquals(0.0, parsed.todayPriceChange, 0.001)
+        assertEquals(0.0, parsed.todayValueChange, 0.001)
+        assertEquals(0.0, repo.getCachedSummary().todayPnl, 0.001)
+    }
+
+    @Test
+    fun testIsPositionBoughtTodayHandlesIsoUtcTimestampNearMidnight() {
+        val cal = java.util.Calendar.getInstance()
+        cal.set(java.util.Calendar.HOUR_OF_DAY, 5)
+        cal.set(java.util.Calendar.MINUTE, 0)
+        cal.set(java.util.Calendar.SECOND, 0)
+        cal.set(java.util.Calendar.MILLISECOND, 0)
+
+        // Format this morning's timestamp in UTC
+        val utcFormat = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US)
+        utcFormat.timeZone = java.util.TimeZone.getTimeZone("UTC")
+        val utcTimestamp = utcFormat.format(cal.time)
+
+        // Even if the UTC date might differ near midnight depending on timezone offset,
+        // isPositionBoughtToday must correctly evaluate against local calendar date
+        assertTrue(isPositionBoughtToday(utcTimestamp))
+    }
+
+    @Test
+    fun testApplyCachedJsonStateRecalculatesPriorDayPositionsIgnoringStaleValueChange() {
+        val repository = VaralakshmiRepository()
+        val jsonPayload = """
+            {
+                "summary": {
+                    "strategyId": "VARALAKSHMI_ALPHA_SCALE_35",
+                    "totalNav": 100000.00,
+                    "allocatedCapital": 100000.00,
+                    "deployedCapital": 80000.00,
+                    "availableCapital": 20000.00,
+                    "realizedPnl": 0.00,
+                    "unrealizedPnl": 500.00,
+                    "totalPnl": 500.00,
+                    "totalPnlPct": 0.50,
+                    "todayPnl": 9999.00,
+                    "todayPnlPct": 9.99
+                },
+                "positions": [
+                    {
+                        "positionId": "POS_PRIOR_STALE",
+                        "symbol": "HDFC",
+                        "quantity": 10,
+                        "entryPrice": 1500.00,
+                        "currentPrice": 1550.00,
+                        "entryDate": "2026-09-10",
+                        "previousClose": 1500.00,
+                        "todayPriceChange": 50.00,
+                        "todayValueChange": 9999.00
+                    }
+                ],
+                "transactions": []
+            }
+        """.trimIndent()
+
+        val applied = repository.applyCachedJsonState(jsonPayload)
+        assertTrue(applied)
+
+        val positions = repository.getCachedPositions()
+        val summary = repository.getCachedSummary()
+        val hdfc = positions.first { it.symbol == "HDFC" }
+
+        // Expected todayValueChange = 10 * 50.00 = 500.00, NOT stale 9999.00
+        assertEquals(500.00, hdfc.todayValueChange, 0.001)
+        assertEquals(500.00, summary.todayPnl, 0.001)
+        assertNotEquals(9999.00, summary.todayPnl, 0.001)
+    }
+
+    @Test
+    fun testLiveSyncRecalculatesPriorDayPositionsIgnoringStaleValueChange() = runTest {
+        val server = com.sun.net.httpserver.HttpServer.create(java.net.InetSocketAddress(0), 0)
+        try {
+            server.createContext("/api/live-trading/positions") { exchange ->
+                val response = """
+                    {
+                        "status": "OK",
+                        "active": [
+                            {
+                                "position_id": "POS_PRIOR_STALE_LIVE",
+                                "symbol": "SBIN",
+                                "quantity": 100,
+                                "entry_price": 750.00,
+                                "current_price": 760.00,
+                                "entry_date": "2026-09-15 10:00:00",
+                                "previous_close": 755.00,
+                                "today_price_change": 5.00,
+                                "today_value_change": 8888.00
+                            }
+                        ]
+                    }
+                """.trimIndent()
+                exchange.sendResponseHeaders(200, response.toByteArray().size.toLong())
+                exchange.responseBody.use { it.write(response.toByteArray()) }
+            }
+            server.createContext("/api/live-trading/transactions") { exchange ->
+                val response = """{"status":"OK","transactions":[]}"""
+                exchange.sendResponseHeaders(200, response.toByteArray().size.toLong())
+                exchange.responseBody.use { it.write(response.toByteArray()) }
+            }
+            server.start()
+
+            val repo = VaralakshmiRepository()
+            val result = repo.syncWithServer("http://localhost:${server.address.port}")
+
+            assertTrue(result is SyncResult.Success)
+            val sbin = result.positions.first { it.symbol == "SBIN" }
+            // 100 * 5.00 = 500.00, NOT 8888.00
+            assertEquals(5.00, sbin.todayPriceChange, 0.001)
+            assertEquals(500.00, sbin.todayValueChange, 0.001)
+            assertEquals(500.00, result.summary.todayPnl, 0.001)
+        } finally {
+            server.stop(0)
+        }
+    }
+
+    @Test
+    fun testIsPositionBoughtTodayTimezoneAwareUtcEveningInUsTimezoneDoesNotFalselyMatchToday() {
+        val origTz = java.util.TimeZone.getDefault()
+        try {
+            // Set timezone to America/New_York (UTC-4 in summer / EDT)
+            java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("America/New_York"))
+
+            val cal = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("America/New_York"))
+            // Set to yesterday 21:00 EDT
+            cal.add(java.util.Calendar.DAY_OF_MONTH, -1)
+            cal.set(java.util.Calendar.HOUR_OF_DAY, 21)
+            cal.set(java.util.Calendar.MINUTE, 0)
+            cal.set(java.util.Calendar.SECOND, 0)
+
+            // In UTC, 21:00 EDT yesterday is 01:00 UTC TODAY (starts with today's UTC date)
+            val utcFormat = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US)
+            utcFormat.timeZone = java.util.TimeZone.getTimeZone("UTC")
+            val utcTimestamp = utcFormat.format(cal.time)
+
+            // Because the trade occurred yesterday at 21:00 EDT in local time,
+            // isPositionBoughtToday MUST return false despite the raw UTC string starting with today's date
+            assertFalse(isPositionBoughtToday(utcTimestamp))
+        } finally {
+            java.util.TimeZone.setDefault(origTz)
+        }
+    }
+
+    @Test
+    fun testIsPositionBoughtTodaySupportsIndianAndAlternativeDateFormats() {
+        val now = java.util.Date()
+        val indianDash = java.text.SimpleDateFormat("dd-MM-yyyy", java.util.Locale.US).format(now)
+        val indianSlash = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.US).format(now)
+        val indianDashWithTime = java.text.SimpleDateFormat("dd-MM-yyyy HH:mm:ss", java.util.Locale.US).format(now)
+        val indianSlashWithTime = java.text.SimpleDateFormat("dd/MM/yyyy HH:mm:ss", java.util.Locale.US).format(now)
+        val yyyySlash = java.text.SimpleDateFormat("yyyy/MM/dd", java.util.Locale.US).format(now)
+
+        assertTrue(isPositionBoughtToday(indianDash))
+        assertTrue(isPositionBoughtToday(indianSlash))
+        assertTrue(isPositionBoughtToday(indianDashWithTime))
+        assertTrue(isPositionBoughtToday(indianSlashWithTime))
+        assertTrue(isPositionBoughtToday(yyyySlash))
+
+        // Prior date in Indian format must return false
+        assertFalse(isPositionBoughtToday("01-01-2020"))
+        assertFalse(isPositionBoughtToday("01/01/2020"))
+    }
+
+    @Test
+    fun testApplyCachedJsonStateWithNegativePrevNavDoesNotFlipPercentageSign() {
+        val repository = VaralakshmiRepository()
+        val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
+        val jsonPayload = """
+            {
+                "summary": {
+                    "strategyId": "VARALAKSHMI_ALPHA_SCALE_35",
+                    "totalNav": 1000.00,
+                    "allocatedCapital": 100000.00,
+                    "todayPnl": 0.0,
+                    "todayPnlPct": 0.0
+                },
+                "positions": [
+                    {
+                        "positionId": "POS_HIGH_PNL",
+                        "symbol": "SUPER_GAINER",
+                        "quantity": 100,
+                        "entryPrice": 10.00,
+                        "currentPrice": 25.00,
+                        "entryDate": "$today",
+                        "previousClose": 10.00,
+                        "todayPriceChange": 15.00,
+                        "todayValueChange": 1500.00
+                    }
+                ]
+            }
+        """.trimIndent()
+
+        val applied = repository.applyCachedJsonState(jsonPayload)
+        assertTrue(applied)
+
+        val summary = repository.getCachedSummary()
+        assertEquals(1500.00, summary.todayPnl, 0.001)
+        // totalNav (1000) - todayPnl (1500) = prevNav (-500) <= 0.
+        // It should fall back to allocatedCapital (100,000.00), yielding positive +1.50%, NOT -300.0%
+        assertTrue(summary.todayPnlPct >= 0.0)
+        assertEquals(1.50, summary.todayPnlPct, 0.01)
+    }
+
+    @Test
+    fun testIsPositionBoughtTodaySupportsMicrosecondsAndRfc822Timezones() {
+        val now = java.util.Date()
+        val isoBase = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(now)
+
+        // 1. Python microsecond timestamps (.123456Z)
+        val utcMicroFormat = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US)
+        utcMicroFormat.timeZone = java.util.TimeZone.getTimeZone("UTC")
+        val utcMicro = utcMicroFormat.format(now) + ".987654Z"
+        // Evaluated against local calendar date
+        val expectedUtcMatch = run {
+            val parser = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US)
+            parser.timeZone = java.util.TimeZone.getTimeZone("UTC")
+            val pDate = parser.parse(utcMicroFormat.format(now) + "Z")
+            val localDateStr = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(pDate!!)
+            localDateStr == isoBase
+        }
+        assertEquals(expectedUtcMatch, isPositionBoughtToday(utcMicro))
+
+        // 2. RFC 822 timezone format without colon (+0530)
+        val rfc822 = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ", java.util.Locale.US).format(now)
+        assertTrue(isPositionBoughtToday(rfc822))
+
+        // 3. ISO timestamps without seconds (HH:mm)
+        val noSeconds = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm", java.util.Locale.US).format(now)
+        assertTrue(isPositionBoughtToday(noSeconds))
+
+        val noSecondsSpace = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.US).format(now)
+        assertTrue(isPositionBoughtToday(noSecondsSpace))
+
+        // 4. Invalid timezone string must return false and not falsely prefix match
+        assertFalse(isPositionBoughtToday("invalid-timestamp+05:30"))
+        assertFalse(isPositionBoughtToday("2026-09-25-malformed-time+05:30"))
+    }
+
+    @Test
+    fun testPositionItemImmutableReferencePricePreservesConsistencyAcrossMidnight() {
+        val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
+        val pos = PositionItem(
+            positionId = "POS_IMMUTABLE_TEST",
+            symbol = "CONSISTENT_CORP",
+            quantity = 10,
+            entryPrice = 1183.36,
+            currentPrice = 1182.55,
+            marketValue = 11825.50,
+            unrealizedPnl = -8.10,
+            unrealizedPnlPct = -0.07,
+            peakPrice = 1183.36,
+            entryDate = today,
+            previousClose = 1203.85
+        )
+
+        // Stored reference price matches entry execution price and does not depend on dynamic clock re-evaluation
+        assertEquals(1183.36, pos.referencePrice, 0.001)
+        assertTrue(pos.isBoughtToday)
+        assertEquals(-0.81, pos.todayPriceChange, 0.001)
+        assertEquals(-8.10, pos.todayValueChange, 0.001)
+
+        // Mathematical invariant: todayPriceChange strictly equals roundPaise(currentPrice - referencePrice)
+        val recomputedPriceChange = VaralakshmiRepository.roundPaise(pos.currentPrice - pos.referencePrice)
+        assertEquals(recomputedPriceChange, pos.todayPriceChange, 0.0001)
+
+        // Mathematical invariant: todayValueChange strictly equals roundPaise(quantity * todayPriceChange)
+        val recomputedValueChange = VaralakshmiRepository.roundPaise(pos.quantity * pos.todayPriceChange)
+        assertEquals(recomputedValueChange, pos.todayValueChange, 0.0001)
+    }
+
+    @Test
+    fun testApplyCachedJsonStateFallbackAllocatedCapitalUsesParsedSummary() {
+        val repository = VaralakshmiRepository()
+        val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
+        val jsonPayload = """
+            {
+                "summary": {
+                    "strategyId": "VARALAKSHMI_ALPHA_SCALE_35",
+                    "totalNav": 1000.00,
+                    "allocatedCapital": 200000.00,
+                    "todayPnl": 0.0,
+                    "todayPnlPct": 0.0
+                },
+                "positions": [
+                    {
+                        "positionId": "POS_HIGH_PNL_2",
+                        "symbol": "SUPER_GAINER_2",
+                        "quantity": 100,
+                        "entryPrice": 10.00,
+                        "currentPrice": 25.00,
+                        "entryDate": "$today",
+                        "previousClose": 10.00,
+                        "todayPriceChange": 15.00,
+                        "todayValueChange": 1500.00
+                    }
+                ]
+            }
+        """.trimIndent()
+
+        val applied = repository.applyCachedJsonState(jsonPayload)
+        assertTrue(applied)
+
+        val summary = repository.getCachedSummary()
+        assertEquals(1500.00, summary.todayPnl, 0.001)
+        // totalNav (1000) - todayPnl (1500) = prevNav (-500) <= 0.
+        // It should fall back to parsedSummary.allocatedCapital (200,000.00), yielding positive +0.75%
+        assertEquals(0.75, summary.todayPnlPct, 0.01)
     }
 }
 
