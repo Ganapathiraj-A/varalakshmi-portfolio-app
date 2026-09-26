@@ -2151,5 +2151,59 @@ class VaralakshmiPortfolioTest {
         assertEquals(618904.21, expectedNav, 0.001)
         assertEquals(expectedNav, summary.totalNav, 0.001)
     }
+
+    @Test
+    fun testIpoActionNotificationParsingAndDismissal() {
+        val repository = VaralakshmiRepository()
+        val defaultIpos = repository.getCachedIpoNotifications()
+        assertTrue("Expected default seed IPO notification", defaultIpos.isNotEmpty())
+        val defaultAlert = defaultIpos.first()
+        assertEquals("TATATECH", defaultAlert.symbol)
+        assertEquals(69.4, defaultAlert.qibMultiple, 0.001)
+        assertEquals(15000.00, defaultAlert.lotPrice, 0.001)
+        assertFalse(defaultAlert.isDismissed)
+
+        // Dismissal test
+        val dismissedList = repository.dismissIpoNotification(defaultAlert.id)
+        val target = dismissedList.first { it.id == defaultAlert.id }
+        assertTrue(target.isDismissed)
+
+        // Custom JSON parsing test
+        val customJson = """
+            {
+                "ipo_notifications": [
+                    {
+                        "id": "IPO-SWIGGY-001",
+                        "symbol": "SWIGGY",
+                        "company_name": "Swiggy Ltd",
+                        "action_type": "APPLY_NOW",
+                        "headline": "Action Required: Apply for Swiggy",
+                        "message": "QIB Institutional Demand: 38.2x",
+                        "lot_price": 14760.00,
+                        "lot_quantity": 1,
+                        "qib_multiple": 38.2,
+                        "close_deadline": "15:30",
+                        "urgency": "HIGH",
+                        "timestamp": "2026-09-26 11:00:00"
+                    }
+                ]
+            }
+        """.trimIndent()
+
+        val parsed = VaralakshmiRepository.parseIpoNotificationsJson(customJson)
+        assertEquals(1, parsed.size)
+        val swiggy = parsed.first()
+        assertEquals("SWIGGY", swiggy.symbol)
+        assertEquals("Swiggy Ltd", swiggy.companyName)
+        assertEquals(38.2, swiggy.qibMultiple, 0.001)
+        assertEquals(14760.00, swiggy.lotPrice, 0.001)
+        assertEquals("₹14,760.00", swiggy.formattedLotPrice)
+        assertEquals(1, swiggy.lotQuantity)
+        assertEquals(30, swiggy.lotShares)
+        assertEquals(500.00, swiggy.cutoffPrice, 0.001)
+        assertEquals("₹14,760.00", swiggy.formattedTotalAmount)
+        assertEquals("38.2x", swiggy.formattedQibMultiple)
+        assertFalse(swiggy.isDismissed)
+    }
 }
 

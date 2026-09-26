@@ -11,6 +11,7 @@ import com.example.varalakshmiportfolio.model.MarketIndexItem
 import com.example.varalakshmiportfolio.model.StockRecommendationItem
 import com.example.varalakshmiportfolio.model.HistoricalRecommendationItem
 import com.example.varalakshmiportfolio.model.RecommendationHistorySummary
+import com.example.varalakshmiportfolio.model.IpoActionNotification
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -26,6 +27,7 @@ data class VaralakshmiUiState(
     val recommendations: List<StockRecommendationItem> = emptyList(),
     val recommendationHistory: List<HistoricalRecommendationItem> = emptyList(),
     val recommendationHistorySummary: RecommendationHistorySummary = RecommendationHistorySummary(0, 0.0, 0.0, 0, 0),
+    val ipoNotifications: List<IpoActionNotification> = emptyList(),
     val selectedRecommendationForChart: StockRecommendationItem? = null,
     val showRecommendationHistory: Boolean = false,
     val selectedHistoryFilter: String = "ALL",
@@ -60,6 +62,7 @@ class VaralakshmiViewModel(
             recommendations = repository.getCachedRecommendations(),
             recommendationHistory = repository.getCachedRecommendationHistory(),
             recommendationHistorySummary = repository.getCachedRecommendationHistorySummary(),
+            ipoNotifications = repository.getCachedIpoNotifications(),
             serverUrl = repository.getServerUrl(),
             authToken = repository.getAuthToken()
         )
@@ -92,6 +95,7 @@ class VaralakshmiViewModel(
                             recommendations = syncResult.recommendations,
                             recommendationHistory = syncResult.recommendationHistory,
                             recommendationHistorySummary = syncResult.recommendationHistorySummary,
+                            ipoNotifications = syncResult.ipoNotifications,
                             isRefreshing = false,
                             isLiveSync = true,
                             snackbarMessage = "Synced with live trading engine"
@@ -108,6 +112,7 @@ class VaralakshmiViewModel(
                             recommendations = syncResult.recommendations,
                             recommendationHistory = syncResult.recommendationHistory,
                             recommendationHistorySummary = syncResult.recommendationHistorySummary,
+                            ipoNotifications = syncResult.ipoNotifications,
                             isRefreshing = false,
                             isLiveSync = false,
                             snackbarMessage = "Offline mode: showing cached snapshot"
@@ -259,6 +264,11 @@ class VaralakshmiViewModel(
 
     fun clearSnackbarMessage() {
         _uiState.update { it.copy(snackbarMessage = null) }
+    }
+
+    fun dismissIpoNotification(id: String) {
+        val updated = repository.dismissIpoNotification(id)
+        _uiState.update { it.copy(ipoNotifications = updated) }
     }
 
     internal fun setPositionsForTesting(positions: List<PositionItem>) {

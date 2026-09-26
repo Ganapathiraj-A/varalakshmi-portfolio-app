@@ -328,3 +328,47 @@ data class RecommendationHistorySummary(
         }
 }
 
+enum class IpoActionType {
+    APPLY_NOW,
+    MANDATE_PENDING,
+    ALLOTMENT_WON,
+    ALLOTMENT_MISSED,
+    LISTING_EXIT
+}
+
+data class IpoActionNotification(
+    val id: String,
+    val symbol: String,
+    val companyName: String,
+    val actionType: IpoActionType = IpoActionType.APPLY_NOW,
+    val headline: String,
+    val message: String,
+    val lotPrice: Double = 14500.0,
+    val lotQuantity: Int = 1,          // Recommended Lots to apply (Strictly 1 Lot in Retail)
+    val lotShares: Int = 30,           // Shares per lot (e.g. 30 shares @ ₹500 = ₹15,000)
+    val cutoffPrice: Double = 500.0,   // Cutoff / Upper band bidding price (₹)
+    val qibMultiple: Double = 0.0,
+    val closeDeadline: String = "15:30",
+    val urgency: String = "HIGH", // HIGH, MEDIUM, INFO
+    val timestamp: String = "",
+    val deepLinkUrl: String = "https://kite.zerodha.com/ipo",
+    val isDismissed: Boolean = false
+) {
+    val totalApplicationAmount: Double
+        get() = if (lotPrice > 0.0) lotPrice * lotQuantity else cutoffPrice * lotShares * lotQuantity
+
+    val formattedLotPrice: String
+        get() = if (lotPrice.isNaN() || lotPrice.isInfinite()) "₹14,500.00" else String.format(Locale.US, "₹%,.2f", lotPrice)
+
+    val formattedTotalAmount: String
+        get() = String.format(Locale.US, "₹%,.2f", totalApplicationAmount)
+
+    val formattedCutoffPrice: String
+        get() = if (cutoffPrice.isNaN() || cutoffPrice.isInfinite()) "Cut-off" else String.format(Locale.US, "₹%,.2f", cutoffPrice)
+
+    val formattedQibMultiple: String
+        get() = if (qibMultiple.isNaN() || qibMultiple.isInfinite()) "—" else String.format(Locale.US, "%.1fx", qibMultiple)
+}
+
+
+

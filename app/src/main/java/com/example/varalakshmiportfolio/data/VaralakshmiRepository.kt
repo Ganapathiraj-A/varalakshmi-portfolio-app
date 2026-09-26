@@ -5,6 +5,8 @@ import com.example.varalakshmiportfolio.model.PositionItem
 import com.example.varalakshmiportfolio.model.TransactionItem
 import com.example.varalakshmiportfolio.model.StockRecommendationItem
 import com.example.varalakshmiportfolio.model.HistoricalPricePoint
+import com.example.varalakshmiportfolio.model.IpoActionNotification
+import com.example.varalakshmiportfolio.model.IpoActionType
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -32,6 +34,7 @@ sealed class SyncResult {
     abstract val recommendations: List<StockRecommendationItem>
     abstract val recommendationHistory: List<HistoricalRecommendationItem>
     abstract val recommendationHistorySummary: RecommendationHistorySummary
+    abstract val ipoNotifications: List<IpoActionNotification>
 
     data class Success(
         override val summary: PortfolioSummary,
@@ -40,7 +43,8 @@ sealed class SyncResult {
         override val nifty: MarketIndexItem = MarketIndexItem(),
         override val recommendations: List<StockRecommendationItem> = emptyList(),
         override val recommendationHistory: List<HistoricalRecommendationItem> = emptyList(),
-        override val recommendationHistorySummary: RecommendationHistorySummary = RecommendationHistorySummary(0, 0.0, 0.0, 0, 0)
+        override val recommendationHistorySummary: RecommendationHistorySummary = RecommendationHistorySummary(0, 0.0, 0.0, 0, 0),
+        override val ipoNotifications: List<IpoActionNotification> = emptyList()
     ) : SyncResult()
 
     data class OfflineCacheFallback(
@@ -51,7 +55,8 @@ sealed class SyncResult {
         override val nifty: MarketIndexItem = MarketIndexItem(),
         override val recommendations: List<StockRecommendationItem> = emptyList(),
         override val recommendationHistory: List<HistoricalRecommendationItem> = emptyList(),
-        override val recommendationHistorySummary: RecommendationHistorySummary = RecommendationHistorySummary(0, 0.0, 0.0, 0, 0)
+        override val recommendationHistorySummary: RecommendationHistorySummary = RecommendationHistorySummary(0, 0.0, 0.0, 0, 0),
+        override val ipoNotifications: List<IpoActionNotification> = emptyList()
     ) : SyncResult()
 }
 
@@ -761,6 +766,100 @@ class VaralakshmiRepository {
                 emptyList()
             }
         }
+
+        fun createDefaultIpoNotifications(): List<IpoActionNotification> = listOf(
+            IpoActionNotification(
+                id = "IPO-ALERT-SANTHANA-001",
+                symbol = "TATATECH",
+                companyName = "Tata Technologies Ltd",
+                actionType = IpoActionType.APPLY_NOW,
+                headline = "Santhana Lakshmi Alert: Apply for Tata Technologies",
+                message = "Apply strictly 1 Lot (30 shares @ ₹500 Cut-off). QIB Institutional Demand: 69.4x (High Conviction). Regime: BULLISH.",
+                lotPrice = 15000.00,
+                lotQuantity = 1,
+                lotShares = 30,
+                cutoffPrice = 500.00,
+                qibMultiple = 69.4,
+                closeDeadline = "15:30",
+                urgency = "HIGH",
+                timestamp = "2026-09-26 10:00:00",
+                deepLinkUrl = "https://kite.zerodha.com/ipo"
+            )
+        )
+
+        fun parseIpoNotificationsJson(jsonStr: String): List<IpoActionNotification> {
+            return try {
+                val trimmed = jsonStr.trim()
+                val array = when {
+                    trimmed.startsWith("{") -> {
+                        val root = JSONObject(trimmed)
+                        root.optJSONArray("ipo_notifications")
+                            ?: root.optJSONArray("ipo_alerts")
+                            ?: root.optJSONArray("ipo_signals")
+                            ?: root.optJSONArray("notifications")
+                    }
+                    trimmed.startsWith("[") -> JSONArray(trimmed)
+                    else -> null
+                } ?: return emptyList()
+
+                val list = mutableListOf<IpoActionNotification>()
+                for (i in 0 until array.length()) {
+                    val obj = array.optJSONObject(i) ?: continue
+                    val id = obj.optString("id", "IPO-${i + 1}")
+                    val symbol = obj.optString("symbol", "").trim().uppercase(Locale.US)
+                    if (symbol.isBlank()) continue
+                    val companyName = obj.optString("company_name", symbol)
+                    val actionStr = obj.optString("action_type", obj.optString("action", "APPLY_NOW")).uppercase(Locale.US)
+                    val actionType = try {
+                        IpoActionType.valueOf(actionStr)
+                    } catch (_: Exception) {
+                        when {
+                            actionStr.contains("MANDATE") -> IpoActionType.MANDATE_PENDING
+                            actionStr.contains("WON") || actionStr.contains("ALLOTTED") -> IpoActionType.ALLOTMENT_WON
+                            actionStr.contains("MISSED") || actionStr.contains("REFUND") -> IpoActionType.ALLOTMENT_MISSED
+                            actionStr.contains("EXIT") || actionStr.contains("LIST") -> IpoActionType.LISTING_EXIT
+                            else -> IpoActionType.APPLY_NOW
+                        }
+                    }
+                    val headline = obj.optString("headline", "IPO Action Required: $symbol")
+                    val message = obj.optString("message", "Action required for $symbol IPO.")
+                    val lotPrice = optSafeDouble(obj, "lot_price", if (obj.has("price")) optSafeDouble(obj, "price", 14500.0) else 14500.0)
+                    val lotQty = obj.optInt("lot_quantity", 1)
+                    val lotShares = obj.optInt("lot_shares", if (obj.has("shares_per_lot")) obj.optInt("shares_per_lot", 30) else 30)
+                    val cutoffPrice = optSafeDouble(obj, "cutoff_price", if (obj.has("cut_off_price")) optSafeDouble(obj, "cut_off_price", 500.0) else 500.0)
+                    val qib = optSafeDouble(obj, "qib_multiple", if (obj.has("qib")) optSafeDouble(obj, "qib", 0.0) else 0.0)
+                    val deadline = obj.optString("close_deadline", obj.optString("deadline", "15:30"))
+                    val urgency = obj.optString("urgency", "HIGH")
+                    val ts = obj.optString("timestamp", "")
+                    val deepLink = obj.optString("deep_link_url", "https://kite.zerodha.com/ipo")
+                    val isDismissed = obj.optBoolean("is_dismissed", false)
+
+                    list.add(
+                        IpoActionNotification(
+                            id = id,
+                            symbol = symbol,
+                            companyName = companyName,
+                            actionType = actionType,
+                            headline = headline,
+                            message = message,
+                            lotPrice = lotPrice,
+                            lotQuantity = lotQty,
+                            lotShares = lotShares,
+                            cutoffPrice = cutoffPrice,
+                            qibMultiple = qib,
+                            closeDeadline = deadline,
+                            urgency = urgency,
+                            timestamp = ts,
+                            deepLinkUrl = deepLink,
+                            isDismissed = isDismissed
+                        )
+                    )
+                }
+                list
+            } catch (e: Exception) {
+                emptyList()
+            }
+        }
     }
 
     private val lock = Any()
@@ -776,6 +875,7 @@ class VaralakshmiRepository {
     private val cachedRecommendations = createDefaultRecommendations().toMutableList()
     private val cachedRecommendationHistory = createDefaultRecommendationHistory().toMutableList()
     private var cachedRecommendationHistorySummary = calculateRecommendationHistorySummary(cachedRecommendationHistory)
+    private val cachedIpoNotifications = createDefaultIpoNotifications().toMutableList()
 
     fun resetToDefaultSeed() = synchronized(lock) {
         cachedSummary = createDefaultSummary()
@@ -789,6 +889,8 @@ class VaralakshmiRepository {
         cachedRecommendationHistory.clear()
         cachedRecommendationHistory.addAll(createDefaultRecommendationHistory())
         cachedRecommendationHistorySummary = calculateRecommendationHistorySummary(cachedRecommendationHistory)
+        cachedIpoNotifications.clear()
+        cachedIpoNotifications.addAll(createDefaultIpoNotifications())
     }
 
     private var isLoadedFromDisk = false
@@ -840,6 +942,18 @@ class VaralakshmiRepository {
     }
     fun getCachedRecommendationHistory(): List<HistoricalRecommendationItem> = synchronized(lock) { ensureLoaded(); cachedRecommendationHistory.toList() }
     fun getCachedRecommendationHistorySummary(): RecommendationHistorySummary = synchronized(lock) { ensureLoaded(); cachedRecommendationHistorySummary }
+    fun getCachedIpoNotifications(): List<IpoActionNotification> = synchronized(lock) { ensureLoaded(); cachedIpoNotifications.toList() }
+
+    fun dismissIpoNotification(id: String): List<IpoActionNotification> = synchronized(lock) {
+        ensureLoaded()
+        val index = cachedIpoNotifications.indexOfFirst { it.id == id }
+        if (index != -1) {
+            val old = cachedIpoNotifications[index]
+            cachedIpoNotifications[index] = old.copy(isDismissed = true)
+            saveToDisk()
+        }
+        cachedIpoNotifications.toList()
+    }
 
     suspend fun syncWithServer(serverBaseUrl: String = getServerUrl(), authToken: String = getAuthToken()): SyncResult =
         refreshData(serverBaseUrl, authToken)
@@ -852,6 +966,7 @@ class VaralakshmiRepository {
         var fetchedNifty: MarketIndexItem? = null
         var fetchedRecommendations: List<StockRecommendationItem>? = null
         var fetchedRecommendationHistory: List<HistoricalRecommendationItem>? = null
+        var fetchedIpoNotifications: List<IpoActionNotification>? = null
         var networkError: String? = null
 
         val tokenQuery = if (authToken.isNotBlank()) "&token=$authToken" else ""
@@ -904,6 +1019,16 @@ class VaralakshmiRepository {
                     val parsedHist = parseRecommendationHistoryJson(root.toString())
                     if (parsedHist.isNotEmpty()) {
                         fetchedRecommendationHistory = parsedHist
+                    }
+                }
+
+                val ipoArray = root.optJSONArray("ipo_notifications")
+                    ?: root.optJSONArray("ipo_alerts")
+                    ?: root.optJSONArray("ipo_signals")
+                if (ipoArray != null && ipoArray.length() > 0) {
+                    val parsedIpos = parseIpoNotificationsJson(root.toString())
+                    if (parsedIpos.isNotEmpty()) {
+                        fetchedIpoNotifications = parsedIpos
                     }
                 }
 
@@ -1223,6 +1348,17 @@ class VaralakshmiRepository {
                 cachedRecommendationHistorySummary = calculateRecommendationHistorySummary(cachedRecommendationHistory)
             }
 
+            if (fetchedIpoNotifications != null) {
+                // Merge with existing dismissed states
+                val dismissedIds = cachedIpoNotifications.filter { it.isDismissed }.map { it.id }.toSet()
+                cachedIpoNotifications.clear()
+                cachedIpoNotifications.addAll(
+                    fetchedIpoNotifications.map {
+                        if (it.id in dismissedIds) it.copy(isDismissed = true) else it
+                    }
+                )
+            }
+
             if (fetchedPositions != null) {
                 cachedPositions.clear()
                 cachedPositions.addAll(fetchedPositions)
@@ -1277,7 +1413,8 @@ class VaralakshmiRepository {
                     nifty = cachedNifty,
                     recommendations = cleanRecommendations,
                     recommendationHistory = cachedRecommendationHistory.toList(),
-                    recommendationHistorySummary = cachedRecommendationHistorySummary
+                    recommendationHistorySummary = cachedRecommendationHistorySummary,
+                    ipoNotifications = cachedIpoNotifications.toList()
                 )
             } else {
                 val heldSymbols = cachedPositions.map { it.symbol.trim().uppercase(Locale.US) }.toSet()
@@ -1294,7 +1431,8 @@ class VaralakshmiRepository {
                     nifty = cachedNifty,
                     recommendations = cleanRecommendations,
                     recommendationHistory = cachedRecommendationHistory.toList(),
-                    recommendationHistorySummary = cachedRecommendationHistorySummary
+                    recommendationHistorySummary = cachedRecommendationHistorySummary,
+                    ipoNotifications = cachedIpoNotifications.toList()
                 )
             }
         }
@@ -1666,6 +1804,30 @@ class VaralakshmiRepository {
             }
             root.put("recommendation_history", histArray)
 
+            val ipoArray = JSONArray()
+            for (ipo in cachedIpoNotifications) {
+                val ipoObj = JSONObject().apply {
+                    put("id", ipo.id)
+                    put("symbol", ipo.symbol)
+                    put("company_name", ipo.companyName)
+                    put("action_type", ipo.actionType.name)
+                    put("headline", ipo.headline)
+                    put("message", ipo.message)
+                    put("lot_price", ipo.lotPrice)
+                    put("lot_quantity", ipo.lotQuantity)
+                    put("lot_shares", ipo.lotShares)
+                    put("cutoff_price", ipo.cutoffPrice)
+                    put("qib_multiple", ipo.qibMultiple)
+                    put("close_deadline", ipo.closeDeadline)
+                    put("urgency", ipo.urgency)
+                    put("timestamp", ipo.timestamp)
+                    put("deep_link_url", ipo.deepLinkUrl)
+                    put("is_dismissed", ipo.isDismissed)
+                }
+                ipoArray.put(ipoObj)
+            }
+            root.put("ipo_notifications", ipoArray)
+
             val targetFile = File(dir, CACHE_FILE_NAME)
             val tempFile = File(dir, "$CACHE_FILE_NAME.tmp")
             tempFile.writeText(root.toString(2), Charsets.UTF_8)
@@ -1871,6 +2033,13 @@ class VaralakshmiRepository {
                 parseRecommendationHistoryJson(histArray.toString())
             } else null
 
+            val ipoArray = root.optJSONArray("ipo_notifications")
+                ?: root.optJSONArray("ipo_alerts")
+                ?: root.optJSONArray("ipo_signals")
+            val parsedIpos = if (ipoArray != null && ipoArray.length() > 0) {
+                parseIpoNotificationsJson(root.toString())
+            } else null
+
             if (root.has("serverUrl") && !root.isNull("serverUrl")) {
                 val url = root.optString("serverUrl", "").trim()
                 if (url.isNotBlank()) cachedServerUrl = url
@@ -1937,6 +2106,10 @@ class VaralakshmiRepository {
                     cachedRecommendationHistory.addAll(createDefaultRecommendationHistory())
                 }
                 cachedRecommendationHistorySummary = calculateRecommendationHistorySummary(cachedRecommendationHistory)
+            }
+            if (parsedIpos != null && parsedIpos.isNotEmpty()) {
+                cachedIpoNotifications.clear()
+                cachedIpoNotifications.addAll(parsedIpos)
             }
             isLoadedFromDisk = true
             true

@@ -28,8 +28,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.ui.platform.LocalContext
+import com.example.varalakshmiportfolio.notification.IpoNotificationManager
 import com.example.varalakshmiportfolio.theme.*
 import com.example.varalakshmiportfolio.ui.components.HoldingsTable
+import com.example.varalakshmiportfolio.ui.components.IpoActionBanner
 import com.example.varalakshmiportfolio.ui.components.PortfolioHeaderCard
 import com.example.varalakshmiportfolio.ui.components.TodayTickerChangesTable
 import com.example.varalakshmiportfolio.ui.components.TransactionsTable
@@ -61,6 +64,14 @@ fun VaralakshmiDashboardScreen(
         while (isActive) {
             currentTimeString = timeFormatter.format(Date())
             delay(1000L)
+        }
+    }
+
+    val context = LocalContext.current
+    LaunchedEffect(uiState.ipoNotifications) {
+        val activeHighUrgency = uiState.ipoNotifications.filter { !it.isDismissed && it.urgency == "HIGH" }
+        for (alert in activeHighUrgency) {
+            IpoNotificationManager.postIpoAlert(context, alert)
         }
     }
 
@@ -263,6 +274,12 @@ fun VaralakshmiDashboardScreen(
                 }
             }
 
+            // IPO Action Alerts Banner (Santhana Lakshmi)
+            IpoActionBanner(
+                notifications = uiState.ipoNotifications,
+                onDismiss = { viewModel.dismissIpoNotification(it) }
+            )
+
             // 1. Portfolio Header Card (NAV, Returns, Capital Metrics)
             PortfolioHeaderCard(summary = uiState.summary)
 
@@ -443,7 +460,7 @@ fun VaralakshmiDashboardScreen(
                     )
 
                     Text(
-                        text = "App Updates & Releases (Current: v1.8.8)",
+                        text = "App Updates & Releases (Current: v1.9.0)",
                         color = TextPrimary,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold
@@ -460,15 +477,17 @@ fun VaralakshmiDashboardScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        OutlinedButton(
+                        Button(
                             onClick = {
-                                safeOpenUri("https://github.com/Ganapathiraj-A/varalakshmi-portfolio-app/releases/latest/download/varalakshmi-portfolio.apk")
+                                val sUrl = tempUrl.trim().trimEnd('/')
+                                val downloadUrl = if (sUrl.isNotBlank()) "$sUrl/download/varalakshmi-portfolio.apk"
+                                else "https://github.com/Ganapathiraj-A/varalakshmi-portfolio-app/releases/latest/download/varalakshmi-portfolio.apk"
+                                safeOpenUri(downloadUrl)
                             },
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(8.dp),
                             contentPadding = PaddingValues(horizontal = 6.dp, vertical = 8.dp),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, AccentIndigoLight.copy(alpha = 0.6f)),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = AccentIndigoLight)
+                            colors = ButtonDefaults.buttonColors(containerColor = AccentIndigo)
                         ) {
                             Icon(
                                 imageVector = Icons.Filled.Download,
@@ -476,12 +495,12 @@ fun VaralakshmiDashboardScreen(
                                 modifier = Modifier.size(15.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Download APK", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false)
+                            Text("Download APK", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
                         }
 
                         OutlinedButton(
                             onClick = {
-                                safeOpenUri("https://github.com/Ganapathiraj-A/varalakshmi-portfolio-app/releases")
+                                safeOpenUri("https://github.com/Ganapathiraj-A/varalakshmi-portfolio-app/releases/latest/download/varalakshmi-portfolio.apk")
                             },
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(8.dp),
@@ -495,7 +514,7 @@ fun VaralakshmiDashboardScreen(
                                 modifier = Modifier.size(15.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("All Releases", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false)
+                            Text("GitHub Mirror", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false)
                         }
                     }
                 }
