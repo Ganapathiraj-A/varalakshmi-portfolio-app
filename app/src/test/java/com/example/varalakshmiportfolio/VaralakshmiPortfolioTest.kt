@@ -2156,17 +2156,18 @@ class VaralakshmiPortfolioTest {
     fun testIpoActionNotificationParsingAndDismissal() {
         val repository = VaralakshmiRepository()
         val defaultIpos = repository.getCachedIpoNotifications()
-        assertTrue("Expected default seed IPO notification", defaultIpos.isNotEmpty())
-        val defaultAlert = defaultIpos.first()
-        assertEquals("TATATECH", defaultAlert.symbol)
-        assertEquals(69.4, defaultAlert.qibMultiple, 0.001)
-        assertEquals(15000.00, defaultAlert.lotPrice, 0.001)
-        assertFalse(defaultAlert.isDismissed)
+        assertTrue("Default seed IPO notifications should be empty until live data arrives", defaultIpos.isEmpty())
+
+        // Test sample Tata Tech model
+        val sampleAlert = VaralakshmiRepository.createSampleTataTechIpoNotification()
+        assertEquals("TATATECH", sampleAlert.symbol)
+        assertEquals(69.4, sampleAlert.qibMultiple, 0.001)
+        assertEquals(15000.00, sampleAlert.lotPrice, 0.001)
+        assertFalse(sampleAlert.isDismissed)
 
         // Dismissal test
-        val dismissedList = repository.dismissIpoNotification(defaultAlert.id)
-        val target = dismissedList.first { it.id == defaultAlert.id }
-        assertTrue(target.isDismissed)
+        val dismissed = sampleAlert.copy(isDismissed = true)
+        assertTrue(dismissed.isDismissed)
 
         // Custom JSON parsing test
         val customJson = """

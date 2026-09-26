@@ -98,4 +98,19 @@ object IpoNotificationManager {
             // Permission not granted or revoked
         }
     }
+
+    fun cancelAlert(context: Context, notificationId: String) {
+        try {
+            NotificationManagerCompat.from(context).cancel(notificationId.hashCode())
+        } catch (_: Exception) {
+        }
+    }
+
+    fun cancelAllAlerts(context: Context) {
+        try {
+            NotificationManagerCompat.from(context).cancelAll()
+        } catch (_: Exception) {
+        }
+    }
 }
+

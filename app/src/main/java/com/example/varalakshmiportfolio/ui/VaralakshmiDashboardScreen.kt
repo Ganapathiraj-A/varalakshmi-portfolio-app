@@ -70,8 +70,12 @@ fun VaralakshmiDashboardScreen(
     val context = LocalContext.current
     LaunchedEffect(uiState.ipoNotifications) {
         val activeHighUrgency = uiState.ipoNotifications.filter { !it.isDismissed && it.urgency == "HIGH" }
-        for (alert in activeHighUrgency) {
-            IpoNotificationManager.postIpoAlert(context, alert)
+        if (activeHighUrgency.isEmpty()) {
+            IpoNotificationManager.cancelAllAlerts(context)
+        } else {
+            for (alert in activeHighUrgency) {
+                IpoNotificationManager.postIpoAlert(context, alert)
+            }
         }
     }
 

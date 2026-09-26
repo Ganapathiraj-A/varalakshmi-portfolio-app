@@ -767,7 +767,9 @@ class VaralakshmiRepository {
             }
         }
 
-        fun createDefaultIpoNotifications(): List<IpoActionNotification> = listOf(
+        fun createDefaultIpoNotifications(): List<IpoActionNotification> = emptyList()
+
+        fun createSampleTataTechIpoNotification(): IpoActionNotification =
             IpoActionNotification(
                 id = "IPO-ALERT-SANTHANA-001",
                 symbol = "TATATECH",
@@ -785,7 +787,6 @@ class VaralakshmiRepository {
                 timestamp = "2026-09-26 10:00:00",
                 deepLinkUrl = "https://kite.zerodha.com/ipo"
             )
-        )
 
         fun parseIpoNotificationsJson(jsonStr: String): List<IpoActionNotification> {
             return try {
@@ -2107,9 +2108,11 @@ class VaralakshmiRepository {
                 }
                 cachedRecommendationHistorySummary = calculateRecommendationHistorySummary(cachedRecommendationHistory)
             }
-            if (parsedIpos != null && parsedIpos.isNotEmpty()) {
+            if (parsedIpos != null) {
+                // Filter out legacy sample alert so it doesn't linger after app update
+                val cleanIpos = parsedIpos.filterNot { it.id == "IPO-ALERT-SANTHANA-001" }
                 cachedIpoNotifications.clear()
-                cachedIpoNotifications.addAll(parsedIpos)
+                cachedIpoNotifications.addAll(cleanIpos)
             }
             isLoadedFromDisk = true
             true
