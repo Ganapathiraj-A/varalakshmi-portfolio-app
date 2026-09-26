@@ -19,8 +19,8 @@ android {
         applicationId = "com.example.varalakshmiportfolio"
         minSdk = 24
         targetSdk = 36
-        versionCode = 14
-        versionName = "1.8.5"
+        versionCode = 17
+        versionName = "1.8.8"
     }
 
     buildTypes {

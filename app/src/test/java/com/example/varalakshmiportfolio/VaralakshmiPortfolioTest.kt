@@ -2108,5 +2108,48 @@ class VaralakshmiPortfolioTest {
         // It should fall back to parsedSummary.allocatedCapital (200,000.00), yielding positive +0.75%
         assertEquals(0.75, summary.todayPnlPct, 0.01)
     }
+
+    @Test
+    fun testReservedCapitalInclusionInNavAndJsonState() {
+        val repository = VaralakshmiRepository()
+        val jsonPayload = """
+            {
+                "summary": {
+                    "strategyId": "VARALAKSHMI_ALPHA_SCALE_35",
+                    "totalNav": 618904.21,
+                    "allocatedCapital": 600000.00,
+                    "deployedCapital": 230604.50,
+                    "availableCapital": 200504.37,
+                    "reservedCapital": 182615.84,
+                    "realizedPnl": 13724.71,
+                    "unrealizedPnl": 5179.50,
+                    "totalPnl": 18904.21,
+                    "totalPnlPct": 3.15,
+                    "todayPnl": 1200.00,
+                    "todayPnlPct": 0.20,
+                    "activeSlots": 2,
+                    "maxSlots": 3
+                },
+                "positions": []
+            }
+        """.trimIndent()
+
+        val applied = repository.applyCachedJsonState(jsonPayload)
+        assertTrue(applied)
+
+        val summary = repository.getCachedSummary()
+        assertEquals(600000.00, summary.allocatedCapital, 0.001)
+        assertEquals(230604.50, summary.deployedCapital, 0.001)
+        assertEquals(200504.37, summary.availableCapital, 0.001)
+        assertEquals(182615.84, summary.reservedCapital, 0.001)
+        assertEquals(5179.50, summary.unrealizedPnl, 0.001)
+
+        // Mathematical invariant: NAV = Deployed + Available + Reserved + Unrealized
+        val expectedNav = VaralakshmiRepository.roundPaise(
+            summary.deployedCapital + summary.availableCapital + summary.reservedCapital + summary.unrealizedPnl
+        )
+        assertEquals(618904.21, expectedNav, 0.001)
+        assertEquals(expectedNav, summary.totalNav, 0.001)
+    }
 }
 

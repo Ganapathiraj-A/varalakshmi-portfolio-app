@@ -299,6 +299,7 @@ fun PortfolioHeaderCard(
                 MetricMiniCard(
                     title = "AVAILABLE CASH",
                     value = "₹" + String.format(Locale.US, "%,.0f", summary.availableCapital),
+                    subtitle = if (summary.reservedCapital > 0.0) "+₹" + String.format(Locale.US, "%,.0f", summary.reservedCapital) + " res (AMO)" else null,
                     modifier = Modifier.weight(1f)
                 )
             }
@@ -382,6 +383,7 @@ fun PortfolioHeaderCard(
 private fun MetricMiniCard(
     title: String,
     value: String,
+    subtitle: String? = null,
     accent: Color = TextPrimary,
     modifier: Modifier = Modifier
 ) {
@@ -410,6 +412,17 @@ private fun MetricMiniCard(
                 fontWeight = FontWeight.Bold,
                 fontSize = 14.sp
             )
+            if (subtitle != null) {
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = subtitle,
+                    fontSize = 9.sp,
+                    color = AccentIndigoLight,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
     }
 }

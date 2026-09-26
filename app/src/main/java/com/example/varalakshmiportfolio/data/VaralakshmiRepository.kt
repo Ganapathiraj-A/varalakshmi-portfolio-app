@@ -99,6 +99,7 @@ class VaralakshmiRepository {
             allocatedCapital = 100000.00,
             deployedCapital = 99536.77,
             availableCapital = 463.23,
+            reservedCapital = 0.00,
             realizedPnl = 0.00,
             unrealizedPnl = 9268.80,
             totalPnl = 9268.80,
@@ -1079,6 +1080,7 @@ class VaralakshmiRepository {
 
         var fetchedAllocatedCapital: Double? = null
         var fetchedAvailableCapital: Double? = null
+        var fetchedReservedCapital: Double? = null
         var fetchedRealizedPnl: Double? = null
 
         try {
@@ -1100,6 +1102,9 @@ class VaralakshmiRepository {
                             }
                             if (obj.has("available_capital") && !obj.isNull("available_capital")) {
                                 fetchedAvailableCapital = roundPaise(avail)
+                            }
+                            if (obj.has("reserved_capital") && !obj.isNull("reserved_capital")) {
+                                fetchedReservedCapital = roundPaise(obj.optDouble("reserved_capital", 0.0))
                             }
                             if (obj.has("realized_pnl") && !obj.isNull("realized_pnl")) {
                                 fetchedRealizedPnl = roundPaise(obj.optDouble("realized_pnl", 0.0))
@@ -1232,8 +1237,9 @@ class VaralakshmiRepository {
                 val deployed = roundPaise(totalMarketValue - totalUnrealized)
                 val allocated = fetchedAllocatedCapital ?: cachedSummary.allocatedCapital
                 val realized = fetchedRealizedPnl ?: cachedSummary.realizedPnl
-                val available = fetchedAvailableCapital ?: roundPaise((allocated - deployed + realized).coerceAtLeast(0.0))
-                val nav = roundPaise(deployed + available + totalUnrealized)
+                val reserved = fetchedReservedCapital ?: cachedSummary.reservedCapital
+                val available = fetchedAvailableCapital ?: roundPaise((allocated - deployed - reserved + realized).coerceAtLeast(0.0))
+                val nav = roundPaise(deployed + available + reserved + totalUnrealized)
                 val totalPnl = roundPaise(realized + totalUnrealized)
                 val totalPnlPct = if (allocated > 0) (totalPnl / allocated) * 100.0 else 0.0
 
@@ -1247,6 +1253,7 @@ class VaralakshmiRepository {
                     allocatedCapital = allocated,
                     deployedCapital = deployed,
                     availableCapital = available,
+                    reservedCapital = reserved,
                     realizedPnl = realized,
                     unrealizedPnl = totalUnrealized,
                     totalPnl = totalPnl,
@@ -1312,8 +1319,9 @@ class VaralakshmiRepository {
                 val newDeployedCapital = roundPaise((cachedSummary.deployedCapital - costBasis).coerceAtLeast(0.0))
 
                 val totalUnrealized = roundPaise(cachedPositions.sumOf { it.unrealizedPnl })
-                // Invariant: NAV = Deployed + Available + TotalUnrealized
-                val nav = roundPaise(newDeployedCapital + newAvailableCapital + totalUnrealized)
+                val reserved = cachedSummary.reservedCapital
+                // Invariant: NAV = Deployed + Available + Reserved + TotalUnrealized
+                val nav = roundPaise(newDeployedCapital + newAvailableCapital + reserved + totalUnrealized)
                 val allocated = cachedSummary.allocatedCapital
                 val totalPnl = roundPaise(newRealizedPnl + totalUnrealized)
                 val totalPnlPct = if (allocated > 0) (totalPnl / allocated) * 100.0 else 0.0
@@ -1328,6 +1336,7 @@ class VaralakshmiRepository {
                     totalNav = nav,
                     deployedCapital = newDeployedCapital,
                     availableCapital = newAvailableCapital,
+                    reservedCapital = reserved,
                     realizedPnl = newRealizedPnl,
                     unrealizedPnl = totalUnrealized,
                     totalPnl = totalPnl,
@@ -1541,6 +1550,7 @@ class VaralakshmiRepository {
                 put("allocatedCapital", cachedSummary.allocatedCapital)
                 put("deployedCapital", cachedSummary.deployedCapital)
                 put("availableCapital", cachedSummary.availableCapital)
+                put("reservedCapital", cachedSummary.reservedCapital)
                 put("realizedPnl", cachedSummary.realizedPnl)
                 put("unrealizedPnl", cachedSummary.unrealizedPnl)
                 put("totalPnl", cachedSummary.totalPnl)
@@ -1683,6 +1693,7 @@ class VaralakshmiRepository {
                     allocatedCapital = optSafeDouble(summaryObj, "allocatedCapital", cachedSummary.allocatedCapital),
                     deployedCapital = optSafeDouble(summaryObj, "deployedCapital", cachedSummary.deployedCapital),
                     availableCapital = optSafeDouble(summaryObj, "availableCapital", cachedSummary.availableCapital),
+                    reservedCapital = optSafeDouble(summaryObj, "reservedCapital", cachedSummary.reservedCapital),
                     realizedPnl = optSafeDouble(summaryObj, "realizedPnl", cachedSummary.realizedPnl),
                     unrealizedPnl = optSafeDouble(summaryObj, "unrealizedPnl", cachedSummary.unrealizedPnl),
                     totalPnl = optSafeDouble(summaryObj, "totalPnl", cachedSummary.totalPnl),

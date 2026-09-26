@@ -11,6 +11,7 @@ data class PortfolioSummary(
     val allocatedCapital: Double = 100000.00,
     val deployedCapital: Double = 99536.77,
     val availableCapital: Double = 463.23,
+    val reservedCapital: Double = 0.00,
     val realizedPnl: Double = 0.00,
     val unrealizedPnl: Double = 9268.80,
     val totalPnl: Double = 9268.80,
