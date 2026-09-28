@@ -1112,7 +1112,7 @@ private fun FnoDailyPnlHistorySection(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -1137,7 +1137,7 @@ private fun FnoDailyPnlHistorySection(
                         fontWeight = FontWeight.Bold,
                         color = TextMuted,
                         textAlign = androidx.compose.ui.text.style.TextAlign.End,
-                        modifier = Modifier.weight(0.9f)
+                        modifier = Modifier.weight(0.8f)
                     )
                     Text(
                         text = "EQUITY",
@@ -1145,7 +1145,7 @@ private fun FnoDailyPnlHistorySection(
                         fontWeight = FontWeight.Bold,
                         color = TextMuted,
                         textAlign = androidx.compose.ui.text.style.TextAlign.End,
-                        modifier = Modifier.weight(1.3f)
+                        modifier = Modifier.weight(1.1f)
                     )
                 }
             }
@@ -1199,14 +1199,16 @@ private fun FnoDailyPnlRow(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Column 1: Date & Today Pill / Trades & Details hint
+                // Column 1: Date & Today Pill / Trades & Positions count
                 Column(modifier = Modifier.weight(1.2f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             text = item.formattedDate,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
-                            color = TextPrimary
+                            color = TextPrimary,
+                            maxLines = 1,
+                            softWrap = false
                         )
                         if (item.isToday) {
                             Spacer(modifier = Modifier.width(4.dp))
@@ -1219,24 +1221,20 @@ private fun FnoDailyPnlRow(
                                     fontSize = 7.5.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = GoldAccent,
-                                    modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp)
+                                    modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp),
+                                    maxLines = 1
                                 )
                             }
                         }
                     }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = "${item.tradeCount} trades • ${item.positionsCount} pos",
-                            fontSize = 8.5.sp,
-                            color = TextMuted
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = if (isExpanded) "• Hide" else "• Details",
-                            fontSize = 8.sp,
-                            color = if (isExpanded) AccentIndigoLight else TextMuted
-                        )
-                    }
+                    Text(
+                        text = "${item.tradeCount} trades • ${item.positionsCount} pos",
+                        fontSize = 8.5.sp,
+                        color = TextMuted,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    )
                 }
 
                 // Column 2: Daily P&L & Status tag
@@ -1249,7 +1247,9 @@ private fun FnoDailyPnlRow(
                         fontSize = 11.5.sp,
                         fontWeight = FontWeight.Bold,
                         fontFamily = FontFamily.Monospace,
-                        color = if (item.isProfit) ProfitGreen else LossRed
+                        color = if (item.isProfit) ProfitGreen else LossRed,
+                        maxLines = 1,
+                        softWrap = false
                     )
                     Surface(
                         shape = RoundedCornerShape(3.dp),
@@ -1260,53 +1260,71 @@ private fun FnoDailyPnlRow(
                             fontSize = 7.5.sp,
                             fontWeight = FontWeight.Bold,
                             color = if (item.isProfit) ProfitGreen else LossRed,
-                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                            maxLines = 1
                         )
                     }
                 }
 
                 // Column 3: Return %
-                Text(
-                    text = item.formattedDailyReturn,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    fontFamily = FontFamily.Monospace,
-                    color = if (item.isProfit) ProfitGreen else LossRed,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.End,
-                    modifier = Modifier.weight(0.9f)
-                )
-
-                // Column 4: Total Equity & Chevron
-                Row(
-                    modifier = Modifier.weight(1.4f),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically
+                Column(
+                    modifier = Modifier.weight(0.8f),
+                    horizontalAlignment = Alignment.End
                 ) {
-                    Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        text = item.formattedDailyReturn,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        fontFamily = FontFamily.Monospace,
+                        color = if (item.isProfit) ProfitGreen else LossRed,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                    Text(
+                        text = "Return",
+                        fontSize = 7.5.sp,
+                        color = TextMuted,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                        maxLines = 1
+                    )
+                }
+
+                // Column 4: Total Equity & Details toggle
+                Column(
+                    modifier = Modifier.weight(1.1f),
+                    horizontalAlignment = Alignment.End
+                ) {
+                    Text(
+                        text = item.formattedTotalEquity,
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        fontFamily = FontFamily.Monospace,
+                        color = TextPrimary,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.End
+                    ) {
                         Text(
-                            text = item.formattedTotalEquity,
-                            fontSize = 10.5.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            fontFamily = FontFamily.Monospace,
-                            color = TextPrimary,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.End
-                        )
-                        Text(
-                            text = "Close",
+                            text = if (isExpanded) "Hide" else "Details",
                             fontSize = 8.sp,
-                            color = TextMuted,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.End
+                            fontWeight = FontWeight.Medium,
+                            color = if (isExpanded) AccentIndigoLight else TextMuted,
+                            maxLines = 1
+                        )
+                        Icon(
+                            imageVector = Icons.Filled.KeyboardArrowDown,
+                            contentDescription = if (isExpanded) "Collapse Details" else "Expand Details",
+                            tint = if (isExpanded) AccentIndigoLight else TextMuted,
+                            modifier = Modifier
+                                .size(12.dp)
+                                .rotate(chevronRotation)
                         )
                     }
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Icon(
-                        imageVector = Icons.Filled.KeyboardArrowDown,
-                        contentDescription = if (isExpanded) "Collapse Details" else "Expand Details",
-                        tint = if (isExpanded) AccentIndigoLight else TextMuted,
-                        modifier = Modifier
-                            .size(16.dp)
-                            .rotate(chevronRotation)
-                    )
                 }
             }
 
