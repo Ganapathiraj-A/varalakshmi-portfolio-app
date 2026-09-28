@@ -13,6 +13,7 @@ typealias FnoInstanceSummary = com.example.varalakshmiportfolio.model.FnoInstanc
 typealias FnoPositionItem = com.example.varalakshmiportfolio.model.FnoPositionItem
 typealias FnoStatusInfo = com.example.varalakshmiportfolio.model.FnoStatusInfo
 typealias VeeraLakshmiUiState = com.example.varalakshmiportfolio.model.VeeraLakshmiUiState
+typealias FnoDailyPnlItem = com.example.varalakshmiportfolio.model.FnoDailyPnlItem
  
 fun isPositionBoughtToday(entryDate: String): Boolean =
     com.example.varalakshmiportfolio.model.isPositionBoughtToday(entryDate)

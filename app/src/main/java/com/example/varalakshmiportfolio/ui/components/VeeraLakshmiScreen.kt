@@ -15,6 +15,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Lightbulb
@@ -34,6 +35,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.varalakshmiportfolio.model.FnoDailyPnlItem
 import com.example.varalakshmiportfolio.model.FnoInstanceSummary
 import com.example.varalakshmiportfolio.model.FnoPositionItem
 import com.example.varalakshmiportfolio.model.VeeraLakshmiUiState
@@ -548,6 +550,9 @@ fun VeeraLakshmiScreen(
             }
         }
 
+        // 6. Daily Profit & Loss History Table
+        FnoDailyPnlHistorySection(dailyPnlList = state.dailyPnlHistory)
+
         Spacer(modifier = Modifier.height(16.dp))
     }
 }
@@ -835,7 +840,7 @@ private fun FnoPositionCard(
                     ) {
                         FnoParamPill(
                             label = "EXPIRY / CONTRACT",
-                            value = "${if (position.expiryDate.isNotBlank()) position.expiryDate else "Current Month"} • ${position.instrumentType}",
+                            value = "${position.formattedExpiry} • ${position.instrumentType}",
                             modifier = Modifier.weight(1f)
                         )
                         FnoParamPill(
@@ -953,3 +958,317 @@ private fun FnoMiniMetric(
         }
     }
 }
+
+@Composable
+private fun FnoDailyPnlHistorySection(
+    dailyPnlList: List<FnoDailyPnlItem>,
+    modifier: Modifier = Modifier
+) {
+    if (dailyPnlList.isEmpty()) return
+
+    var selectedFilter by rememberSaveable { mutableStateOf("ALL") }
+
+    val filteredList = remember(dailyPnlList, selectedFilter) {
+        when (selectedFilter) {
+            "WIN" -> dailyPnlList.filter { it.isProfit }
+            "LOSS" -> dailyPnlList.filter { !it.isProfit }
+            else -> dailyPnlList
+        }
+    }
+
+    val totalDays = dailyPnlList.size
+    val winDays = dailyPnlList.count { it.isProfit }
+    val lossDays = totalDays - winDays
+    val winRatePct = if (totalDays > 0) (winDays.toDouble() / totalDays.toDouble()) * 100.0 else 0.0
+    val netPnl = dailyPnlList.sumOf { it.dailyPnl }
+    val avgDailyPnl = if (totalDays > 0) netPnl / totalDays else 0.0
+    val bestDay = dailyPnlList.maxOfOrNull { it.dailyPnl } ?: 0.0
+
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        color = DarkSurface,
+        border = androidx.compose.foundation.BorderStroke(1.dp, DarkCardBorder)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            // Header Row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Filled.History,
+                        contentDescription = "P&L History",
+                        tint = GoldAccent,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "DAILY PROFIT & LOSS HISTORY",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary,
+                        letterSpacing = 0.5.sp
+                    )
+                }
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = if (netPnl >= 0.0) ProfitGreenBg else LossRedBg
+                ) {
+                    Text(
+                        text = String.format(Locale.US, "%.1f%% Win Rate", winRatePct),
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (netPnl >= 0.0) ProfitGreen else LossRed,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+            }
+
+            // Summary 4-Metric Grid
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                FnoMiniMetric(
+                    label = "NET P&L",
+                    value = String.format(Locale.US, "%s₹%,.0f", if (netPnl >= 0) "+" else "", netPnl),
+                    valueColor = if (netPnl >= 0) ProfitGreen else LossRed,
+                    modifier = Modifier.weight(1f)
+                )
+                FnoMiniMetric(
+                    label = "WIN / LOSS",
+                    value = "${winDays}W / ${lossDays}L",
+                    valueColor = ProfitGreen,
+                    modifier = Modifier.weight(1f)
+                )
+                FnoMiniMetric(
+                    label = "AVG DAY",
+                    value = String.format(Locale.US, "%s₹%,.0f", if (avgDailyPnl >= 0) "+" else "", avgDailyPnl),
+                    valueColor = if (avgDailyPnl >= 0) ProfitGreen else LossRed,
+                    modifier = Modifier.weight(1f)
+                )
+                FnoMiniMetric(
+                    label = "BEST DAY",
+                    value = String.format(Locale.US, "+₹%,.0f", bestDay),
+                    valueColor = ProfitGreen,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            // Filter Tabs (All, Green Days, Red Days)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                listOf(
+                    Triple("ALL", "All Days ($totalDays)", AccentIndigo),
+                    Triple("WIN", "Green Days ($winDays)", ProfitGreen),
+                    Triple("LOSS", "Red Days ($lossDays)", LossRed)
+                ).forEach { (filterKey, label, activeColor) ->
+                    val isSelected = selectedFilter == filterKey
+                    Surface(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable { selectedFilter = filterKey },
+                        shape = RoundedCornerShape(6.dp),
+                        color = if (isSelected) activeColor.copy(alpha = 0.18f) else DarkCard,
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            if (isSelected) activeColor else DarkCardBorder
+                        )
+                    ) {
+                        Box(
+                            modifier = Modifier.padding(vertical = 6.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = label,
+                                fontSize = 9.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isSelected) activeColor else TextSecondary
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Table Column Headers
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(6.dp),
+                color = DarkCard
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "DATE",
+                        fontSize = 8.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextMuted,
+                        modifier = Modifier.weight(1.2f)
+                    )
+                    Text(
+                        text = "DAILY P&L",
+                        fontSize = 8.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextMuted,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                        modifier = Modifier.weight(1.3f)
+                    )
+                    Text(
+                        text = "RETURN",
+                        fontSize = 8.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextMuted,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                        modifier = Modifier.weight(0.9f)
+                    )
+                    Text(
+                        text = "EQUITY",
+                        fontSize = 8.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextMuted,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                        modifier = Modifier.weight(1.3f)
+                    )
+                }
+            }
+
+            // History Rows
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                filteredList.forEach { item ->
+                    FnoDailyPnlRow(item = item)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FnoDailyPnlRow(
+    item: FnoDailyPnlItem,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(6.dp),
+        color = DarkCard,
+        border = androidx.compose.foundation.BorderStroke(1.dp, DarkCardBorder)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Column 1: Date & Today Pill / Trades
+            Column(modifier = Modifier.weight(1.2f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = item.formattedDate,
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = TextPrimary
+                    )
+                    if (item.isToday) {
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Surface(
+                            shape = RoundedCornerShape(3.dp),
+                            color = GoldAccentBg
+                        ) {
+                            Text(
+                                text = "TODAY",
+                                fontSize = 7.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = GoldAccent,
+                                modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp)
+                            )
+                        }
+                    }
+                }
+                Text(
+                    text = "${item.tradeCount} trades • ${item.positionsCount} pos",
+                    fontSize = 8.5.sp,
+                    color = TextMuted
+                )
+            }
+
+            // Column 2: Daily P&L & Status tag
+            Column(
+                modifier = Modifier.weight(1.3f),
+                horizontalAlignment = Alignment.End
+            ) {
+                Text(
+                    text = item.formattedDailyPnl,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
+                    color = if (item.isProfit) ProfitGreen else LossRed
+                )
+                Surface(
+                    shape = RoundedCornerShape(3.dp),
+                    color = if (item.isProfit) ProfitGreenBg else LossRedBg
+                ) {
+                    Text(
+                        text = item.dayStatus,
+                        fontSize = 7.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (item.isProfit) ProfitGreen else LossRed,
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                    )
+                }
+            }
+
+            // Column 3: Return %
+            Text(
+                text = item.formattedDailyReturn,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.SemiBold,
+                fontFamily = FontFamily.Monospace,
+                color = if (item.isProfit) ProfitGreen else LossRed,
+                textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                modifier = Modifier.weight(0.9f)
+            )
+
+            // Column 4: Total Equity
+            Column(
+                modifier = Modifier.weight(1.3f),
+                horizontalAlignment = Alignment.End
+            ) {
+                Text(
+                    text = item.formattedTotalEquity,
+                    fontSize = 10.5.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    fontFamily = FontFamily.Monospace,
+                    color = TextPrimary,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.End
+                )
+                Text(
+                    text = "Close",
+                    fontSize = 8.sp,
+                    color = TextMuted,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.End
+                )
+            }
+        }
+    }
+}
+

@@ -2215,9 +2215,11 @@ class VaralakshmiRepository {
         synchronized(lock) {
             val current = getCachedFnoState()
             val filteredPositions = getSeedPositionsForInstance(instanceId)
+            val filteredDailyPnl = getSeedDailyPnlForInstance(instanceId)
             val updated = current.copy(
                 selectedInstanceId = instanceId,
-                activePositions = if (current.isLiveSync && current.selectedInstanceId == instanceId) current.activePositions else filteredPositions
+                activePositions = if (current.isLiveSync && current.selectedInstanceId == instanceId) current.activePositions else filteredPositions,
+                dailyPnlHistory = if (current.isLiveSync && current.dailyPnlHistory.isNotEmpty()) current.dailyPnlHistory else filteredDailyPnl
             )
             cachedFnoState = updated
             return updated
@@ -2232,6 +2234,7 @@ class VaralakshmiRepository {
         val sUrl = serverUrl.trim().trimEnd('/')
         var instancesMap: Map<String, FnoInstanceSummary> = emptyMap()
         var positionsList: List<FnoPositionItem> = emptyList()
+        var dailyPnlList: List<FnoDailyPnlItem> = emptyList()
         var statusInfo = FnoStatusInfo()
         var isLive = false
         var errorMsg: String? = null
@@ -2241,10 +2244,12 @@ class VaralakshmiRepository {
                 val instancesDeferred = async { httpGet("$sUrl/api/fno/instances", authToken) }
                 val positionsDeferred = async { httpGet("$sUrl/api/fno/positions?instance=$selectedInstanceId", authToken) }
                 val statusDeferred = async { httpGet("$sUrl/api/fno/status", authToken) }
+                val dailyPnlDeferred = async { httpGet("$sUrl/api/fno/daily-pnl?instance=$selectedInstanceId", authToken) }
 
                 val instancesJson = instancesDeferred.await()
                 val positionsJson = positionsDeferred.await()
                 val statusJson = statusDeferred.await()
+                val dailyPnlJson = dailyPnlDeferred.await()
 
                 if (!instancesJson.isNullOrBlank()) {
                     instancesMap = parseFnoInstances(instancesJson)
@@ -2257,6 +2262,9 @@ class VaralakshmiRepository {
                 if (!statusJson.isNullOrBlank()) {
                     statusInfo = parseFnoStatus(statusJson)
                 }
+                if (!dailyPnlJson.isNullOrBlank()) {
+                    dailyPnlList = parseFnoDailyPnl(dailyPnlJson)
+                }
             }
         } catch (e: Exception) {
             if (e is CancellationException) throw e
@@ -2266,10 +2274,12 @@ class VaralakshmiRepository {
         val baseState = getCachedFnoState()
         val newState = if (isLive && instancesMap.isNotEmpty()) {
             val resolvedPositions = if (positionsList.isNotEmpty()) positionsList else getSeedPositionsForInstance(selectedInstanceId)
+            val resolvedDailyPnl = if (dailyPnlList.isNotEmpty()) dailyPnlList else getSeedDailyPnlForInstance(selectedInstanceId)
             val state = VeeraLakshmiUiState(
                 selectedInstanceId = selectedInstanceId,
                 instances = instancesMap,
                 activePositions = resolvedPositions,
+                dailyPnlHistory = resolvedDailyPnl,
                 statusInfo = statusInfo,
                 isLoading = false,
                 isLiveSync = true,
@@ -2281,9 +2291,11 @@ class VaralakshmiRepository {
         } else {
             val loaded = loadFnoFromDisk() ?: createDefaultVeeraLakshmiState()
             val resolvedPositions = getSeedPositionsForInstance(selectedInstanceId)
+            val resolvedDailyPnl = getSeedDailyPnlForInstance(selectedInstanceId)
             loaded.copy(
                 selectedInstanceId = selectedInstanceId,
                 activePositions = if (loaded.activePositions.isNotEmpty() && loaded.selectedInstanceId == selectedInstanceId) loaded.activePositions else resolvedPositions,
+                dailyPnlHistory = if (loaded.dailyPnlHistory.isNotEmpty()) loaded.dailyPnlHistory else resolvedDailyPnl,
                 isLoading = false,
                 isLiveSync = false,
                 errorMessage = errorMsg
@@ -2378,6 +2390,29 @@ class VaralakshmiRepository {
         }
     }
 
+    fun parseFnoDailyPnl(jsonStr: String): List<FnoDailyPnlItem> {
+        val result = mutableListOf<FnoDailyPnlItem>()
+        try {
+            val root = JSONObject(jsonStr)
+            val arr = root.optJSONArray("records") ?: (if (root.has("daily_pnl")) root.optJSONArray("daily_pnl") else null) ?: return result
+            for (i in 0 until arr.length()) {
+                val obj = arr.optJSONObject(i) ?: continue
+                val item = FnoDailyPnlItem(
+                    date = obj.optString("date", "2026-09-28"),
+                    dailyPnl = optSafeDouble(obj, "daily_pnl", 0.0),
+                    dailyReturnPct = optSafeDouble(obj, "daily_return_pct", 0.0),
+                    totalEquity = optSafeDouble(obj, "total_equity", 5000000.0),
+                    marginBlocked = optSafeDouble(obj, "margin_blocked", 0.0),
+                    positionsCount = obj.optInt("positions_count", 0),
+                    tradeCount = obj.optInt("trade_count", 0),
+                    dayStatus = obj.optString("day_status", if (optSafeDouble(obj, "daily_pnl", 0.0) >= 0.0) "WIN" else "LOSS")
+                )
+                result.add(item)
+            }
+        } catch (_: Exception) {}
+        return result
+    }
+
     internal fun loadFnoFromDisk(): VeeraLakshmiUiState? {
         val dir = cacheDirectory ?: return null
         val file = File(dir, FNO_CACHE_FILE_NAME)
@@ -2388,12 +2423,15 @@ class VaralakshmiRepository {
             val selectedId = root.optString("selected_instance_id", "50L")
             val instancesJson = root.optString("instances_json", "")
             val positionsJson = root.optString("positions_json", "")
+            val dailyPnlJson = root.optString("daily_pnl_json", "")
             val statusJson = root.optString("status_json", "")
             val lastSync = root.optLong("last_sync_timestamp", 0L)
 
             val instances = if (instancesJson.isNotBlank()) parseFnoInstances(instancesJson) else emptyMap()
             val rawPositions = if (positionsJson.isNotBlank()) parseFnoPositions(positionsJson) else emptyList()
             val positions = if (rawPositions.isNotEmpty()) rawPositions else getSeedPositionsForInstance(selectedId)
+            val rawDailyPnl = if (dailyPnlJson.isNotBlank()) parseFnoDailyPnl(dailyPnlJson) else emptyList()
+            val dailyPnl = if (rawDailyPnl.isNotEmpty()) rawDailyPnl else getSeedDailyPnlForInstance(selectedId)
             val status = if (statusJson.isNotBlank()) parseFnoStatus(statusJson) else FnoStatusInfo()
 
             if (instances.isNotEmpty()) {
@@ -2401,6 +2439,7 @@ class VaralakshmiRepository {
                     selectedInstanceId = selectedId,
                     instances = instances,
                     activePositions = positions,
+                    dailyPnlHistory = dailyPnl,
                     statusInfo = status,
                     isLoading = false,
                     isLiveSync = false,
@@ -2482,6 +2521,23 @@ class VaralakshmiRepository {
             statusObj.put("last_date", state.statusInfo.lastDate)
             root.put("status_json", statusObj.toString())
 
+            val pnlArr = JSONArray()
+            for (d in state.dailyPnlHistory) {
+                val obj = JSONObject()
+                obj.put("date", d.date)
+                obj.put("daily_pnl", d.dailyPnl)
+                obj.put("daily_return_pct", d.dailyReturnPct)
+                obj.put("total_equity", d.totalEquity)
+                obj.put("margin_blocked", d.marginBlocked)
+                obj.put("positions_count", d.positionsCount)
+                obj.put("trade_count", d.tradeCount)
+                obj.put("day_status", d.dayStatus)
+                pnlArr.put(obj)
+            }
+            val pnlRoot = JSONObject()
+            pnlRoot.put("records", pnlArr)
+            root.put("daily_pnl_json", pnlRoot.toString())
+
             val tmpFile = File(dir, "$FNO_CACHE_FILE_NAME.tmp")
             val targetFile = File(dir, FNO_CACHE_FILE_NAME)
             tmpFile.writeText(root.toString(), Charsets.UTF_8)
@@ -2531,12 +2587,75 @@ class VaralakshmiRepository {
             selectedInstanceId = "50L",
             instances = instances,
             activePositions = getSeedPositionsForInstance("50L"),
+            dailyPnlHistory = getSeedDailyPnlForInstance("50L"),
             statusInfo = FnoStatusInfo(),
             isLoading = false,
             isLiveSync = false,
             errorMessage = null,
             lastSyncTimestamp = 0L
         )
+    }
+
+    fun getSeedDailyPnlForInstance(instanceId: String): List<FnoDailyPnlItem> {
+        val mult = when (instanceId) {
+            "20L" -> 0.4
+            "15L" -> 0.3
+            else -> 1.0
+        }
+        val baseCap = when (instanceId) {
+            "20L" -> 2000000.0
+            "15L" -> 1500000.0
+            else -> 5000000.0
+        }
+        val posCountMult = when (instanceId) {
+            "20L" -> 0.5
+            "15L" -> 0.35
+            else -> 1.0
+        }
+
+        val rawData = listOf(
+            Triple("2026-09-28", 21180.0, 4),
+            Triple("2026-09-25", 34250.0, 5),
+            Triple("2026-09-24", -12400.0, 6),
+            Triple("2026-09-23", 18900.0, 3),
+            Triple("2026-09-22", 28400.0, 4),
+            Triple("2026-09-21", -8900.0, 3),
+            Triple("2026-09-18", 15600.0, 2),
+            Triple("2026-09-17", 22100.0, 5),
+            Triple("2026-09-16", 9800.0, 2),
+            Triple("2026-09-15", -15300.0, 4),
+            Triple("2026-09-14", 31200.0, 3),
+            Triple("2026-09-11", 14500.0, 2),
+            Triple("2026-09-10", -7800.0, 3),
+            Triple("2026-09-09", 11900.0, 2),
+            Triple("2026-09-08", 18800.0, 3)
+        )
+
+        var runningEquity = baseCap + (50670.50 * mult)
+        val list = mutableListOf<FnoDailyPnlItem>()
+        for (i in rawData.indices) {
+            val (date, rawPnl, trades) = rawData[i]
+            val scaledPnl = rawPnl * mult
+            val retPct = if (baseCap > 0.0) (scaledPnl / baseCap) * 100.0 else 0.0
+            val pCount = maxOf(1, Math.round((if (i < 5) 6 else if (i < 10) 4 else 3) * posCountMult).toInt())
+            val status = if (scaledPnl >= 0) "WIN" else "LOSS"
+            val blocked = baseCap * 0.24
+
+            list.add(
+                FnoDailyPnlItem(
+                    date = date,
+                    dailyPnl = scaledPnl,
+                    dailyReturnPct = retPct,
+                    totalEquity = runningEquity,
+                    marginBlocked = blocked,
+                    positionsCount = pCount,
+                    tradeCount = trades,
+                    dayStatus = status
+                )
+            )
+            runningEquity -= scaledPnl
+        }
+        return list
     }
 
     fun getSeedPositionsForInstance(instanceId: String): List<FnoPositionItem> {
@@ -2553,7 +2672,7 @@ class VaralakshmiRepository {
             marginRequired = 257952.83,
             stopLossPrice = 26800.00,
             unrealizedPnl = 2840.50,
-            expiryDate = "2026-09-24",
+            expiryDate = "2026-10-29",
             entryReason = "Systematic index trend breakdown trigger. NIFTY crossed below dynamic 20-day ATR trailing volatility band with negative breadth (advance/decline ratio 0.42) and hourly MACD bearish divergence; short initiated with trailing risk guard.",
             targetPrice = 25700.00,
             signalTrigger = "ATR Channel Breakdown + Negative Breadth (< 0.45)",
@@ -2572,7 +2691,7 @@ class VaralakshmiRepository {
             marginRequired = 109783.13,
             stopLossPrice = 1005.00,
             unrealizedPnl = -5362.50,
-            expiryDate = "2026-09-24",
+            expiryDate = "2026-10-29",
             entryReason = "PSU banking trend exhaustion. Short executed on failure to hold psychological ₹1,000 round number after bearish engulfing candle on the daily timeframe; disciplined stop-loss placed at ₹1,005.",
             targetPrice = 910.00,
             signalTrigger = "Psychological ₹1,000 Rejection + Bearish Engulfing",
@@ -2591,7 +2710,7 @@ class VaralakshmiRepository {
             marginRequired = 110062.35,
             stopLossPrice = 12500.00,
             unrealizedPnl = 9849.00,
-            expiryDate = "2026-09-24",
+            expiryDate = "2026-10-29",
             entryReason = "Rotational alpha decay. Auto sector relative weakness triggered quant short as price broke below 50-day EMA with negative cross-sectional rank (< 15th percentile).",
             targetPrice = 11630.00,
             signalTrigger = "Relative Weakness Rank < 15th Pct + 50 EMA Breakdown",
@@ -2610,7 +2729,7 @@ class VaralakshmiRepository {
             marginRequired = 186420.00,
             stopLossPrice = 1270.00,
             unrealizedPnl = 16800.00,
-            expiryDate = "2026-09-24",
+            expiryDate = "2026-10-29",
             entryReason = "Heavyweight breakdown momentum short. Reliance broke below ₹1,245 multi-week consolidation support with elevated distribution volume; high beta drag on NIFTY index weight.",
             targetPrice = 1180.00,
             signalTrigger = "Horizontal Support Breakdown @ ₹1,245 on High Volume",
@@ -2629,7 +2748,7 @@ class VaralakshmiRepository {
             marginRequired = 262714.95,
             stopLossPrice = 58900.00,
             unrealizedPnl = 23703.00,
-            expiryDate = "2026-09-24",
+            expiryDate = "2026-10-29",
             entryReason = "Bank index momentum breakdown. Rejection at 58,500 key resistance zone followed by intraday breakdown below VWAP with rising hourly ADX (> 28) confirming aggressive institutional selling.",
             targetPrice = 56800.00,
             signalTrigger = "Resistance Rejection @ 58,500 + Hourly ADX > 28",
@@ -2648,7 +2767,7 @@ class VaralakshmiRepository {
             marginRequired = 257952.83,
             stopLossPrice = 26800.00,
             unrealizedPnl = 2840.50,
-            expiryDate = "2026-09-24",
+            expiryDate = "2026-10-29",
             entryReason = "Portfolio tail-risk beta hedge. Systematic short hedge deployed to neutralize residual portfolio beta across all equity and derivative holdings during low-VIX complacency regime, protecting against sudden macro volatility spikes.",
             targetPrice = 25700.00,
             signalTrigger = "Beta Neutralization Filter (Low VIX Event Guard)",

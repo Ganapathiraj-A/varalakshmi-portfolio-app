@@ -626,4 +626,138 @@ class VeeraLakshmiTest {
         assertEquals(2020.0, loadedPos.targetPrice, 0.01)
         assertEquals("1 : 2.5 RR", loadedPos.riskReward)
     }
+
+    @Test
+    fun testFormattedExpiryRollsForwardPastDates() {
+        // Expired date from prior September expiry should auto-roll forward to active October expiry
+        val pastPos = FnoPositionItem(
+            positionId = "past_fut",
+            symbol = "NIFTY_FUT",
+            expiryDate = "2026-09-24"
+        )
+        assertEquals("29 Oct 2026", pastPos.formattedExpiry)
+
+        // Blank expiry should default to active October expiry
+        val blankPos = FnoPositionItem(
+            positionId = "blank_fut",
+            symbol = "BANKNIFTY_FUT",
+            expiryDate = ""
+        )
+        assertEquals("29 Oct 2026", blankPos.formattedExpiry)
+
+        // Valid active future expiry
+        val futurePos = FnoPositionItem(
+            positionId = "future_fut",
+            symbol = "RELIANCE_FUT",
+            expiryDate = "2026-10-29"
+        )
+        assertEquals("29 Oct 2026", futurePos.formattedExpiry)
+
+        val novPos = FnoPositionItem(
+            positionId = "nov_fut",
+            symbol = "MARUTI_FUT",
+            expiryDate = "2026-11-26"
+        )
+        assertEquals("26 Nov 2026", novPos.formattedExpiry)
+    }
+
+    @Test
+    fun testParseFnoDailyPnl() {
+        val jsonPayload = """
+            {
+              "instance_id": "50L",
+              "records": [
+                {
+                  "date": "2026-09-28",
+                  "daily_pnl": 21180.0,
+                  "daily_return_pct": 0.42,
+                  "total_equity": 5050670.5,
+                  "margin_blocked": 1184886.09,
+                  "positions_count": 6,
+                  "trade_count": 4,
+                  "day_status": "WIN"
+                },
+                {
+                  "date": "2026-09-24",
+                  "daily_pnl": -12400.0,
+                  "daily_return_pct": -0.25,
+                  "total_equity": 4995240.5,
+                  "margin_blocked": 1150000.0,
+                  "positions_count": 5,
+                  "trade_count": 6,
+                  "day_status": "LOSS"
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val parsed = repository.parseFnoDailyPnl(jsonPayload)
+        assertEquals(2, parsed.size)
+
+        val day1 = parsed[0]
+        assertEquals("2026-09-28", day1.date)
+        assertEquals(21180.0, day1.dailyPnl, 0.01)
+        assertEquals(0.42, day1.dailyReturnPct, 0.01)
+        assertEquals(5050670.5, day1.totalEquity, 0.01)
+        assertEquals(4, day1.tradeCount)
+        assertEquals(6, day1.positionsCount)
+        assertEquals("WIN", day1.dayStatus)
+        assertTrue(day1.isProfit)
+        assertTrue(day1.formattedDailyPnl.contains("21,180"))
+        assertEquals("+0.42%", day1.formattedDailyReturn)
+
+        val day2 = parsed[1]
+        assertEquals("2026-09-24", day2.date)
+        assertEquals(-12400.0, day2.dailyPnl, 0.01)
+        assertEquals(-0.25, day2.dailyReturnPct, 0.01)
+        assertEquals("LOSS", day2.dayStatus)
+        assertFalse(day2.isProfit)
+        assertTrue(day2.formattedDailyPnl.contains("12,400"))
+        assertEquals("-0.25%", day2.formattedDailyReturn)
+    }
+
+    @Test
+    fun testSeedDailyPnlForInstance() {
+        val pnl50 = repository.getSeedDailyPnlForInstance("50L")
+        assertEquals(15, pnl50.size)
+        val wins50 = pnl50.count { it.isProfit }
+        val losses50 = pnl50.size - wins50
+        assertEquals(11, wins50)
+        assertEquals(4, losses50)
+        val winRate = (wins50.toDouble() / pnl50.size.toDouble()) * 100.0
+        assertEquals(73.33, winRate, 0.1)
+
+        val netPnl50 = pnl50.sumOf { it.dailyPnl }
+        assertTrue(netPnl50 > 150000.0)
+
+        // 20L instance is scaled to 40%
+        val pnl20 = repository.getSeedDailyPnlForInstance("20L")
+        assertEquals(15, pnl20.size)
+        val netPnl20 = pnl20.sumOf { it.dailyPnl }
+        assertEquals(netPnl50 * 0.4, netPnl20, 1.0)
+
+        // 15L instance is scaled to 30%
+        val pnl15 = repository.getSeedDailyPnlForInstance("15L")
+        assertEquals(15, pnl15.size)
+        val netPnl15 = pnl15.sumOf { it.dailyPnl }
+        assertEquals(netPnl50 * 0.3, netPnl15, 1.0)
+    }
+
+    @Test
+    fun testDiskCachePreservesDailyPnlHistory() {
+        val defaultState = repository.createDefaultVeeraLakshmiState()
+        assertTrue(defaultState.dailyPnlHistory.isNotEmpty())
+        assertEquals(15, defaultState.dailyPnlHistory.size)
+
+        repository.saveFnoToDisk(defaultState)
+        val loaded = repository.loadFnoFromDisk()
+        assertNotNull(loaded)
+        assertEquals(15, loaded!!.dailyPnlHistory.size)
+
+        val first = loaded.dailyPnlHistory[0]
+        assertEquals("2026-09-28", first.date)
+        assertTrue(first.dailyPnl > 0.0)
+        assertEquals("WIN", first.dayStatus)
+        assertEquals(4, first.tradeCount)
+    }
 }

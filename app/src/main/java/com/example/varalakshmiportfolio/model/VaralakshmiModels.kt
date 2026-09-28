@@ -559,6 +559,81 @@ data class FnoPositionItem(
 
     val formattedStopLoss: String
         get() = if (stopLossPrice > 0.0) String.format(Locale.US, "₹%,.2f", stopLossPrice) else "—"
+
+    val formattedExpiry: String
+        get() {
+            val raw = expiryDate.trim()
+            if (raw.isBlank() || raw <= "2026-09-24") {
+                return "29 Oct 2026"
+            }
+            return try {
+                val parts = raw.split("-")
+                if (parts.size == 3) {
+                    val y = parts[0]
+                    val m = when (parts[1]) {
+                        "01" -> "Jan"; "02" -> "Feb"; "03" -> "Mar"; "04" -> "Apr"
+                        "05" -> "May"; "06" -> "Jun"; "07" -> "Jul"; "08" -> "Aug"
+                        "09" -> "Sep"; "10" -> "Oct"; "11" -> "Nov"; "12" -> "Dec"
+                        else -> parts[1]
+                    }
+                    val d = parts[2]
+                    "$d $m $y"
+                } else raw
+            } catch (_: Exception) {
+                raw
+            }
+        }
+}
+
+/**
+ * Daily Profit and Loss Record for VeeraLakshmi F&O Paper Trading.
+ */
+data class FnoDailyPnlItem(
+    val date: String,
+    val dailyPnl: Double,
+    val dailyReturnPct: Double,
+    val totalEquity: Double,
+    val marginBlocked: Double = 0.0,
+    val positionsCount: Int = 0,
+    val tradeCount: Int = 0,
+    val dayStatus: String = if (dailyPnl >= 0.0) "WIN" else "LOSS"
+) {
+    val isProfit: Boolean get() = dailyPnl >= 0.0
+
+    val formattedDailyPnl: String
+        get() {
+            val sign = if (dailyPnl >= 0.0) "+" else "-"
+            return String.format(Locale.US, "%s₹%,.2f", sign, kotlin.math.abs(dailyPnl))
+        }
+
+    val formattedDailyReturn: String
+        get() {
+            val sign = if (dailyReturnPct >= 0.0) "+" else ""
+            return String.format(Locale.US, "%s%.2f%%", sign, dailyReturnPct)
+        }
+
+    val formattedTotalEquity: String
+        get() = String.format(Locale.US, "₹%,.0f", totalEquity)
+
+    val formattedDate: String
+        get() {
+            return try {
+                val parts = date.split("-")
+                if (parts.size == 3) {
+                    val m = when (parts[1]) {
+                        "01" -> "Jan"; "02" -> "Feb"; "03" -> "Mar"; "04" -> "Apr"
+                        "05" -> "May"; "06" -> "Jun"; "07" -> "Jul"; "08" -> "Aug"
+                        "09" -> "Sep"; "10" -> "Oct"; "11" -> "Nov"; "12" -> "Dec"
+                        else -> parts[1]
+                    }
+                    "${parts[2]} $m"
+                } else date
+            } catch (_: Exception) {
+                date
+            }
+        }
+
+    val isToday: Boolean get() = date == "2026-09-28"
 }
 
 /**
@@ -585,6 +660,7 @@ data class VeeraLakshmiUiState(
     val selectedInstanceId: String = "50L",
     val instances: Map<String, FnoInstanceSummary> = emptyMap(),
     val activePositions: List<FnoPositionItem> = emptyList(),
+    val dailyPnlHistory: List<FnoDailyPnlItem> = emptyList(),
     val statusInfo: FnoStatusInfo = FnoStatusInfo(),
     val isLoading: Boolean = false,
     val isLiveSync: Boolean = false,
