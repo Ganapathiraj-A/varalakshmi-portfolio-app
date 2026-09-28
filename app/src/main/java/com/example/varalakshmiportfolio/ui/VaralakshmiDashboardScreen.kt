@@ -606,10 +606,7 @@ fun VaralakshmiDashboardScreen(
                     ) {
                         Button(
                             onClick = {
-                                val sUrl = tempUrl.trim().trimEnd('/')
-                                val downloadUrl = if (sUrl.isNotBlank()) "$sUrl/download/varalakshmi-portfolio.apk"
-                                else "https://github.com/Ganapathiraj-A/varalakshmi-portfolio-app/releases/latest/download/varalakshmi-portfolio.apk"
-                                safeOpenUri(downloadUrl)
+                                safeOpenUri("https://github.com/Ganapathiraj-A/varalakshmi-portfolio-app/releases/latest/download/varalakshmi-portfolio.apk")
                             },
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(8.dp),
@@ -622,12 +619,15 @@ fun VaralakshmiDashboardScreen(
                                 modifier = Modifier.size(15.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Download APK", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+                            Text("Download APK (GitHub)", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
                         }
 
                         OutlinedButton(
                             onClick = {
-                                safeOpenUri("https://github.com/Ganapathiraj-A/varalakshmi-portfolio-app/releases/latest/download/varalakshmi-portfolio.apk")
+                                val sUrl = tempUrl.trim().trimEnd('/')
+                                val downloadUrl = if (sUrl.isNotBlank()) "$sUrl/download/latest.apk?t=${System.currentTimeMillis()}"
+                                else "https://github.com/Ganapathiraj-A/varalakshmi-portfolio-app/releases/latest/download/varalakshmi-portfolio.apk"
+                                safeOpenUri(downloadUrl)
                             },
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(8.dp),
@@ -637,11 +637,11 @@ fun VaralakshmiDashboardScreen(
                         ) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.OpenInNew,
-                                contentDescription = "View GitHub Releases",
+                                contentDescription = "Download from Live Server",
                                 modifier = Modifier.size(15.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("GitHub Mirror", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false)
+                            Text("Server Direct", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false)
                         }
                     }
                 }
