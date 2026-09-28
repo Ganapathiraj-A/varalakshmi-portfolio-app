@@ -586,6 +586,54 @@ data class FnoPositionItem(
 }
 
 /**
+ * Historical Position held on a specific day in VeeraLakshmi.
+ */
+data class FnoHistoricalPosition(
+    val symbol: String = "",
+    val direction: String = "SHORT",
+    val instrumentType: String = "FUT",
+    val lots: Int = 1,
+    val quantity: Int = 0,
+    val entryPrice: Double = 0.0,
+    val closePrice: Double = 0.0,
+    val dayPnl: Double = 0.0,
+    val strategyEngine: String = "IndexTrendEngine"
+) {
+    val isProfit: Boolean get() = dayPnl >= 0.0
+    val isShort: Boolean get() = direction.equals("SHORT", ignoreCase = true)
+    val formattedEntryPrice: String get() = String.format(Locale.US, "₹%,.2f", entryPrice)
+    val formattedClosePrice: String get() = String.format(Locale.US, "₹%,.2f", closePrice)
+    val formattedDayPnl: String get() {
+        val sign = if (dayPnl >= 0.0) "+" else "-"
+        return String.format(Locale.US, "%s₹%,.2f", sign, kotlin.math.abs(dayPnl))
+    }
+}
+
+/**
+ * Historical Executed Trade on a specific day in VeeraLakshmi.
+ */
+data class FnoHistoricalTrade(
+    val tradeId: String = "",
+    val time: String = "09:30",
+    val symbol: String = "",
+    val action: String = "SELL",
+    val instrumentType: String = "FUT",
+    val lots: Int = 1,
+    val quantity: Int = 0,
+    val executionPrice: Double = 0.0,
+    val realizedPnl: Double = 0.0,
+    val executionReason: String = ""
+) {
+    val isProfit: Boolean get() = realizedPnl >= 0.0
+    val isSell: Boolean get() = action.contains("SELL", ignoreCase = true)
+    val formattedPrice: String get() = String.format(Locale.US, "₹%,.2f", executionPrice)
+    val formattedRealizedPnl: String get() {
+        val sign = if (realizedPnl >= 0.0) "+" else "-"
+        return String.format(Locale.US, "%s₹%,.2f", sign, kotlin.math.abs(realizedPnl))
+    }
+}
+
+/**
  * Daily Profit and Loss Record for VeeraLakshmi F&O Paper Trading.
  */
 data class FnoDailyPnlItem(
@@ -596,7 +644,9 @@ data class FnoDailyPnlItem(
     val marginBlocked: Double = 0.0,
     val positionsCount: Int = 0,
     val tradeCount: Int = 0,
-    val dayStatus: String = if (dailyPnl >= 0.0) "WIN" else "LOSS"
+    val dayStatus: String = if (dailyPnl >= 0.0) "WIN" else "LOSS",
+    val positions: List<FnoHistoricalPosition> = emptyList(),
+    val trades: List<FnoHistoricalTrade> = emptyList()
 ) {
     val isProfit: Boolean get() = dailyPnl >= 0.0
 

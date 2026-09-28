@@ -36,6 +36,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.varalakshmiportfolio.model.FnoDailyPnlItem
+import com.example.varalakshmiportfolio.model.FnoHistoricalPosition
+import com.example.varalakshmiportfolio.model.FnoHistoricalTrade
 import com.example.varalakshmiportfolio.model.FnoInstanceSummary
 import com.example.varalakshmiportfolio.model.FnoPositionItem
 import com.example.varalakshmiportfolio.model.VeeraLakshmiUiState
@@ -1166,106 +1168,459 @@ private fun FnoDailyPnlRow(
     item: FnoDailyPnlItem,
     modifier: Modifier = Modifier
 ) {
+    var isExpanded by rememberSaveable { mutableStateOf(false) }
+
+    val chevronRotation by animateFloatAsState(
+        targetValue = if (isExpanded) 180f else 0f,
+        label = "pnl_row_chevron"
+    )
+
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .clickable { isExpanded = !isExpanded },
+        shape = RoundedCornerShape(8.dp),
+        color = if (isExpanded) DarkSurface else DarkCard,
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (isExpanded) AccentIndigo.copy(alpha = 0.7f) else DarkCardBorder
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            // Main Summary Row (always visible)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Column 1: Date & Today Pill / Trades & Details hint
+                Column(modifier = Modifier.weight(1.2f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = item.formattedDate,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimary
+                        )
+                        if (item.isToday) {
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Surface(
+                                shape = RoundedCornerShape(3.dp),
+                                color = GoldAccentBg
+                            ) {
+                                Text(
+                                    text = "TODAY",
+                                    fontSize = 7.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = GoldAccent,
+                                    modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp)
+                                )
+                            }
+                        }
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "${item.tradeCount} trades • ${item.positionsCount} pos",
+                            fontSize = 8.5.sp,
+                            color = TextMuted
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = if (isExpanded) "• Hide" else "• Details",
+                            fontSize = 8.sp,
+                            color = if (isExpanded) AccentIndigoLight else TextMuted
+                        )
+                    }
+                }
+
+                // Column 2: Daily P&L & Status tag
+                Column(
+                    modifier = Modifier.weight(1.3f),
+                    horizontalAlignment = Alignment.End
+                ) {
+                    Text(
+                        text = item.formattedDailyPnl,
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace,
+                        color = if (item.isProfit) ProfitGreen else LossRed
+                    )
+                    Surface(
+                        shape = RoundedCornerShape(3.dp),
+                        color = if (item.isProfit) ProfitGreenBg else LossRedBg
+                    ) {
+                        Text(
+                            text = item.dayStatus,
+                            fontSize = 7.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (item.isProfit) ProfitGreen else LossRed,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                        )
+                    }
+                }
+
+                // Column 3: Return %
+                Text(
+                    text = item.formattedDailyReturn,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    fontFamily = FontFamily.Monospace,
+                    color = if (item.isProfit) ProfitGreen else LossRed,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                    modifier = Modifier.weight(0.9f)
+                )
+
+                // Column 4: Total Equity & Chevron
+                Row(
+                    modifier = Modifier.weight(1.4f),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(
+                            text = item.formattedTotalEquity,
+                            fontSize = 10.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            fontFamily = FontFamily.Monospace,
+                            color = TextPrimary,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.End
+                        )
+                        Text(
+                            text = "Close",
+                            fontSize = 8.sp,
+                            color = TextMuted,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.End
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Icon(
+                        imageVector = Icons.Filled.KeyboardArrowDown,
+                        contentDescription = if (isExpanded) "Collapse Details" else "Expand Details",
+                        tint = if (isExpanded) AccentIndigoLight else TextMuted,
+                        modifier = Modifier
+                            .size(16.dp)
+                            .rotate(chevronRotation)
+                    )
+                }
+            }
+
+            // Expanded Breakdown: Trades & Positions
+            AnimatedVisibility(
+                visible = isExpanded,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    HorizontalDivider(color = DarkCardBorder)
+
+                    // 1. Session Telemetry Bar
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(6.dp),
+                        color = DarkCard,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, DarkCardBorder)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "MARGIN BLOCKED: ${String.format(Locale.US, "₹%,.0f", item.marginBlocked)}",
+                                fontSize = 8.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextMuted
+                            )
+                            Text(
+                                text = if (item.isProfit) "SESSION PROFIT" else "SESSION DRAWDOWN",
+                                fontSize = 8.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (item.isProfit) ProfitGreen else LossRed
+                            )
+                        }
+                    }
+
+                    // 2. Positions Section
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "POSITIONS HELD ON ${item.formattedDate.uppercase()}",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = GoldAccent,
+                                letterSpacing = 0.4.sp
+                            )
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = GoldAccentBg
+                            ) {
+                                Text(
+                                    text = "${item.positions.size} open",
+                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = GoldAccent,
+                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                )
+                            }
+                        }
+
+                        if (item.positions.isEmpty()) {
+                            Text(
+                                text = "No open positions recorded for this session.",
+                                fontSize = 9.sp,
+                                color = TextMuted,
+                                modifier = Modifier.padding(vertical = 4.dp)
+                            )
+                        } else {
+                            item.positions.forEach { pos ->
+                                HistoricalPositionSubCard(pos = pos)
+                            }
+                        }
+                    }
+
+                    // 3. Executed Trades Section
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "EXECUTED TRADES & ORDERS (${item.trades.size})",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = AccentIndigoLight,
+                                letterSpacing = 0.4.sp
+                            )
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = AccentIndigoBg
+                            ) {
+                                Text(
+                                    text = "${item.trades.size} executed",
+                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = AccentIndigoLight,
+                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                )
+                            }
+                        }
+
+                        if (item.trades.isEmpty()) {
+                            Text(
+                                text = "No order fills executed (Positions carried forward).",
+                                fontSize = 9.sp,
+                                color = TextMuted,
+                                modifier = Modifier.padding(vertical = 4.dp)
+                            )
+                        } else {
+                            item.trades.forEach { trd ->
+                                HistoricalTradeSubCard(trade = trd)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HistoricalPositionSubCard(
+    pos: FnoHistoricalPosition,
+    modifier: Modifier = Modifier
+) {
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(6.dp),
         color = DarkCard,
         border = androidx.compose.foundation.BorderStroke(1.dp, DarkCardBorder)
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+                .padding(8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            // Column 1: Date & Today Pill / Trades
-            Column(modifier = Modifier.weight(1.2f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+            // Row 1: Symbol, Direction pill, Engine, Day PnL
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f, fill = false)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(3.dp),
+                        color = if (pos.isShort) LossRedBg else ProfitGreenBg
+                    ) {
+                        Text(
+                            text = pos.direction,
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (pos.isShort) LossRed else ProfitGreen,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(5.dp))
                     Text(
-                        text = item.formattedDate,
-                        fontSize = 10.5.sp,
-                        fontWeight = FontWeight.SemiBold,
+                        text = pos.symbol,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
                         color = TextPrimary
                     )
-                    if (item.isToday) {
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Surface(
-                            shape = RoundedCornerShape(3.dp),
-                            color = GoldAccentBg
-                        ) {
-                            Text(
-                                text = "TODAY",
-                                fontSize = 7.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = GoldAccent,
-                                modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp)
-                            )
-                        }
-                    }
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "• ${pos.strategyEngine}",
+                        fontSize = 8.5.sp,
+                        color = TextMuted,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    )
                 }
-                Text(
-                    text = "${item.tradeCount} trades • ${item.positionsCount} pos",
-                    fontSize = 8.5.sp,
-                    color = TextMuted
-                )
-            }
 
-            // Column 2: Daily P&L & Status tag
-            Column(
-                modifier = Modifier.weight(1.3f),
-                horizontalAlignment = Alignment.End
-            ) {
                 Text(
-                    text = item.formattedDailyPnl,
+                    text = pos.formattedDayPnl,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace,
-                    color = if (item.isProfit) ProfitGreen else LossRed
+                    color = if (pos.isProfit) ProfitGreen else LossRed
                 )
-                Surface(
-                    shape = RoundedCornerShape(3.dp),
-                    color = if (item.isProfit) ProfitGreenBg else LossRedBg
+            }
+
+            // Row 2: Lots & Qty, Entry Price, Close Price
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "${pos.lots} lot (${pos.quantity} units)",
+                    fontSize = 8.5.sp,
+                    color = TextSecondary
+                )
+                Text(
+                    text = "Entry: ${pos.formattedEntryPrice}  →  Close: ${pos.formattedClosePrice}",
+                    fontSize = 8.5.sp,
+                    fontFamily = FontFamily.Monospace,
+                    color = TextMuted
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun HistoricalTradeSubCard(
+    trade: FnoHistoricalTrade,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(6.dp),
+        color = DarkCard,
+        border = androidx.compose.foundation.BorderStroke(1.dp, DarkCardBorder)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            // Row 1: Time, Action Pill, Symbol, Qty, Realized PnL or Price
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f, fill = false)
                 ) {
+                    Surface(
+                        shape = RoundedCornerShape(3.dp),
+                        color = AccentIndigoBg
+                    ) {
+                        Text(
+                            text = trade.time,
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = AccentIndigoLight,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Surface(
+                        shape = RoundedCornerShape(3.dp),
+                        color = if (trade.isSell) LossRedBg else ProfitGreenBg
+                    ) {
+                        Text(
+                            text = trade.action,
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (trade.isSell) LossRed else ProfitGreen,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(5.dp))
                     Text(
-                        text = item.dayStatus,
-                        fontSize = 7.5.sp,
+                        text = trade.symbol,
+                        fontSize = 10.5.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (item.isProfit) ProfitGreen else LossRed,
-                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                        color = TextPrimary
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "(${trade.quantity} @ ${trade.formattedPrice})",
+                        fontSize = 8.5.sp,
+                        fontFamily = FontFamily.Monospace,
+                        color = TextSecondary
+                    )
+                }
+
+                if (trade.realizedPnl != 0.0) {
+                    Text(
+                        text = trade.formattedRealizedPnl,
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace,
+                        color = if (trade.isProfit) ProfitGreen else LossRed
                     )
                 }
             }
 
-            // Column 3: Return %
-            Text(
-                text = item.formattedDailyReturn,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.SemiBold,
-                fontFamily = FontFamily.Monospace,
-                color = if (item.isProfit) ProfitGreen else LossRed,
-                textAlign = androidx.compose.ui.text.style.TextAlign.End,
-                modifier = Modifier.weight(0.9f)
-            )
-
-            // Column 4: Total Equity
-            Column(
-                modifier = Modifier.weight(1.3f),
-                horizontalAlignment = Alignment.End
-            ) {
+            // Row 2: Execution Reason / Trigger
+            if (trade.executionReason.isNotBlank()) {
                 Text(
-                    text = item.formattedTotalEquity,
-                    fontSize = 10.5.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    fontFamily = FontFamily.Monospace,
-                    color = TextPrimary,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.End
-                )
-                Text(
-                    text = "Close",
-                    fontSize = 8.sp,
+                    text = "⚡ ${trade.executionReason}",
+                    fontSize = 8.5.sp,
                     color = TextMuted,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.End
+                    lineHeight = 12.sp
                 )
             }
         }

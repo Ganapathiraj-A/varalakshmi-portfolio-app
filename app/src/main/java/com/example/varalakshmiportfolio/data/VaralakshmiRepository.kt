@@ -2397,15 +2397,61 @@ class VaralakshmiRepository {
             val arr = root.optJSONArray("records") ?: (if (root.has("daily_pnl")) root.optJSONArray("daily_pnl") else null) ?: return result
             for (i in 0 until arr.length()) {
                 val obj = arr.optJSONObject(i) ?: continue
+
+                val posList = mutableListOf<FnoHistoricalPosition>()
+                val posArr = obj.optJSONArray("positions")
+                if (posArr != null) {
+                    for (p in 0 until posArr.length()) {
+                        val pObj = posArr.optJSONObject(p) ?: continue
+                        posList.add(
+                            FnoHistoricalPosition(
+                                symbol = pObj.optString("symbol", ""),
+                                direction = pObj.optString("direction", "SHORT"),
+                                instrumentType = pObj.optString("instrument_type", "FUT"),
+                                lots = pObj.optInt("lots", 1),
+                                quantity = pObj.optInt("quantity", 0),
+                                entryPrice = optSafeDouble(pObj, "entry_price", 0.0),
+                                closePrice = optSafeDouble(pObj, "close_price", 0.0),
+                                dayPnl = optSafeDouble(pObj, "day_pnl", 0.0),
+                                strategyEngine = pObj.optString("strategy_engine", "IndexTrendEngine")
+                            )
+                        )
+                    }
+                }
+
+                val tradeList = mutableListOf<FnoHistoricalTrade>()
+                val tradeArr = obj.optJSONArray("trades")
+                if (tradeArr != null) {
+                    for (t in 0 until tradeArr.length()) {
+                        val tObj = tradeArr.optJSONObject(t) ?: continue
+                        tradeList.add(
+                            FnoHistoricalTrade(
+                                tradeId = tObj.optString("trade_id", ""),
+                                time = tObj.optString("time", "09:30"),
+                                symbol = tObj.optString("symbol", ""),
+                                action = tObj.optString("action", "SELL"),
+                                instrumentType = tObj.optString("instrument_type", "FUT"),
+                                lots = tObj.optInt("lots", 1),
+                                quantity = tObj.optInt("quantity", 0),
+                                executionPrice = optSafeDouble(tObj, "execution_price", 0.0),
+                                realizedPnl = optSafeDouble(tObj, "realized_pnl", 0.0),
+                                executionReason = tObj.optString("execution_reason", "")
+                            )
+                        )
+                    }
+                }
+
                 val item = FnoDailyPnlItem(
                     date = obj.optString("date", "2026-09-28"),
                     dailyPnl = optSafeDouble(obj, "daily_pnl", 0.0),
                     dailyReturnPct = optSafeDouble(obj, "daily_return_pct", 0.0),
                     totalEquity = optSafeDouble(obj, "total_equity", 5000000.0),
                     marginBlocked = optSafeDouble(obj, "margin_blocked", 0.0),
-                    positionsCount = obj.optInt("positions_count", 0),
-                    tradeCount = obj.optInt("trade_count", 0),
-                    dayStatus = obj.optString("day_status", if (optSafeDouble(obj, "daily_pnl", 0.0) >= 0.0) "WIN" else "LOSS")
+                    positionsCount = obj.optInt("positions_count", if (posList.isNotEmpty()) posList.size else 0),
+                    tradeCount = obj.optInt("trade_count", if (tradeList.isNotEmpty()) tradeList.size else 0),
+                    dayStatus = obj.optString("day_status", if (optSafeDouble(obj, "daily_pnl", 0.0) >= 0.0) "WIN" else "LOSS"),
+                    positions = posList,
+                    trades = tradeList
                 )
                 result.add(item)
             }
@@ -2532,6 +2578,40 @@ class VaralakshmiRepository {
                 obj.put("positions_count", d.positionsCount)
                 obj.put("trade_count", d.tradeCount)
                 obj.put("day_status", d.dayStatus)
+
+                val dayPosArr = JSONArray()
+                for (p in d.positions) {
+                    val pObj = JSONObject()
+                    pObj.put("symbol", p.symbol)
+                    pObj.put("direction", p.direction)
+                    pObj.put("instrument_type", p.instrumentType)
+                    pObj.put("lots", p.lots)
+                    pObj.put("quantity", p.quantity)
+                    pObj.put("entry_price", p.entryPrice)
+                    pObj.put("close_price", p.closePrice)
+                    pObj.put("day_pnl", p.dayPnl)
+                    pObj.put("strategy_engine", p.strategyEngine)
+                    dayPosArr.put(pObj)
+                }
+                obj.put("positions", dayPosArr)
+
+                val dayTrdArr = JSONArray()
+                for (t in d.trades) {
+                    val tObj = JSONObject()
+                    tObj.put("trade_id", t.tradeId)
+                    tObj.put("time", t.time)
+                    tObj.put("symbol", t.symbol)
+                    tObj.put("action", t.action)
+                    tObj.put("instrument_type", t.instrumentType)
+                    tObj.put("lots", t.lots)
+                    tObj.put("quantity", t.quantity)
+                    tObj.put("execution_price", t.executionPrice)
+                    tObj.put("realized_pnl", t.realizedPnl)
+                    tObj.put("execution_reason", t.executionReason)
+                    dayTrdArr.put(tObj)
+                }
+                obj.put("trades", dayTrdArr)
+
                 pnlArr.put(obj)
             }
             val pnlRoot = JSONObject()
@@ -2641,6 +2721,7 @@ class VaralakshmiRepository {
             val status = if (scaledPnl >= 0) "WIN" else "LOSS"
             val blocked = baseCap * 0.24
 
+            val (dayPositions, dayTrades) = buildSeedPositionsAndTradesForDate(date, instanceId, mult)
             list.add(
                 FnoDailyPnlItem(
                     date = date,
@@ -2648,14 +2729,83 @@ class VaralakshmiRepository {
                     dailyReturnPct = retPct,
                     totalEquity = runningEquity,
                     marginBlocked = blocked,
-                    positionsCount = pCount,
-                    tradeCount = trades,
-                    dayStatus = status
+                    positionsCount = dayPositions.size,
+                    tradeCount = dayTrades.size,
+                    dayStatus = status,
+                    positions = dayPositions,
+                    trades = dayTrades
                 )
             )
             runningEquity -= scaledPnl
         }
         return list
+    }
+
+    fun buildSeedPositionsAndTradesForDate(
+        date: String,
+        instanceId: String,
+        mult: Double
+    ): Pair<List<FnoHistoricalPosition>, List<FnoHistoricalTrade>> {
+        val allPositions = listOf(
+            FnoHistoricalPosition("BANKNIFTY_FUT", "SHORT", "FUT", 1, (30 * mult).toInt().coerceAtLeast(15), 58381.10, 57591.00, 23703.00 * mult, "IndexTrendEngine"),
+            FnoHistoricalPosition("MARUTI_FUT", "SHORT", "FUT", 1, (60 * mult).toInt().coerceAtLeast(20), 12229.15, 12065.00, 9849.00 * mult, "StockMomentumEngine"),
+            FnoHistoricalPosition("RELIANCE_FUT", "SHORT", "FUT", maxOf(1, (2 * mult).toInt()), (1000 * mult).toInt().coerceAtLeast(250), 1242.80, 1226.00, 16800.00 * mult, "StockMomentumEngine"),
+            FnoHistoricalPosition("NIFTY_FUT", "SHORT", "FUT", 1, (65 * mult).toInt().coerceAtLeast(25), 26456.70, 26413.00, 2840.50 * mult, "IndexTrendEngine"),
+            FnoHistoricalPosition("SBIN_FUT", "SHORT", "FUT", 1, (750 * mult).toInt().coerceAtLeast(250), 975.85, 983.00, -5362.50 * mult, "StockMomentumEngine"),
+            FnoHistoricalPosition("TailHedgeBetaHedge", "SHORT", "FUT", 1, (65 * mult).toInt().coerceAtLeast(25), 26456.70, 26413.00, 2840.50 * mult, "TailHedgeBetaHedge")
+        )
+
+        val posLimit = when (instanceId) {
+            "15L" -> 2
+            "20L" -> 3
+            else -> 6
+        }
+        val posList = allPositions.take(posLimit)
+
+        val tradesList = when (date) {
+            "2026-09-28" -> listOf(
+                FnoHistoricalTrade("TRD_28_01", "09:20", "BANKNIFTY_FUT", "SELL", "FUT", 1, (30 * mult).toInt().coerceAtLeast(15), 58381.10, 0.0, "Index breakdown trigger @ 58,500 resistance rejection"),
+                FnoHistoricalTrade("TRD_28_02", "11:15", "MARUTI_FUT", "SELL", "FUT", 1, (60 * mult).toInt().coerceAtLeast(20), 12229.15, 0.0, "Auto sector relative weakness break below 50 EMA"),
+                FnoHistoricalTrade("TRD_28_03", "13:40", "TCS_FUT", "BUY", "FUT", 1, (175 * mult).toInt().coerceAtLeast(50), 4120.00, 18400.0 * mult, "Target Hit 1:2.4 RR profit harvest"),
+                FnoHistoricalTrade("TRD_28_04", "15:10", "NIFTY_FUT", "SELL", "FUT", 1, (65 * mult).toInt().coerceAtLeast(25), 26456.70, 0.0, "Beta Neutralization Tail-risk hedge deploy")
+            )
+            "2026-09-25" -> listOf(
+                FnoHistoricalTrade("TRD_25_01", "09:35", "RELIANCE_FUT", "SELL", "FUT", maxOf(1, (2 * mult).toInt()), (1000 * mult).toInt().coerceAtLeast(250), 1242.80, 0.0, "Distribution volume expansion below support @ ₹1,245"),
+                FnoHistoricalTrade("TRD_25_02", "14:20", "INFY_FUT", "BUY", "FUT", 1, (400 * mult).toInt().coerceAtLeast(100), 1945.00, 12600.0 * mult, "Trailing Stop Target Achieved")
+            )
+            "2026-09-24" -> listOf(
+                FnoHistoricalTrade("TRD_24_01", "10:15", "SBIN_FUT", "SELL", "FUT", 1, (750 * mult).toInt().coerceAtLeast(250), 975.85, 0.0, "Rejection at ₹1,000 round level with daily bearish engulfing"),
+                FnoHistoricalTrade("TRD_24_02", "14:45", "ICICIBANK_FUT", "BUY", "FUT", 1, (700 * mult).toInt().coerceAtLeast(200), 1298.00, -8340.0 * mult, "Stop Loss triggered on midday banking recovery")
+            )
+            "2026-09-23" -> listOf(
+                FnoHistoricalTrade("TRD_23_01", "09:40", "NIFTY_FUT", "SELL", "FUT", 1, (65 * mult).toInt().coerceAtLeast(25), 26520.00, 0.0, "Hourly MACD bearish cross below zero-line"),
+                FnoHistoricalTrade("TRD_23_02", "14:10", "HDFCBANK_FUT", "BUY", "FUT", 1, (550 * mult).toInt().coerceAtLeast(150), 1715.00, 14200.0 * mult, "Trailing Profit Lock @ 1.8 ATR target")
+            )
+            "2026-09-22" -> listOf(
+                FnoHistoricalTrade("TRD_22_01", "10:05", "BANKNIFTY_FUT", "SELL", "FUT", 1, (30 * mult).toInt().coerceAtLeast(15), 58150.00, 0.0, "VWAP failure on second test"),
+                FnoHistoricalTrade("TRD_22_02", "15:15", "TATAMOTORS_FUT", "BUY", "FUT", 1, (575 * mult).toInt().coerceAtLeast(150), 985.00, 9600.0 * mult, "Trailing SL protected profitable bounce")
+            )
+            "2026-09-21" -> listOf(
+                FnoHistoricalTrade("TRD_21_01", "11:30", "MARUTI_FUT", "BUY", "FUT", 1, (60 * mult).toInt().coerceAtLeast(20), 12350.00, -5050.0 * mult, "Defensive cut on auto sector morning pullback")
+            )
+            "2026-09-18" -> listOf(
+                FnoHistoricalTrade("TRD_18_01", "09:25", "RELIANCE_FUT", "SELL", "FUT", maxOf(1, (2 * mult).toInt()), (1000 * mult).toInt().coerceAtLeast(250), 1255.00, 0.0, "Breakdown below 20-day high channel"),
+                FnoHistoricalTrade("TRD_18_02", "13:50", "NIFTY 26500 PE", "BUY", "OPT", 1, (65 * mult).toInt().coerceAtLeast(25), 185.00, 16400.0 * mult, "Volatility expansion scalp exit (+88%)")
+            )
+            "2026-09-17" -> listOf(
+                FnoHistoricalTrade("TRD_17_01", "14:50", "BANKNIFTY_FUT", "BUY", "FUT", 1, (30 * mult).toInt().coerceAtLeast(15), 58650.00, -11400.0 * mult, "Risk guard stop-loss hit on expiry surge")
+            )
+            else -> listOf(
+                FnoHistoricalTrade("TRD_${date.replace("-", "")}_01", "10:15", posList.firstOrNull()?.symbol ?: "NIFTY_FUT", "SELL", "FUT", 1, (65 * mult).toInt().coerceAtLeast(25), 26400.00, 0.0, "Systematic dynamic ATR trend continuation entry")
+            )
+        }
+
+        val tradeLimit = when (instanceId) {
+            "15L" -> minOf(1, tradesList.size)
+            "20L" -> minOf(2, tradesList.size)
+            else -> tradesList.size
+        }
+        return Pair(posList, tradesList.take(tradeLimit))
     }
 
     fun getSeedPositionsForInstance(instanceId: String): List<FnoPositionItem> {

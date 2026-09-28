@@ -673,9 +673,36 @@ class VeeraLakshmiTest {
                   "daily_return_pct": 0.42,
                   "total_equity": 5050670.5,
                   "margin_blocked": 1184886.09,
-                  "positions_count": 6,
-                  "trade_count": 4,
-                  "day_status": "WIN"
+                  "positions_count": 1,
+                  "trade_count": 1,
+                  "day_status": "WIN",
+                  "positions": [
+                    {
+                      "symbol": "BANKNIFTY_FUT",
+                      "direction": "SHORT",
+                      "instrument_type": "FUT",
+                      "lots": 1,
+                      "quantity": 30,
+                      "entry_price": 58381.1,
+                      "close_price": 57591.0,
+                      "day_pnl": 23703.0,
+                      "strategy_engine": "IndexTrendEngine"
+                    }
+                  ],
+                  "trades": [
+                    {
+                      "trade_id": "TRD_28_01",
+                      "time": "09:20",
+                      "symbol": "BANKNIFTY_FUT",
+                      "action": "SELL",
+                      "instrument_type": "FUT",
+                      "lots": 1,
+                      "quantity": 30,
+                      "execution_price": 58381.1,
+                      "realized_pnl": 0.0,
+                      "execution_reason": "Index breakdown trigger"
+                    }
+                  ]
                 },
                 {
                   "date": "2026-09-24",
@@ -683,8 +710,8 @@ class VeeraLakshmiTest {
                   "daily_return_pct": -0.25,
                   "total_equity": 4995240.5,
                   "margin_blocked": 1150000.0,
-                  "positions_count": 5,
-                  "trade_count": 6,
+                  "positions_count": 0,
+                  "trade_count": 0,
                   "day_status": "LOSS"
                 }
               ]
@@ -699,12 +726,31 @@ class VeeraLakshmiTest {
         assertEquals(21180.0, day1.dailyPnl, 0.01)
         assertEquals(0.42, day1.dailyReturnPct, 0.01)
         assertEquals(5050670.5, day1.totalEquity, 0.01)
-        assertEquals(4, day1.tradeCount)
-        assertEquals(6, day1.positionsCount)
+        assertEquals(1, day1.tradeCount)
+        assertEquals(1, day1.positionsCount)
         assertEquals("WIN", day1.dayStatus)
         assertTrue(day1.isProfit)
         assertTrue(day1.formattedDailyPnl.contains("21,180"))
         assertEquals("+0.42%", day1.formattedDailyReturn)
+
+        // Verify parsed positions & trades
+        assertEquals(1, day1.positions.size)
+        val pos = day1.positions[0]
+        assertEquals("BANKNIFTY_FUT", pos.symbol)
+        assertEquals("SHORT", pos.direction)
+        assertTrue(pos.isShort)
+        assertEquals(58381.10, pos.entryPrice, 0.01)
+        assertEquals(57591.00, pos.closePrice, 0.01)
+        assertEquals(23703.00, pos.dayPnl, 0.01)
+        assertTrue(pos.isProfit)
+
+        assertEquals(1, day1.trades.size)
+        val trd = day1.trades[0]
+        assertEquals("TRD_28_01", trd.tradeId)
+        assertEquals("09:20", trd.time)
+        assertEquals("SELL", trd.action)
+        assertTrue(trd.isSell)
+        assertEquals("Index breakdown trigger", trd.executionReason)
 
         val day2 = parsed[1]
         assertEquals("2026-09-24", day2.date)
@@ -714,6 +760,8 @@ class VeeraLakshmiTest {
         assertFalse(day2.isProfit)
         assertTrue(day2.formattedDailyPnl.contains("12,400"))
         assertEquals("-0.25%", day2.formattedDailyReturn)
+        assertTrue(day2.positions.isEmpty())
+        assertTrue(day2.trades.isEmpty())
     }
 
     @Test
@@ -730,17 +778,29 @@ class VeeraLakshmiTest {
         val netPnl50 = pnl50.sumOf { it.dailyPnl }
         assertTrue(netPnl50 > 150000.0)
 
+        // Verify positions and trades in seeds
+        val firstDay50 = pnl50[0]
+        assertEquals("2026-09-28", firstDay50.date)
+        assertEquals(6, firstDay50.positions.size)
+        assertEquals(4, firstDay50.trades.size)
+        assertTrue(firstDay50.positions.any { it.symbol == "BANKNIFTY_FUT" })
+        assertTrue(firstDay50.trades.any { it.symbol == "BANKNIFTY_FUT" && it.action == "SELL" })
+
         // 20L instance is scaled to 40%
         val pnl20 = repository.getSeedDailyPnlForInstance("20L")
         assertEquals(15, pnl20.size)
         val netPnl20 = pnl20.sumOf { it.dailyPnl }
         assertEquals(netPnl50 * 0.4, netPnl20, 1.0)
+        assertEquals(3, pnl20[0].positions.size)
+        assertEquals(2, pnl20[0].trades.size)
 
         // 15L instance is scaled to 30%
         val pnl15 = repository.getSeedDailyPnlForInstance("15L")
         assertEquals(15, pnl15.size)
         val netPnl15 = pnl15.sumOf { it.dailyPnl }
         assertEquals(netPnl50 * 0.3, netPnl15, 1.0)
+        assertEquals(2, pnl15[0].positions.size)
+        assertEquals(1, pnl15[0].trades.size)
     }
 
     @Test
@@ -759,5 +819,9 @@ class VeeraLakshmiTest {
         assertTrue(first.dailyPnl > 0.0)
         assertEquals("WIN", first.dayStatus)
         assertEquals(4, first.tradeCount)
+        assertEquals(6, first.positions.size)
+        assertEquals(4, first.trades.size)
+        assertEquals("BANKNIFTY_FUT", first.positions[0].symbol)
+        assertEquals("TRD_28_01", first.trades[0].tradeId)
     }
 }
