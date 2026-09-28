@@ -12,6 +12,10 @@ import com.example.varalakshmiportfolio.model.StockRecommendationItem
 import com.example.varalakshmiportfolio.model.HistoricalRecommendationItem
 import com.example.varalakshmiportfolio.model.RecommendationHistorySummary
 import com.example.varalakshmiportfolio.model.IpoActionNotification
+import com.example.varalakshmiportfolio.util.MarketHours
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -37,7 +41,11 @@ data class VaralakshmiUiState(
     val showSettingsDialog: Boolean = false,
     val positionToExit: PositionItem? = null,
     val snackbarMessage: String? = null,
-    val isLiveSync: Boolean = false
+    val isLiveSync: Boolean = false,
+    val isAutoSyncEnabled: Boolean = true,
+    val lastSyncTimestamp: Long = 0L,
+    val isMarketOpen: Boolean = false,
+    val marketStatusText: String = ""
 ) {
     val filteredRecommendationHistory: List<HistoricalRecommendationItem>
         get() = when (selectedHistoryFilter.uppercase(Locale.US)) {
@@ -50,7 +58,10 @@ data class VaralakshmiUiState(
 
 class VaralakshmiViewModel(
     private val repository: VaralakshmiRepository = VaralakshmiRepository(),
-    autoRefresh: Boolean = true
+    autoRefresh: Boolean = true,
+    private val enablePeriodicSync: Boolean = autoRefresh,
+    val syncIntervalMillis: Long = 15 * 60 * 1000L,
+    private val checkIntervalMillis: Long = 30_000L
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(
@@ -64,10 +75,16 @@ class VaralakshmiViewModel(
             recommendationHistorySummary = repository.getCachedRecommendationHistorySummary(),
             ipoNotifications = repository.getCachedIpoNotifications(),
             serverUrl = repository.getServerUrl(),
-            authToken = repository.getAuthToken()
+            authToken = repository.getAuthToken(),
+            isAutoSyncEnabled = repository.isAutoSyncEnabled(),
+            lastSyncTimestamp = System.currentTimeMillis(),
+            isMarketOpen = MarketHours.isMarketHours(),
+            marketStatusText = MarketHours.getMarketStatusText()
         )
     )
     val uiState: StateFlow<VaralakshmiUiState> = _uiState.asStateFlow()
+
+    private var periodicSyncJob: Job? = null
 
     init {
         if (autoRefresh) {
@@ -77,13 +94,23 @@ class VaralakshmiViewModel(
                 // Safeguard against unconfigured Main dispatcher in headless JVM tests
             }
         }
+        if (enablePeriodicSync) {
+            try {
+                startPeriodicSync()
+            } catch (e: Throwable) {
+                // Safeguard against unconfigured Main dispatcher in headless JVM tests
+            }
+        }
     }
 
-    fun refresh() {
+    fun refresh(isSilent: Boolean = false) {
         if (_uiState.value.isRefreshing) return
         viewModelScope.launch {
             _uiState.update { it.copy(isRefreshing = true) }
             val syncResult = repository.refreshData(_uiState.value.serverUrl, _uiState.value.authToken)
+            val now = System.currentTimeMillis()
+            val isMarket = MarketHours.isMarketHours()
+            val statusText = MarketHours.getMarketStatusText()
             when (syncResult) {
                 is SyncResult.Success -> {
                     _uiState.update {
@@ -98,7 +125,10 @@ class VaralakshmiViewModel(
                             ipoNotifications = syncResult.ipoNotifications,
                             isRefreshing = false,
                             isLiveSync = true,
-                            snackbarMessage = "Synced with live trading engine"
+                            lastSyncTimestamp = now,
+                            isMarketOpen = isMarket,
+                            marketStatusText = statusText,
+                            snackbarMessage = if (isSilent) null else "Synced with live trading engine"
                         )
                     }
                 }
@@ -115,12 +145,79 @@ class VaralakshmiViewModel(
                             ipoNotifications = syncResult.ipoNotifications,
                             isRefreshing = false,
                             isLiveSync = false,
-                            snackbarMessage = "Offline mode: showing cached snapshot"
+                            lastSyncTimestamp = now,
+                            isMarketOpen = isMarket,
+                            marketStatusText = statusText,
+                            snackbarMessage = if (isSilent) null else "Offline mode: showing cached snapshot"
                         )
                     }
                 }
             }
         }
+    }
+
+    fun startPeriodicSync() {
+        periodicSyncJob?.cancel()
+        periodicSyncJob = viewModelScope.launch {
+            while (isActive) {
+                delay(checkIntervalMillis)
+                val now = System.currentTimeMillis()
+                val isMarket = MarketHours.isMarketHours()
+                val statusText = MarketHours.getMarketStatusText()
+
+                _uiState.update {
+                    it.copy(
+                        isMarketOpen = isMarket,
+                        marketStatusText = statusText
+                    )
+                }
+
+                if (_uiState.value.isAutoSyncEnabled && isMarket) {
+                    val lastSync = _uiState.value.lastSyncTimestamp
+                    if (now - lastSync >= syncIntervalMillis) {
+                        refresh(isSilent = true)
+                    }
+                }
+            }
+        }
+    }
+
+    fun stopPeriodicSync() {
+        periodicSyncJob?.cancel()
+        periodicSyncJob = null
+    }
+
+    fun onAppResume() {
+        val isMarket = MarketHours.isMarketHours()
+        val now = System.currentTimeMillis()
+        _uiState.update {
+            it.copy(
+                isMarketOpen = isMarket,
+                marketStatusText = MarketHours.getMarketStatusText()
+            )
+        }
+        if (_uiState.value.isAutoSyncEnabled && isMarket) {
+            val lastSync = _uiState.value.lastSyncTimestamp
+            if (now - lastSync >= syncIntervalMillis) {
+                refresh(isSilent = true)
+            }
+        }
+    }
+
+    fun toggleAutoSync(enabled: Boolean) {
+        repository.setAutoSyncEnabled(enabled)
+        _uiState.update { it.copy(isAutoSyncEnabled = enabled) }
+        if (enabled && MarketHours.isMarketHours()) {
+            val now = System.currentTimeMillis()
+            if (now - _uiState.value.lastSyncTimestamp >= syncIntervalMillis) {
+                refresh(isSilent = true)
+            }
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        stopPeriodicSync()
     }
 
     fun openRecommendationHistory() {

@@ -897,6 +897,7 @@ class VaralakshmiRepository {
     private var isLoadedFromDisk = false
     private var cachedServerUrl = DEFAULT_SERVER_URL
     private var cachedAuthToken = DEFAULT_AUTH_TOKEN
+    private var cachedAutoSyncEnabled = true
 
     init {
         synchronized(lock) {
@@ -926,6 +927,14 @@ class VaralakshmiRepository {
         synchronized(lock) {
             cachedServerUrl = url
             cachedAuthToken = token
+            saveToDisk()
+        }
+    }
+
+    fun isAutoSyncEnabled(): Boolean = synchronized(lock) { ensureLoaded(); cachedAutoSyncEnabled }
+    fun setAutoSyncEnabled(enabled: Boolean) {
+        synchronized(lock) {
+            cachedAutoSyncEnabled = enabled
             saveToDisk()
         }
     }
@@ -1680,6 +1689,7 @@ class VaralakshmiRepository {
             val root = JSONObject()
             root.put("serverUrl", cachedServerUrl)
             root.put("authToken", cachedAuthToken)
+            root.put("autoSyncEnabled", cachedAutoSyncEnabled)
             val summaryObj = JSONObject().apply {
                 put("strategyId", cachedSummary.strategyId)
                 put("strategyName", cachedSummary.strategyName)
@@ -2048,6 +2058,9 @@ class VaralakshmiRepository {
             if (root.has("authToken") && !root.isNull("authToken")) {
                 val token = root.optString("authToken", "").trim()
                 if (token.isNotBlank()) cachedAuthToken = token
+            }
+            if (root.has("autoSyncEnabled")) {
+                cachedAutoSyncEnabled = root.optBoolean("autoSyncEnabled", true)
             }
 
             // Transactional commit to memory: all-or-nothing

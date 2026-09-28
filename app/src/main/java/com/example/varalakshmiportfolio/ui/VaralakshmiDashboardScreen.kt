@@ -26,6 +26,9 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.platform.LocalContext
@@ -55,6 +58,19 @@ fun VaralakshmiDashboardScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val scrollState = rememberScrollState()
     val snackbarHostState = remember { SnackbarHostState() }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.onAppResume()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
 
     // Live clock updating every second
     val timeFormatter = remember { SimpleDateFormat("dd MMM yyyy, HH:mm:ss", Locale.getDefault()) }
@@ -217,6 +233,31 @@ fun VaralakshmiDashboardScreen(
                                 softWrap = false,
                                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                             )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(5.5.dp)
+                                        .clip(CircleShape)
+                                        .background(
+                                            if (!uiState.isAutoSyncEnabled) TextMuted
+                                            else if (uiState.isMarketOpen) ProfitGreen
+                                            else GoldAccent
+                                        )
+                                )
+                                Spacer(modifier = Modifier.width(3.5.dp))
+                                Text(
+                                    text = if (!uiState.isAutoSyncEnabled) "Auto-sync Off"
+                                    else if (uiState.isMarketOpen) "Auto-sync: 15m"
+                                    else "Auto-sync: Paused",
+                                    fontSize = 9.sp,
+                                    color = if (!uiState.isAutoSyncEnabled) TextMuted
+                                    else if (uiState.isMarketOpen) ProfitGreenLight
+                                    else GoldAccent,
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
                         }
                     }
 
@@ -463,8 +504,90 @@ fun VaralakshmiDashboardScreen(
                         color = DarkCardBorder
                     )
 
+                    // Auto-Sync Settings
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Auto-Sync (15 Min)",
+                                color = TextPrimary,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "Automatically syncs during market hours (09:15 – 15:30 IST). Pauses outside market hours.",
+                                color = TextSecondary,
+                                fontSize = 11.sp
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Switch(
+                            checked = uiState.isAutoSyncEnabled,
+                            onCheckedChange = { viewModel.toggleAutoSync(it) },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = AccentIndigo,
+                                uncheckedThumbColor = TextMuted,
+                                uncheckedTrackColor = DarkCard
+                            )
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (!uiState.isAutoSyncEnabled) DarkCard
+                        else if (uiState.isMarketOpen) ProfitGreenBg
+                        else DarkCard,
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            if (!uiState.isAutoSyncEnabled) DarkCardBorder
+                            else if (uiState.isMarketOpen) ProfitGreen.copy(alpha = 0.4f)
+                            else DarkCardBorder
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(7.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        if (!uiState.isAutoSyncEnabled) TextMuted
+                                        else if (uiState.isMarketOpen) ProfitGreen
+                                        else GoldAccent
+                                    )
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (!uiState.isAutoSyncEnabled) "Auto-sync disabled"
+                                else if (uiState.isMarketOpen) "🟢 Market Open: Active (Syncs every 15m)"
+                                else "⏸️ Market Closed: Paused until 09:15 IST",
+                                fontSize = 10.5.sp,
+                                color = if (!uiState.isAutoSyncEnabled) TextMuted
+                                else if (uiState.isMarketOpen) ProfitGreen
+                                else GoldAccent,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(vertical = 12.dp),
+                        color = DarkCardBorder
+                    )
+
                     Text(
-                        text = "App Updates & Releases (Current: v1.9.0)",
+                        text = "App Updates & Releases (Current: v1.9.2)",
                         color = TextPrimary,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold
