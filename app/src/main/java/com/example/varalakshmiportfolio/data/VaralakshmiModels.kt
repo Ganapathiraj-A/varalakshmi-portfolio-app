@@ -9,6 +9,10 @@ typealias StockRecommendationItem = com.example.varalakshmiportfolio.model.Stock
 typealias HistoricalPricePoint = com.example.varalakshmiportfolio.model.HistoricalPricePoint
 typealias HistoricalRecommendationItem = com.example.varalakshmiportfolio.model.HistoricalRecommendationItem
 typealias RecommendationHistorySummary = com.example.varalakshmiportfolio.model.RecommendationHistorySummary
+typealias FnoInstanceSummary = com.example.varalakshmiportfolio.model.FnoInstanceSummary
+typealias FnoPositionItem = com.example.varalakshmiportfolio.model.FnoPositionItem
+typealias FnoStatusInfo = com.example.varalakshmiportfolio.model.FnoStatusInfo
+typealias VeeraLakshmiUiState = com.example.varalakshmiportfolio.model.VeeraLakshmiUiState
  
 fun isPositionBoughtToday(entryDate: String): Boolean =
     com.example.varalakshmiportfolio.model.isPositionBoughtToday(entryDate)

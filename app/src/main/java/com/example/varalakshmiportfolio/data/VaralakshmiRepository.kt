@@ -2344,7 +2344,11 @@ class VaralakshmiRepository {
                     unrealizedPnl = optSafeDouble(obj, "unrealized_pnl", 0.0),
                     expiryDate = obj.optString("expiry_date", ""),
                     strikePrice = optSafeDouble(obj, "strike_price", 0.0),
-                    optionType = if (obj.has("option_type") && !obj.isNull("option_type")) obj.optString("option_type") else null
+                    optionType = if (obj.has("option_type") && !obj.isNull("option_type")) obj.optString("option_type") else null,
+                    entryReason = obj.optString("entry_reason", obj.optString("reason", obj.optString("rationale", ""))),
+                    targetPrice = optSafeDouble(obj, "target_price", 0.0),
+                    signalTrigger = obj.optString("signal_trigger", obj.optString("trigger", "")),
+                    riskReward = obj.optString("risk_reward", "")
                 )
                 result.add(item)
             }
@@ -2452,6 +2456,10 @@ class VaralakshmiRepository {
                 obj.put("expiry_date", p.expiryDate)
                 obj.put("strike_price", p.strikePrice)
                 if (p.optionType != null) obj.put("option_type", p.optionType)
+                if (p.entryReason.isNotBlank()) obj.put("entry_reason", p.entryReason)
+                if (p.targetPrice > 0.0) obj.put("target_price", p.targetPrice)
+                if (p.signalTrigger.isNotBlank()) obj.put("signal_trigger", p.signalTrigger)
+                if (p.riskReward.isNotBlank()) obj.put("risk_reward", p.riskReward)
                 posArr.put(obj)
             }
             val posRoot = JSONObject()
@@ -2545,7 +2553,11 @@ class VaralakshmiRepository {
             marginRequired = 257952.83,
             stopLossPrice = 26800.00,
             unrealizedPnl = 2840.50,
-            expiryDate = "2026-09-24"
+            expiryDate = "2026-09-24",
+            entryReason = "Systematic index trend breakdown trigger. NIFTY crossed below dynamic 20-day ATR trailing volatility band with negative breadth (advance/decline ratio 0.42) and hourly MACD bearish divergence; short initiated with trailing risk guard.",
+            targetPrice = 25700.00,
+            signalTrigger = "ATR Channel Breakdown + Negative Breadth (< 0.45)",
+            riskReward = "1 : 2.2 RR"
         )
         val sbinShort = FnoPositionItem(
             positionId = "StockMomentumEngine_SBIN_FUT",
@@ -2560,7 +2572,11 @@ class VaralakshmiRepository {
             marginRequired = 109783.13,
             stopLossPrice = 1005.00,
             unrealizedPnl = -5362.50,
-            expiryDate = "2026-09-24"
+            expiryDate = "2026-09-24",
+            entryReason = "PSU banking trend exhaustion. Short executed on failure to hold psychological ₹1,000 round number after bearish engulfing candle on the daily timeframe; disciplined stop-loss placed at ₹1,005.",
+            targetPrice = 910.00,
+            signalTrigger = "Psychological ₹1,000 Rejection + Bearish Engulfing",
+            riskReward = "1 : 2.3 RR"
         )
         val marutiShort = FnoPositionItem(
             positionId = "StockMomentumEngine_MARUTI_FUT",
@@ -2575,7 +2591,11 @@ class VaralakshmiRepository {
             marginRequired = 110062.35,
             stopLossPrice = 12500.00,
             unrealizedPnl = 9849.00,
-            expiryDate = "2026-09-24"
+            expiryDate = "2026-09-24",
+            entryReason = "Rotational alpha decay. Auto sector relative weakness triggered quant short as price broke below 50-day EMA with negative cross-sectional rank (< 15th percentile).",
+            targetPrice = 11630.00,
+            signalTrigger = "Relative Weakness Rank < 15th Pct + 50 EMA Breakdown",
+            riskReward = "1 : 2.2 RR"
         )
         val relianceShort = FnoPositionItem(
             positionId = "StockMomentumEngine_RELIANCE_FUT",
@@ -2590,7 +2610,11 @@ class VaralakshmiRepository {
             marginRequired = 186420.00,
             stopLossPrice = 1270.00,
             unrealizedPnl = 16800.00,
-            expiryDate = "2026-09-24"
+            expiryDate = "2026-09-24",
+            entryReason = "Heavyweight breakdown momentum short. Reliance broke below ₹1,245 multi-week consolidation support with elevated distribution volume; high beta drag on NIFTY index weight.",
+            targetPrice = 1180.00,
+            signalTrigger = "Horizontal Support Breakdown @ ₹1,245 on High Volume",
+            riskReward = "1 : 2.3 RR"
         )
         val bankNiftyShort = FnoPositionItem(
             positionId = "IndexTrendEngine_BANKNIFTY_FUT",
@@ -2605,7 +2629,11 @@ class VaralakshmiRepository {
             marginRequired = 262714.95,
             stopLossPrice = 58900.00,
             unrealizedPnl = 23703.00,
-            expiryDate = "2026-09-24"
+            expiryDate = "2026-09-24",
+            entryReason = "Bank index momentum breakdown. Rejection at 58,500 key resistance zone followed by intraday breakdown below VWAP with rising hourly ADX (> 28) confirming aggressive institutional selling.",
+            targetPrice = 56800.00,
+            signalTrigger = "Resistance Rejection @ 58,500 + Hourly ADX > 28",
+            riskReward = "1 : 3.0 RR"
         )
         val tailHedgeShort = FnoPositionItem(
             positionId = "TailHedgeBetaHedge_NIFTY_FUT",
@@ -2620,7 +2648,11 @@ class VaralakshmiRepository {
             marginRequired = 257952.83,
             stopLossPrice = 26800.00,
             unrealizedPnl = 2840.50,
-            expiryDate = "2026-09-24"
+            expiryDate = "2026-09-24",
+            entryReason = "Portfolio tail-risk beta hedge. Systematic short hedge deployed to neutralize residual portfolio beta across all equity and derivative holdings during low-VIX complacency regime, protecting against sudden macro volatility spikes.",
+            targetPrice = 25700.00,
+            signalTrigger = "Beta Neutralization Filter (Low VIX Event Guard)",
+            riskReward = "1 : 2.2 RR"
         )
 
         return when (instanceId) {

@@ -495,4 +495,135 @@ class VeeraLakshmiTest {
         assertEquals("15L", vm.veeraLakshmiState.value.selectedInstanceId)
         assertEquals(2, vm.veeraLakshmiState.value.activePositions.size)
     }
+
+    @Test
+    fun testDetailedEntryReasonAndSignalParameters() {
+        val seed50 = repository.getSeedPositionsForInstance("50L")
+        assertTrue(seed50.isNotEmpty())
+
+        for (pos in seed50) {
+            // Verify every position has a rich, non-empty detailed entry rationale
+            assertTrue("Detailed reason should not be blank for ${pos.symbol}", pos.detailedReason.isNotBlank())
+            assertTrue("Detailed reason should be descriptive (> 30 chars)", pos.detailedReason.length > 30)
+
+            // Verify signal trigger is present
+            assertTrue("Signal trigger should not be blank for ${pos.symbol}", pos.effectiveSignalTrigger.isNotBlank())
+
+            // Verify stop loss metrics
+            assertTrue("Stop loss should be positive for ${pos.symbol}", pos.stopLossPrice > 0.0)
+            assertTrue("Stop loss distance pct should be positive", pos.stopLossDistancePct > 0.0)
+            assertTrue("Capital at risk should be positive", pos.capitalAtRisk > 0.0)
+            assertTrue("Effective target price should be positive", pos.effectiveTargetPrice > 0.0)
+            assertTrue("Risk reward should be non-empty", pos.effectiveRiskReward.contains("RR"))
+        }
+
+        // Test fallback dynamic reason for custom position with blank entryReason
+        val customPos = FnoPositionItem(
+            positionId = "custom_test",
+            strategyEngine = "IndexTrendEngine",
+            symbol = "NIFTY_FUT",
+            instrumentType = "FUT",
+            direction = "SHORT",
+            quantity = 65,
+            lots = 1,
+            entryPrice = 26000.0,
+            currentPrice = 25950.0,
+            marginRequired = 250000.0,
+            stopLossPrice = 26300.0,
+            unrealizedPnl = 3250.0,
+            entryReason = "" // blank to trigger dynamic fallback
+        )
+        assertTrue(customPos.detailedReason.contains("NIFTY crossed below its 20-day ATR"))
+        assertTrue(customPos.effectiveSignalTrigger.contains("ATR Channel Breakdown"))
+        assertEquals("₹25,340.00", customPos.formattedTargetPrice)
+        assertEquals(19500.0, customPos.capitalAtRisk, 0.01)
+        assertEquals(1.15, customPos.stopLossDistancePct, 0.01)
+    }
+
+    @Test
+    fun testParseFnoPositionsJsonWithEntryReason() {
+        val jsonPayload = """
+            {
+              "instance_id": "50L",
+              "positions": [
+                {
+                  "position_id": "test_opt_ce",
+                  "strategy_engine": "OptionsCreditSpread",
+                  "symbol": "BANKNIFTY 58500 CE",
+                  "instrument_type": "OPT",
+                  "option_type": "CE",
+                  "direction": "SHORT",
+                  "quantity": 30,
+                  "lots": 1,
+                  "entry_price": 420.0,
+                  "current_price": 310.0,
+                  "margin_required": 145000.0,
+                  "stop_loss_price": 550.0,
+                  "unrealized_pnl": 3300.0,
+                  "expiry_date": "2026-09-24",
+                  "strike_price": 58500.0,
+                  "entry_reason": "Out of the money call credit spread entered to harvest theta decay outside 1.8 SD expected move.",
+                  "target_price": 100.0,
+                  "signal_trigger": "IV Percentile > 75 + Overhead Resistance",
+                  "risk_reward": "1 : 2.5 RR"
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val parsed = repository.parseFnoPositions(jsonPayload)
+        assertEquals(1, parsed.size)
+        val pos = parsed[0]
+        assertEquals("test_opt_ce", pos.positionId)
+        assertEquals("BANKNIFTY 58500 CE", pos.symbol)
+        assertEquals("OPT", pos.instrumentType)
+        assertEquals("CE", pos.optionType)
+        assertEquals("SHORT", pos.direction)
+        assertEquals(30, pos.quantity)
+        assertEquals("Out of the money call credit spread entered to harvest theta decay outside 1.8 SD expected move.", pos.entryReason)
+        assertEquals("Out of the money call credit spread entered to harvest theta decay outside 1.8 SD expected move.", pos.detailedReason)
+        assertEquals(100.0, pos.targetPrice, 0.01)
+        assertEquals("IV Percentile > 75 + Overhead Resistance", pos.signalTrigger)
+        assertEquals("IV Percentile > 75 + Overhead Resistance", pos.effectiveSignalTrigger)
+        assertEquals("1 : 2.5 RR", pos.riskReward)
+        assertEquals("1 : 2.5 RR", pos.effectiveRiskReward)
+    }
+
+    @Test
+    fun testDiskCachePreservesEntryReason() {
+        val customPos = FnoPositionItem(
+            positionId = "custom_1",
+            strategyEngine = "StockMomentumEngine",
+            symbol = "INFY_FUT",
+            instrumentType = "FUT",
+            direction = "LONG",
+            quantity = 400,
+            lots = 1,
+            entryPrice = 1920.0,
+            currentPrice = 1955.0,
+            marginRequired = 180000.0,
+            stopLossPrice = 1880.0,
+            unrealizedPnl = 14000.0,
+            entryReason = "IT sector momentum revival and bullish cup-and-handle pattern breakout.",
+            targetPrice = 2020.0,
+            signalTrigger = "Cup-and-Handle Breakout on Above Average Volume",
+            riskReward = "1 : 2.5 RR"
+        )
+
+        val defaultState = repository.createDefaultVeeraLakshmiState()
+        val customState = defaultState.copy(activePositions = listOf(customPos))
+
+        repository.saveFnoToDisk(customState)
+        val loaded = repository.loadFnoFromDisk()
+        assertNotNull(loaded)
+        assertEquals(1, loaded!!.activePositions.size)
+
+        val loadedPos = loaded.activePositions[0]
+        assertEquals("custom_1", loadedPos.positionId)
+        assertEquals("INFY_FUT", loadedPos.symbol)
+        assertEquals("IT sector momentum revival and bullish cup-and-handle pattern breakout.", loadedPos.entryReason)
+        assertEquals("Cup-and-Handle Breakout on Above Average Volume", loadedPos.signalTrigger)
+        assertEquals(2020.0, loadedPos.targetPrice, 0.01)
+        assertEquals("1 : 2.5 RR", loadedPos.riskReward)
+    }
 }

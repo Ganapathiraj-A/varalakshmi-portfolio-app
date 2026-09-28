@@ -1,8 +1,11 @@
 package com.example.varalakshmiportfolio.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -13,15 +16,19 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.TrendingDown
 import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -550,28 +557,43 @@ private fun FnoPositionCard(
     position: FnoPositionItem,
     modifier: Modifier = Modifier
 ) {
+    var isExpanded by rememberSaveable { mutableStateOf(false) }
     val isShort = position.direction.equals("SHORT", ignoreCase = true)
     val isProfit = position.isProfit
 
+    val chevronRotation by animateFloatAsState(
+        targetValue = if (isExpanded) 180f else 0f,
+        label = "chevron_rotation"
+    )
+
     Surface(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .clickable { isExpanded = !isExpanded },
         shape = RoundedCornerShape(8.dp),
-        color = DarkCard,
-        border = androidx.compose.foundation.BorderStroke(1.dp, DarkCardBorder)
+        color = if (isExpanded) DarkSurface else DarkCard,
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (isExpanded) AccentIndigo.copy(alpha = 0.6f) else DarkCardBorder
+        )
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(10.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+            verticalArrangement = Arrangement.spacedBy(7.dp)
         ) {
-            // Row 1: Symbol, Direction Pill, Engine, Lots
+            // Row 1: Symbol, Direction Pill, Engine, Lots, Unrealized PnL badge, Chevron
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f, fill = false)
+                ) {
                     // Direction badge
                     Surface(
                         shape = RoundedCornerShape(4.dp),
@@ -604,18 +626,33 @@ private fun FnoPositionCard(
                     )
                 }
 
-                // Unrealized PnL badge
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = if (isProfit) ProfitGreenBg else LossRedBg
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Text(
-                        text = position.formattedUnrealizedPnl,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace,
-                        color = if (isProfit) ProfitGreen else LossRed,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    // Unrealized PnL badge
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = if (isProfit) ProfitGreenBg else LossRedBg
+                    ) {
+                        Text(
+                            text = position.formattedUnrealizedPnl,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace,
+                            color = if (isProfit) ProfitGreen else LossRed,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+
+                    // Chevron indicator
+                    Icon(
+                        imageVector = Icons.Filled.KeyboardArrowDown,
+                        contentDescription = if (isExpanded) "Collapse reason" else "Expand reason",
+                        tint = if (isExpanded) AccentIndigoLight else TextMuted,
+                        modifier = Modifier
+                            .size(18.dp)
+                            .rotate(chevronRotation)
                     )
                 }
             }
@@ -652,7 +689,7 @@ private fun FnoPositionCard(
                 }
             }
 
-            // Row 3: Margin & Stop Loss
+            // Row 3: Margin, Stop Loss & Tap prompt
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -664,12 +701,216 @@ private fun FnoPositionCard(
                     color = TextMuted
                 )
 
-                Text(
-                    text = if (position.stopLossPrice > 0.0) String.format(Locale.US, "SL: ₹%,.2f", position.stopLossPrice) else "SL: —",
-                    fontSize = 9.5.sp,
-                    color = if (position.stopLossPrice > 0.0) GoldAccent else TextMuted
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = if (position.stopLossPrice > 0.0) String.format(Locale.US, "SL: ₹%,.2f", position.stopLossPrice) else "SL: —",
+                        fontSize = 9.5.sp,
+                        color = if (position.stopLossPrice > 0.0) GoldAccent else TextMuted
+                    )
+                    if (!isExpanded) {
+                        Text(
+                            text = "• Reason ▾",
+                            fontSize = 9.5.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = AccentIndigoLight.copy(alpha = 0.85f)
+                        )
+                    }
+                }
             }
+
+            // Expanded Section: Detailed Reason on Why It Was Bought & Trade Mechanics
+            AnimatedVisibility(
+                visible = isExpanded,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    HorizontalDivider(color = DarkCardBorder)
+
+                    // 1. Detailed Reason Box
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(6.dp),
+                        color = AccentIndigoBg.copy(alpha = 0.5f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, AccentIndigo.copy(alpha = 0.3f))
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Lightbulb,
+                                        contentDescription = "Why it was entered",
+                                        tint = GoldAccent,
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "WHY THIS POSITION WAS ENTERED",
+                                        fontSize = 9.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = GoldAccent,
+                                        letterSpacing = 0.4.sp
+                                    )
+                                }
+
+                                Surface(
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = DarkCard
+                                ) {
+                                    Text(
+                                        text = if (isShort) "SHORT SETUP" else "LONG SETUP",
+                                        fontSize = 8.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isShort) LossRed else ProfitGreen,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+
+                            Text(
+                                text = position.detailedReason,
+                                fontSize = 11.sp,
+                                lineHeight = 16.sp,
+                                color = TextPrimary
+                            )
+                        }
+                    }
+
+                    // 2. Quantitative Trade Parameters 3-Row Grid
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        FnoParamPill(
+                            label = "SIGNAL TRIGGER",
+                            value = position.effectiveSignalTrigger,
+                            modifier = Modifier.weight(1f)
+                        )
+                        FnoParamPill(
+                            label = "TARGET & RR",
+                            value = "${position.formattedTargetPrice} (${position.effectiveRiskReward})",
+                            valueColor = ProfitGreen,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        FnoParamPill(
+                            label = "STOP LOSS BUFFER",
+                            value = "${position.formattedStopLoss} (${String.format(Locale.US, "%.2f%%", position.stopLossDistancePct)})",
+                            valueColor = GoldAccent,
+                            modifier = Modifier.weight(1f)
+                        )
+                        FnoParamPill(
+                            label = "CAPITAL AT RISK",
+                            value = "${position.formattedCapitalAtRisk} (Max)",
+                            valueColor = LossRed,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        FnoParamPill(
+                            label = "EXPIRY / CONTRACT",
+                            value = "${if (position.expiryDate.isNotBlank()) position.expiryDate else "Current Month"} • ${position.instrumentType}",
+                            modifier = Modifier.weight(1f)
+                        )
+                        FnoParamPill(
+                            label = "LOT SIZE / QTY",
+                            value = "${position.lots} lot(s) (${position.quantity} units)",
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+
+                    // 3. Execution Tag Footer
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(4.dp),
+                        color = DarkCard,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, DarkCardBorder)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "⚡ Systematic Quant Rule-Based Execution",
+                                fontSize = 9.sp,
+                                color = TextMuted
+                            )
+                            Text(
+                                text = "Risk Guard Active",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = ProfitGreen
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FnoParamPill(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+    valueColor: Color = TextPrimary
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(6.dp),
+        color = DarkCard,
+        border = androidx.compose.foundation.BorderStroke(1.dp, DarkCardBorder)
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 5.dp),
+            verticalArrangement = Arrangement.spacedBy(1.dp)
+        ) {
+            Text(
+                text = label,
+                fontSize = 8.sp,
+                fontWeight = FontWeight.Bold,
+                color = TextMuted,
+                letterSpacing = 0.3.sp,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            )
+            Text(
+                text = value,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = valueColor,
+                lineHeight = 12.sp,
+                maxLines = 2,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            )
         }
     }
 }
