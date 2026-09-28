@@ -226,3 +226,64 @@ Integrity mode: development
 - [ ] `./gradlew testDebugUnitTest` completes with 0 errors and all unit tests passing.
 - [ ] `./gradlew assembleRelease` completes with exit code 0.
 - [ ] `varalakshmi-portfolio.apk` is generated and verified.
+
+## 2026-09-28T11:12:09Z
+
+This is a single self-contained fix; keep it small and focused.
+
+Complete, stress-test, and release the swipeable VeeraLakshmi F&O Paper Trading dashboard in the Varalakshmi Portfolio Android application, ensuring seamless horizontal pager navigation, live sync with backend F&O endpoints, offline caching, and automated build verification.
+
+Working directory: /home/ganapathiraj/Code/Stock Research/Unified UI/app
+Integrity mode: development
+
+## Requirements
+
+### R1. Swipeable Horizontal Pager & Dual Strategy Tabs
+- Wrap the main application content in a 2-page `HorizontalPager` allowing users to swipe horizontally in either direction between:
+  * Page 0: **Varalakshmi (Equity Portfolio)**
+  * Page 1: **VeeraLakshmi (F&O Paper Trading)**
+- Provide a persistent top navigation tab bar displaying:
+  * `📈 Varalakshmi (Equity)`
+  * `⚡ VeeraLakshmi (F&O)` with a real-time unrealized P&L badge (e.g. `+₹50.7k`).
+- Tapping either tab must trigger smooth animated scrolling to that page (`animateScrollToPage`).
+- Vertical scrolling within each dashboard must operate independently without blocking horizontal drag gestures.
+
+### R2. VeeraLakshmi F&O Paper Trading Screen
+Implement a dedicated `VeeraLakshmiScreen` composable matching the OLED dark trading aesthetic:
+1. **Capital & Margin Meter Card**: Displays Allocated Capital, Margin Blocked, Free Cash Buffer, Unrealized P&L, Return on Margin %, and a visual `LinearProgressIndicator` showing margin utilization.
+2. **Multi-Tier Instance Selector**: Interactive filter chips for switching between `50L (Quad-Engine)`, `20L (Balanced)`, and `15L (Lean & Agile)` tiers, dynamically updating capital and positions.
+3. **Active F&O Positions List**: Displays each open futures/options position with direction badge (`SHORT`/`LONG`), lot count, symbol, entry price, current price, stop loss, margin required, and unrealized P&L.
+4. **Risk & Volatility Telemetry**: Displays Circuit Breaker state (Tier 0 Normal), India VIX level/regime, and Daily Step timestamp.
+5. **10-Year Benchmark Baseline**: Displays 10-year audited CAGR (34.85%), Sharpe ratio (1.63), Win Rate (64.75%), and 2026 YTD return (+27.66%).
+
+### R3. Dual-Engine Synchronization & Offline Persistence
+- Fetch live telemetry from `/api/fno/instances`, `/api/fno/positions?instance={id}`, and `/api/fno/status`.
+- Persist state to `veeralakshmi_fno_cache.json` in app storage.
+- Include robust offline seed data so that in offline mode or before first network sync, authentic 2026-09-28 positions render immediately.
+- Global refresh action (tap or auto-sync) must sync both Varalakshmi and VeeraLakshmi concurrently.
+
+### R4. Automated Testing & Release Compilation
+- Include unit tests in `VeeraLakshmiTest.kt` covering JSON parsing, instance switching, margin calculations, and disk cache serialization.
+- Verify `./gradlew testDebugUnitTest` passes with exit code 0.
+- Bump app version to `v1.9.3` (`versionCode = 21`) in `build.gradle.kts` and dashboard UI.
+- Execute `./gradlew assembleRelease` to compile production APK (`varalakshmi-portfolio.apk`).
+
+## Acceptance Criteria
+
+### UI & Navigation
+- [ ] Top navigation bar shows "Varalakshmi (Equity)" and "VeeraLakshmi (F&O)" tabs with live P&L badge.
+- [ ] Swiping horizontally between Page 0 and Page 1 works smoothly with native touch physics.
+- [ ] Tapping either tab animates smoothly to that screen.
+- [ ] Tapping 50L, 20L, or 15L chips updates active positions and capital metrics immediately.
+- [ ] All metrics and positions format monetary values cleanly with Indian rupee (`₹`) symbols and no text clipping.
+
+### Data & Architecture
+- [ ] VeeraLakshmi data fetches from live `/api/fno/` endpoints when connected.
+- [ ] Offline fallback loads seamlessly from cache or seed data without blank screens.
+- [ ] Manual refresh and periodic auto-sync refresh both equity and F&O state.
+
+### Testing & Release Verification
+- [ ] `./gradlew testDebugUnitTest` completes with exit code 0 and all tests passing.
+- [ ] `./gradlew assembleRelease` completes with exit code 0.
+- [ ] Production APK `varalakshmi-portfolio.apk` is generated and copied to project root.
+

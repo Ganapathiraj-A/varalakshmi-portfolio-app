@@ -370,5 +370,121 @@ data class IpoActionNotification(
         get() = if (qibMultiple.isNaN() || qibMultiple.isInfinite()) "—" else String.format(Locale.US, "%.1fx", qibMultiple)
 }
 
+/**
+ * VeeraLakshmi F&O Paper-Trading Instance Summary (50L, 20L, 15L).
+ */
+data class FnoInstanceSummary(
+    val instanceId: String = "50L",
+    val name: String = "VeeraLakshmi 50L (Full Quad-Engine)",
+    val allocatedCapital: Double = 5000000.0,
+    val marginBlocked: Double = 1184886.09,
+    val unrealizedPnl: Double = 50670.50,
+    val cashBuffer: Double = 3815113.91,
+    val marginUtilizationPct: Double = 23.70,
+    val positionsCount: Int = 6,
+    val asOfDate: String = "2026-09-28"
+) {
+    val returnOnMarginPct: Double
+        get() = if (marginBlocked > 0.0) (unrealizedPnl / marginBlocked) * 100.0 else 0.0
 
+    val returnOnCapitalPct: Double
+        get() = if (allocatedCapital > 0.0) (unrealizedPnl / allocatedCapital) * 100.0 else 0.0
 
+    val formattedAllocatedCapital: String
+        get() = String.format(Locale.US, "₹%,.0f", allocatedCapital)
+
+    val formattedMarginBlocked: String
+        get() = String.format(Locale.US, "₹%,.2f", marginBlocked)
+
+    val formattedCashBuffer: String
+        get() = String.format(Locale.US, "₹%,.2f", cashBuffer)
+
+    val formattedUnrealizedPnl: String
+        get() {
+            val sign = if (unrealizedPnl >= 0.0) "+" else "-"
+            val absPnl = kotlin.math.abs(unrealizedPnl)
+            return String.format(Locale.US, "%s₹%,.2f", sign, absPnl)
+        }
+}
+
+/**
+ * Individual F&O Position in VeeraLakshmi Paper Trading.
+ */
+data class FnoPositionItem(
+    val positionId: String,
+    val strategyEngine: String = "IndexTrendEngine",
+    val symbol: String,
+    val instrumentType: String = "FUT",
+    val direction: String = "SHORT", // "LONG" or "SHORT"
+    val quantity: Int = 1,
+    val lots: Int = 1,
+    val entryPrice: Double = 0.0,
+    val currentPrice: Double = 0.0,
+    val marginRequired: Double = 0.0,
+    val stopLossPrice: Double = 0.0,
+    val unrealizedPnl: Double = 0.0,
+    val expiryDate: String = "",
+    val strikePrice: Double = 0.0,
+    val optionType: String? = null
+) {
+    val isProfit: Boolean get() = unrealizedPnl >= 0.0
+
+    val pnlPct: Double
+        get() = if (entryPrice > 0.0) {
+            if (direction.equals("SHORT", ignoreCase = true)) {
+                ((entryPrice - currentPrice) / entryPrice) * 100.0
+            } else {
+                ((currentPrice - entryPrice) / entryPrice) * 100.0
+            }
+        } else 0.0
+
+    val formattedUnrealizedPnl: String
+        get() {
+            val sign = if (unrealizedPnl >= 0.0) "+" else "-"
+            val absPnl = kotlin.math.abs(unrealizedPnl)
+            return String.format(Locale.US, "%s₹%,.2f", sign, absPnl)
+        }
+
+    val formattedCurrentPrice: String
+        get() = String.format(Locale.US, "₹%,.2f", currentPrice)
+
+    val formattedEntryPrice: String
+        get() = String.format(Locale.US, "₹%,.2f", entryPrice)
+
+    val formattedMargin: String
+        get() = String.format(Locale.US, "₹%,.0f", marginRequired)
+}
+
+/**
+ * Macro Risk, VIX, and Benchmark Telemetry for VeeraLakshmi.
+ */
+data class FnoStatusInfo(
+    val subsystem: String = "fno",
+    val status: String = "READY",
+    val vixLevel: Double = 8.81,
+    val vixRegime: String = "NORMAL",
+    val circuitBreakerTier: String = "Tier 0 (Normal)",
+    val cagrPct: Double = 34.85,
+    val ytdPct: Double = 27.66,
+    val maxDrawdownPct: Double = -14.31,
+    val sharpeRatio: Double = 1.63,
+    val winRatePct: Double = 64.75,
+    val lastDate: String = "2026-09-28"
+)
+
+/**
+ * Full UI State for VeeraLakshmi F&O Paper Trading.
+ */
+data class VeeraLakshmiUiState(
+    val selectedInstanceId: String = "50L",
+    val instances: Map<String, FnoInstanceSummary> = emptyMap(),
+    val activePositions: List<FnoPositionItem> = emptyList(),
+    val statusInfo: FnoStatusInfo = FnoStatusInfo(),
+    val isLoading: Boolean = false,
+    val isLiveSync: Boolean = false,
+    val errorMessage: String? = null,
+    val lastSyncTimestamp: Long = 0L
+) {
+    val currentInstance: FnoInstanceSummary
+        get() = instances[selectedInstanceId] ?: FnoInstanceSummary()
+}

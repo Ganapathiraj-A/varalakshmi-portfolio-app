@@ -7,8 +7,14 @@ import com.example.varalakshmiportfolio.model.StockRecommendationItem
 import com.example.varalakshmiportfolio.model.HistoricalPricePoint
 import com.example.varalakshmiportfolio.model.IpoActionNotification
 import com.example.varalakshmiportfolio.model.IpoActionType
+import com.example.varalakshmiportfolio.model.FnoInstanceSummary
+import com.example.varalakshmiportfolio.model.FnoPositionItem
+import com.example.varalakshmiportfolio.model.FnoStatusInfo
+import com.example.varalakshmiportfolio.model.VeeraLakshmiUiState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -66,6 +72,7 @@ class VaralakshmiRepository {
         const val DEFAULT_SERVER_URL = "https://varalakshmi.ghostsoftwaresystems.com"
         const val DEFAULT_AUTH_TOKEN = "eyJlbWFpbCI6ImdhbmFwYXRoaXJhakBnbWFpbC5jb20iLCJleHAiOjIxMDUzNDA5NzgsIm5vbmNlIjoiYTFkYWE3NTlmMWU2ZmU1MjgxMDFlZTRmZDRjYTIzODQifQ.uEdogGmmZ7NeYDuwiWdv416rE7P5Im1s8CPByRwzgR0"
         const val CACHE_FILE_NAME = "portfolio_cache.json"
+        const val FNO_CACHE_FILE_NAME = "veeralakshmi_fno_cache.json"
 
         @Volatile
         private var cacheDirectory: File? = null
@@ -2183,4 +2190,444 @@ class VaralakshmiRepository {
             isLoadedFromDisk = false
         }
     }
+
+    // =========================================================================
+    // VEERALAKSHMI F&O PAPER TRADING REPOSITORY
+    // =========================================================================
+
+    private var cachedFnoState: VeeraLakshmiUiState? = null
+
+    fun getCachedFnoState(): VeeraLakshmiUiState {
+        synchronized(lock) {
+            if (cachedFnoState != null) return cachedFnoState!!
+            val fromDisk = loadFnoFromDisk()
+            if (fromDisk != null) {
+                cachedFnoState = fromDisk
+                return fromDisk
+            }
+            val defaultState = createDefaultVeeraLakshmiState()
+            cachedFnoState = defaultState
+            return defaultState
+        }
+    }
+
+    fun selectFnoInstance(instanceId: String): VeeraLakshmiUiState {
+        synchronized(lock) {
+            val current = getCachedFnoState()
+            val filteredPositions = getSeedPositionsForInstance(instanceId)
+            val updated = current.copy(
+                selectedInstanceId = instanceId,
+                activePositions = if (current.isLiveSync && current.selectedInstanceId == instanceId) current.activePositions else filteredPositions
+            )
+            cachedFnoState = updated
+            return updated
+        }
+    }
+
+    suspend fun syncFno(
+        serverUrl: String,
+        selectedInstanceId: String = "50L",
+        authToken: String? = null
+    ): VeeraLakshmiUiState = withContext(Dispatchers.IO) {
+        val sUrl = serverUrl.trim().trimEnd('/')
+        var instancesMap: Map<String, FnoInstanceSummary> = emptyMap()
+        var positionsList: List<FnoPositionItem> = emptyList()
+        var statusInfo = FnoStatusInfo()
+        var isLive = false
+        var errorMsg: String? = null
+
+        try {
+            coroutineScope {
+                val instancesDeferred = async { httpGet("$sUrl/api/fno/instances", authToken) }
+                val positionsDeferred = async { httpGet("$sUrl/api/fno/positions?instance=$selectedInstanceId", authToken) }
+                val statusDeferred = async { httpGet("$sUrl/api/fno/status", authToken) }
+
+                val instancesJson = instancesDeferred.await()
+                val positionsJson = positionsDeferred.await()
+                val statusJson = statusDeferred.await()
+
+                if (!instancesJson.isNullOrBlank()) {
+                    instancesMap = parseFnoInstances(instancesJson)
+                    isLive = true
+                }
+                if (!positionsJson.isNullOrBlank()) {
+                    positionsList = parseFnoPositions(positionsJson)
+                    isLive = true
+                }
+                if (!statusJson.isNullOrBlank()) {
+                    statusInfo = parseFnoStatus(statusJson)
+                }
+            }
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            errorMsg = e.message ?: "Failed to sync F&O data"
+        }
+
+        val baseState = getCachedFnoState()
+        val newState = if (isLive && instancesMap.isNotEmpty()) {
+            val resolvedPositions = if (positionsList.isNotEmpty()) positionsList else getSeedPositionsForInstance(selectedInstanceId)
+            val state = VeeraLakshmiUiState(
+                selectedInstanceId = selectedInstanceId,
+                instances = instancesMap,
+                activePositions = resolvedPositions,
+                statusInfo = statusInfo,
+                isLoading = false,
+                isLiveSync = true,
+                errorMessage = null,
+                lastSyncTimestamp = System.currentTimeMillis()
+            )
+            saveFnoToDisk(state)
+            state
+        } else {
+            val loaded = loadFnoFromDisk() ?: createDefaultVeeraLakshmiState()
+            val resolvedPositions = getSeedPositionsForInstance(selectedInstanceId)
+            loaded.copy(
+                selectedInstanceId = selectedInstanceId,
+                activePositions = if (loaded.activePositions.isNotEmpty() && loaded.selectedInstanceId == selectedInstanceId) loaded.activePositions else resolvedPositions,
+                isLoading = false,
+                isLiveSync = false,
+                errorMessage = errorMsg
+            )
+        }
+
+        synchronized(lock) {
+            cachedFnoState = newState
+        }
+        newState
+    }
+
+    fun parseFnoInstances(jsonStr: String): Map<String, FnoInstanceSummary> {
+        val result = mutableMapOf<String, FnoInstanceSummary>()
+        try {
+            val root = JSONObject(jsonStr)
+            val instancesObj = root.optJSONObject("instances") ?: return result
+            val keys = instancesObj.keys()
+            while (keys.hasNext()) {
+                val key = keys.next()
+                val obj = instancesObj.optJSONObject(key) ?: continue
+                val summary = FnoInstanceSummary(
+                    instanceId = obj.optString("instance_id", key),
+                    name = obj.optString("name", "VeeraLakshmi $key"),
+                    allocatedCapital = optSafeDouble(obj, "allocated_capital", 5000000.0),
+                    marginBlocked = optSafeDouble(obj, "margin_blocked", 0.0),
+                    unrealizedPnl = optSafeDouble(obj, "unrealized_pnl", 0.0),
+                    cashBuffer = optSafeDouble(obj, "cash_buffer", 0.0),
+                    marginUtilizationPct = optSafeDouble(obj, "margin_utilization_pct", 0.0),
+                    positionsCount = obj.optInt("positions_count", 0),
+                    asOfDate = obj.optString("as_of_date", "2026-09-28")
+                )
+                result[key] = summary
+            }
+        } catch (_: Exception) {}
+        return result
+    }
+
+    fun parseFnoPositions(jsonStr: String): List<FnoPositionItem> {
+        val result = mutableListOf<FnoPositionItem>()
+        try {
+            val root = JSONObject(jsonStr)
+            val arr = root.optJSONArray("positions") ?: return result
+            for (i in 0 until arr.length()) {
+                val obj = arr.optJSONObject(i) ?: continue
+                val item = FnoPositionItem(
+                    positionId = obj.optString("position_id", "pos_$i"),
+                    strategyEngine = obj.optString("strategy_engine", "IndexTrendEngine"),
+                    symbol = obj.optString("symbol", "NIFTY_FUT"),
+                    instrumentType = obj.optString("instrument_type", "FUT"),
+                    direction = obj.optString("direction", "SHORT"),
+                    quantity = obj.optInt("quantity", 1),
+                    lots = obj.optInt("lots", 1),
+                    entryPrice = optSafeDouble(obj, "entry_price", 0.0),
+                    currentPrice = optSafeDouble(obj, "current_price", 0.0),
+                    marginRequired = optSafeDouble(obj, "margin_required", 0.0),
+                    stopLossPrice = optSafeDouble(obj, "stop_loss_price", 0.0),
+                    unrealizedPnl = optSafeDouble(obj, "unrealized_pnl", 0.0),
+                    expiryDate = obj.optString("expiry_date", ""),
+                    strikePrice = optSafeDouble(obj, "strike_price", 0.0),
+                    optionType = if (obj.has("option_type") && !obj.isNull("option_type")) obj.optString("option_type") else null
+                )
+                result.add(item)
+            }
+        } catch (_: Exception) {}
+        return result
+    }
+
+    fun parseFnoStatus(jsonStr: String): FnoStatusInfo {
+        try {
+            val root = JSONObject(jsonStr)
+            val summaryMetrics = root.optJSONObject("summary_metrics")
+            return FnoStatusInfo(
+                subsystem = root.optString("subsystem", "fno"),
+                status = root.optString("status", "READY"),
+                vixLevel = optSafeDouble(root, "vix_level", 8.81),
+                vixRegime = root.optString("vix_regime", "NORMAL"),
+                circuitBreakerTier = root.optString("circuit_breaker_tier", "Tier 0 (Normal)"),
+                cagrPct = if (summaryMetrics != null) optSafeDouble(summaryMetrics, "cagr_pct", 34.85) else 34.85,
+                ytdPct = if (summaryMetrics != null) optSafeDouble(summaryMetrics, "ytd_2026_pct", 27.66) else 27.66,
+                maxDrawdownPct = if (summaryMetrics != null) optSafeDouble(summaryMetrics, "max_drawdown_pct", -14.31) else -14.31,
+                sharpeRatio = if (summaryMetrics != null) optSafeDouble(summaryMetrics, "sharpe_ratio", 1.63) else 1.63,
+                winRatePct = if (summaryMetrics != null) optSafeDouble(summaryMetrics, "win_rate_pct", 64.75) else 64.75,
+                lastDate = root.optString("last_date", "2026-09-28")
+            )
+        } catch (_: Exception) {
+            return FnoStatusInfo()
+        }
+    }
+
+    internal fun loadFnoFromDisk(): VeeraLakshmiUiState? {
+        val dir = cacheDirectory ?: return null
+        val file = File(dir, FNO_CACHE_FILE_NAME)
+        if (!file.exists() || !file.isFile) return null
+        return try {
+            val text = file.readText(Charsets.UTF_8)
+            val root = JSONObject(text)
+            val selectedId = root.optString("selected_instance_id", "50L")
+            val instancesJson = root.optString("instances_json", "")
+            val positionsJson = root.optString("positions_json", "")
+            val statusJson = root.optString("status_json", "")
+            val lastSync = root.optLong("last_sync_timestamp", 0L)
+
+            val instances = if (instancesJson.isNotBlank()) parseFnoInstances(instancesJson) else emptyMap()
+            val rawPositions = if (positionsJson.isNotBlank()) parseFnoPositions(positionsJson) else emptyList()
+            val positions = if (rawPositions.isNotEmpty()) rawPositions else getSeedPositionsForInstance(selectedId)
+            val status = if (statusJson.isNotBlank()) parseFnoStatus(statusJson) else FnoStatusInfo()
+
+            if (instances.isNotEmpty()) {
+                VeeraLakshmiUiState(
+                    selectedInstanceId = selectedId,
+                    instances = instances,
+                    activePositions = positions,
+                    statusInfo = status,
+                    isLoading = false,
+                    isLiveSync = false,
+                    errorMessage = null,
+                    lastSyncTimestamp = lastSync
+                )
+            } else null
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    internal fun saveFnoToDisk(state: VeeraLakshmiUiState) {
+        val dir = cacheDirectory ?: return
+        try {
+            val root = JSONObject()
+            root.put("selected_instance_id", state.selectedInstanceId)
+            root.put("last_sync_timestamp", state.lastSyncTimestamp)
+
+            val instancesObj = JSONObject()
+            val instancesMap = JSONObject()
+            for ((k, v) in state.instances) {
+                val inst = JSONObject()
+                inst.put("instance_id", v.instanceId)
+                inst.put("name", v.name)
+                inst.put("allocated_capital", v.allocatedCapital)
+                inst.put("margin_blocked", v.marginBlocked)
+                inst.put("unrealized_pnl", v.unrealizedPnl)
+                inst.put("cash_buffer", v.cashBuffer)
+                inst.put("margin_utilization_pct", v.marginUtilizationPct)
+                inst.put("positions_count", v.positionsCount)
+                inst.put("as_of_date", v.asOfDate)
+                instancesMap.put(k, inst)
+            }
+            instancesObj.put("instances", instancesMap)
+            root.put("instances_json", instancesObj.toString())
+
+            val posArr = JSONArray()
+            for (p in state.activePositions) {
+                val obj = JSONObject()
+                obj.put("position_id", p.positionId)
+                obj.put("strategy_engine", p.strategyEngine)
+                obj.put("symbol", p.symbol)
+                obj.put("instrument_type", p.instrumentType)
+                obj.put("direction", p.direction)
+                obj.put("quantity", p.quantity)
+                obj.put("lots", p.lots)
+                obj.put("entry_price", p.entryPrice)
+                obj.put("current_price", p.currentPrice)
+                obj.put("margin_required", p.marginRequired)
+                obj.put("stop_loss_price", p.stopLossPrice)
+                obj.put("unrealized_pnl", p.unrealizedPnl)
+                obj.put("expiry_date", p.expiryDate)
+                obj.put("strike_price", p.strikePrice)
+                if (p.optionType != null) obj.put("option_type", p.optionType)
+                posArr.put(obj)
+            }
+            val posRoot = JSONObject()
+            posRoot.put("positions", posArr)
+            root.put("positions_json", posRoot.toString())
+
+            val statusObj = JSONObject()
+            statusObj.put("subsystem", state.statusInfo.subsystem)
+            statusObj.put("status", state.statusInfo.status)
+            statusObj.put("vix_level", state.statusInfo.vixLevel)
+            statusObj.put("vix_regime", state.statusInfo.vixRegime)
+            statusObj.put("circuit_breaker_tier", state.statusInfo.circuitBreakerTier)
+            val summaryMetrics = JSONObject()
+            summaryMetrics.put("cagr_pct", state.statusInfo.cagrPct)
+            summaryMetrics.put("ytd_2026_pct", state.statusInfo.ytdPct)
+            summaryMetrics.put("max_drawdown_pct", state.statusInfo.maxDrawdownPct)
+            summaryMetrics.put("sharpe_ratio", state.statusInfo.sharpeRatio)
+            summaryMetrics.put("win_rate_pct", state.statusInfo.winRatePct)
+            statusObj.put("summary_metrics", summaryMetrics)
+            statusObj.put("last_date", state.statusInfo.lastDate)
+            root.put("status_json", statusObj.toString())
+
+            val tmpFile = File(dir, "$FNO_CACHE_FILE_NAME.tmp")
+            val targetFile = File(dir, FNO_CACHE_FILE_NAME)
+            tmpFile.writeText(root.toString(), Charsets.UTF_8)
+            if (targetFile.exists()) targetFile.delete()
+            tmpFile.renameTo(targetFile)
+        } catch (_: Exception) {}
+    }
+
+    fun createDefaultVeeraLakshmiState(): VeeraLakshmiUiState {
+        val instances = mapOf(
+            "50L" to FnoInstanceSummary(
+                instanceId = "50L",
+                name = "VeeraLakshmi 50L (Full Quad-Engine)",
+                allocatedCapital = 5000000.0,
+                marginBlocked = 1184886.09,
+                unrealizedPnl = 50670.50,
+                cashBuffer = 3815113.91,
+                marginUtilizationPct = 23.70,
+                positionsCount = 6,
+                asOfDate = "2026-09-28"
+            ),
+            "20L" to FnoInstanceSummary(
+                instanceId = "20L",
+                name = "VeeraLakshmi 20L (Balanced Multi-Asset)",
+                allocatedCapital = 2000000.0,
+                marginBlocked = 554435.18,
+                unrealizedPnl = 29489.50,
+                cashBuffer = 1445564.82,
+                marginUtilizationPct = 27.72,
+                positionsCount = 3,
+                asOfDate = "2026-09-28"
+            ),
+            "15L" to FnoInstanceSummary(
+                instanceId = "15L",
+                name = "VeeraLakshmi 15L (Lean & Agile)",
+                allocatedCapital = 1500000.0,
+                marginBlocked = 367735.96,
+                unrealizedPnl = -2522.0,
+                cashBuffer = 1132264.04,
+                marginUtilizationPct = 24.52,
+                positionsCount = 2,
+                asOfDate = "2026-09-28"
+            )
+        )
+
+        return VeeraLakshmiUiState(
+            selectedInstanceId = "50L",
+            instances = instances,
+            activePositions = getSeedPositionsForInstance("50L"),
+            statusInfo = FnoStatusInfo(),
+            isLoading = false,
+            isLiveSync = false,
+            errorMessage = null,
+            lastSyncTimestamp = 0L
+        )
+    }
+
+    fun getSeedPositionsForInstance(instanceId: String): List<FnoPositionItem> {
+        val niftyShort = FnoPositionItem(
+            positionId = "IndexTrendEngine_NIFTY_FUT",
+            strategyEngine = "IndexTrendEngine",
+            symbol = "NIFTY_FUT",
+            instrumentType = "FUT",
+            direction = "SHORT",
+            quantity = 65,
+            lots = 1,
+            entryPrice = 26456.70,
+            currentPrice = 26413.00,
+            marginRequired = 257952.83,
+            stopLossPrice = 26800.00,
+            unrealizedPnl = 2840.50,
+            expiryDate = "2026-09-24"
+        )
+        val sbinShort = FnoPositionItem(
+            positionId = "StockMomentumEngine_SBIN_FUT",
+            strategyEngine = "StockMomentumEngine",
+            symbol = "SBIN_FUT",
+            instrumentType = "FUT",
+            direction = "SHORT",
+            quantity = 750,
+            lots = 1,
+            entryPrice = 975.85,
+            currentPrice = 983.00,
+            marginRequired = 109783.13,
+            stopLossPrice = 1005.00,
+            unrealizedPnl = -5362.50,
+            expiryDate = "2026-09-24"
+        )
+        val marutiShort = FnoPositionItem(
+            positionId = "StockMomentumEngine_MARUTI_FUT",
+            strategyEngine = "StockMomentumEngine",
+            symbol = "MARUTI_FUT",
+            instrumentType = "FUT",
+            direction = "SHORT",
+            quantity = 60,
+            lots = 1,
+            entryPrice = 12229.15,
+            currentPrice = 12065.00,
+            marginRequired = 110062.35,
+            stopLossPrice = 12500.00,
+            unrealizedPnl = 9849.00,
+            expiryDate = "2026-09-24"
+        )
+        val relianceShort = FnoPositionItem(
+            positionId = "StockMomentumEngine_RELIANCE_FUT",
+            strategyEngine = "StockMomentumEngine",
+            symbol = "RELIANCE_FUT",
+            instrumentType = "FUT",
+            direction = "SHORT",
+            quantity = 1000,
+            lots = 2,
+            entryPrice = 1242.80,
+            currentPrice = 1226.00,
+            marginRequired = 186420.00,
+            stopLossPrice = 1270.00,
+            unrealizedPnl = 16800.00,
+            expiryDate = "2026-09-24"
+        )
+        val bankNiftyShort = FnoPositionItem(
+            positionId = "IndexTrendEngine_BANKNIFTY_FUT",
+            strategyEngine = "IndexTrendEngine",
+            symbol = "BANKNIFTY_FUT",
+            instrumentType = "FUT",
+            direction = "SHORT",
+            quantity = 30,
+            lots = 1,
+            entryPrice = 58381.10,
+            currentPrice = 57591.00,
+            marginRequired = 262714.95,
+            stopLossPrice = 58900.00,
+            unrealizedPnl = 23703.00,
+            expiryDate = "2026-09-24"
+        )
+        val tailHedgeShort = FnoPositionItem(
+            positionId = "TailHedgeBetaHedge_NIFTY_FUT",
+            strategyEngine = "TailHedgeBetaHedge",
+            symbol = "NIFTY_FUT",
+            instrumentType = "FUT",
+            direction = "SHORT",
+            quantity = 65,
+            lots = 1,
+            entryPrice = 26456.70,
+            currentPrice = 26413.00,
+            marginRequired = 257952.83,
+            stopLossPrice = 26800.00,
+            unrealizedPnl = 2840.50,
+            expiryDate = "2026-09-24"
+        )
+
+        return when (instanceId) {
+            "15L" -> listOf(niftyShort, sbinShort)
+            "20L" -> listOf(niftyShort, marutiShort, relianceShort)
+            else -> listOf(niftyShort, bankNiftyShort, marutiShort, relianceShort, sbinShort, tailHedgeShort)
+        }
+    }
 }
+

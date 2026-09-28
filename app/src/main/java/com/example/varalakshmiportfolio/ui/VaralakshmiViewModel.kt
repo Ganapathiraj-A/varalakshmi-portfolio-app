@@ -12,6 +12,7 @@ import com.example.varalakshmiportfolio.model.StockRecommendationItem
 import com.example.varalakshmiportfolio.model.HistoricalRecommendationItem
 import com.example.varalakshmiportfolio.model.RecommendationHistorySummary
 import com.example.varalakshmiportfolio.model.IpoActionNotification
+import com.example.varalakshmiportfolio.model.VeeraLakshmiUiState
 import com.example.varalakshmiportfolio.util.MarketHours
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -84,7 +85,11 @@ class VaralakshmiViewModel(
     )
     val uiState: StateFlow<VaralakshmiUiState> = _uiState.asStateFlow()
 
+    private val _veeraLakshmiState = MutableStateFlow(repository.getCachedFnoState())
+    val veeraLakshmiState: StateFlow<VeeraLakshmiUiState> = _veeraLakshmiState.asStateFlow()
+
     private var periodicSyncJob: Job? = null
+    private var fnoSyncJob: Job? = null
 
     init {
         if (autoRefresh) {
@@ -103,10 +108,62 @@ class VaralakshmiViewModel(
         }
     }
 
+    fun selectFnoInstance(instanceId: String) {
+        val updated = repository.selectFnoInstance(instanceId)
+        _veeraLakshmiState.value = updated.copy(isLoading = true)
+        fnoSyncJob?.cancel()
+        fnoSyncJob = viewModelScope.launch {
+            try {
+                val synced = repository.syncFno(_uiState.value.serverUrl, instanceId, _uiState.value.authToken)
+                if (_veeraLakshmiState.value.selectedInstanceId == instanceId) {
+                    _veeraLakshmiState.value = synced
+                }
+            } catch (_: Exception) {
+                if (_veeraLakshmiState.value.selectedInstanceId == instanceId) {
+                    _veeraLakshmiState.update { it.copy(isLoading = false) }
+                }
+            }
+        }
+    }
+
+    fun refreshFno() {
+        fnoSyncJob?.cancel()
+        val currentId = _veeraLakshmiState.value.selectedInstanceId
+        fnoSyncJob = viewModelScope.launch {
+            _veeraLakshmiState.update { it.copy(isLoading = true) }
+            try {
+                val synced = repository.syncFno(_uiState.value.serverUrl, currentId, _uiState.value.authToken)
+                if (_veeraLakshmiState.value.selectedInstanceId == currentId) {
+                    _veeraLakshmiState.value = synced
+                }
+            } catch (e: Exception) {
+                if (_veeraLakshmiState.value.selectedInstanceId == currentId) {
+                    _veeraLakshmiState.update { it.copy(isLoading = false, errorMessage = e.message) }
+                }
+            }
+        }
+    }
+
     fun refresh(isSilent: Boolean = false) {
         if (_uiState.value.isRefreshing) return
         viewModelScope.launch {
             _uiState.update { it.copy(isRefreshing = true) }
+            _veeraLakshmiState.update { it.copy(isLoading = true) }
+
+            // Concurrent F&O sync
+            fnoSyncJob?.cancel()
+            val targetInstanceId = _veeraLakshmiState.value.selectedInstanceId
+            fnoSyncJob = launch {
+                try {
+                    val fnoSynced = repository.syncFno(_uiState.value.serverUrl, targetInstanceId, _uiState.value.authToken)
+                    if (_veeraLakshmiState.value.selectedInstanceId == targetInstanceId) {
+                        _veeraLakshmiState.value = fnoSynced
+                    }
+                } catch (_: Exception) {
+                    _veeraLakshmiState.update { it.copy(isLoading = false) }
+                }
+            }
+
             val syncResult = repository.refreshData(_uiState.value.serverUrl, _uiState.value.authToken)
             val now = System.currentTimeMillis()
             val isMarket = MarketHours.isMarketHours()

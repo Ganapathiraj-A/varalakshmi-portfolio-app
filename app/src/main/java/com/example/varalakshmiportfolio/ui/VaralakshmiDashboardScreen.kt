@@ -42,6 +42,10 @@ import com.example.varalakshmiportfolio.ui.components.TransactionsTable
 import com.example.varalakshmiportfolio.ui.components.StockRecommendationsTable
 import com.example.varalakshmiportfolio.ui.components.StockChartDialog
 import com.example.varalakshmiportfolio.ui.components.RecommendationHistoryDialog
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
+import com.example.varalakshmiportfolio.ui.components.VeeraLakshmiScreen
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -56,7 +60,11 @@ fun VaralakshmiDashboardScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val veeraLakshmiState by viewModel.veeraLakshmiState.collectAsStateWithLifecycle()
+    val pagerState = rememberPagerState(initialPage = 0) { 2 }
+    val coroutineScope = rememberCoroutineScope()
     val scrollState = rememberScrollState()
+    val fnoScrollState = rememberScrollState()
     val snackbarHostState = remember { SnackbarHostState() }
 
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -108,52 +116,122 @@ fun VaralakshmiDashboardScreen(
         containerColor = DarkBackground,
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text(
-                            text = "Varalakshmi Portfolio",
-                            style = MaterialTheme.typography.titleLarge,
-                            color = TextPrimary,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "Live Dual-Strategy Alpha Compounder",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextSecondary
-                        )
-                    }
-                },
-                actions = {
-                    IconButton(
-                        onClick = { viewModel.refresh() },
-                        enabled = !uiState.isRefreshing
-                    ) {
-                        AnimatedRefreshIcon(isRefreshing = uiState.isRefreshing)
-                    }
-                    IconButton(onClick = { viewModel.openSettings() }) {
-                        Icon(
-                            imageVector = Icons.Filled.Settings,
-                            contentDescription = "Connection Settings",
-                            tint = TextSecondary
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = DarkSurface,
-                    titleContentColor = TextPrimary
+            Column {
+                TopAppBar(
+                    title = {
+                        Column {
+                            Text(
+                                text = if (pagerState.currentPage == 1) "VeeraLakshmi F&O" else "Varalakshmi Portfolio",
+                                style = MaterialTheme.typography.titleLarge,
+                                color = TextPrimary,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = if (pagerState.currentPage == 1) "Multi-Asset Derivatives Paper Trading" else "Live Dual-Strategy Alpha Compounder",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary
+                            )
+                        }
+                    },
+                    actions = {
+                        IconButton(
+                            onClick = { viewModel.refresh() },
+                            enabled = !uiState.isRefreshing && !veeraLakshmiState.isLoading
+                        ) {
+                            AnimatedRefreshIcon(isRefreshing = uiState.isRefreshing || veeraLakshmiState.isLoading)
+                        }
+                        IconButton(onClick = { viewModel.openSettings() }) {
+                            Icon(
+                                imageVector = Icons.Filled.Settings,
+                                contentDescription = "Connection Settings",
+                                tint = TextSecondary
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = DarkSurface,
+                        titleContentColor = TextPrimary
+                    )
                 )
-            )
+
+                // Swipeable Navigation Tab Row
+                PrimaryTabRow(
+                    selectedTabIndex = pagerState.currentPage,
+                    containerColor = DarkSurface,
+                    contentColor = AccentIndigo,
+                    indicator = {
+                        TabRowDefaults.PrimaryIndicator(
+                            modifier = Modifier.tabIndicatorOffset(pagerState.currentPage),
+                            color = AccentIndigo
+                        )
+                    },
+                    divider = { HorizontalDivider(color = DarkCardBorder) }
+                ) {
+                    Tab(
+                        selected = pagerState.currentPage == 0,
+                        onClick = { coroutineScope.launch { pagerState.animateScrollToPage(0) } },
+                        text = {
+                            Text(
+                                text = "📈 Varalakshmi (Equity)",
+                                fontWeight = if (pagerState.currentPage == 0) FontWeight.Bold else FontWeight.Medium,
+                                fontSize = 12.sp,
+                                color = if (pagerState.currentPage == 0) TextPrimary else TextSecondary
+                            )
+                        }
+                    )
+                    Tab(
+                        selected = pagerState.currentPage == 1,
+                        onClick = { coroutineScope.launch { pagerState.animateScrollToPage(1) } },
+                        text = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "⚡ VeeraLakshmi (F&O)",
+                                    fontWeight = if (pagerState.currentPage == 1) FontWeight.Bold else FontWeight.Medium,
+                                    fontSize = 12.sp,
+                                    color = if (pagerState.currentPage == 1) TextPrimary else TextSecondary
+                                )
+                                val fnoPnl = veeraLakshmiState.currentInstance.unrealizedPnl
+                                val absPnl = kotlin.math.abs(fnoPnl)
+                                val formattedBadge = when {
+                                    absPnl >= 100_000.0 -> String.format(Locale.US, "%s₹%.1fL", if (fnoPnl >= 0.0) "+" else "-", absPnl / 100_000.0)
+                                    absPnl >= 1_000.0 -> String.format(Locale.US, "%s₹%.1fk", if (fnoPnl >= 0.0) "+" else "-", absPnl / 1000.0)
+                                    else -> String.format(Locale.US, "%s₹%.0f", if (fnoPnl >= 0.0) "+" else "-", absPnl)
+                                }
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Surface(
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = if (fnoPnl >= 0.0) ProfitGreenBg else LossRedBg
+                                ) {
+                                    Text(
+                                        text = formattedBadge,
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (fnoPnl >= 0.0) ProfitGreen else LossRed,
+                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                    )
+                                }
+                            }
+                        }
+                    )
+                }
+            }
         }
     ) { paddingValues ->
-        Column(
+        HorizontalPager(
+            state = pagerState,
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .verticalScroll(scrollState)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
+        ) { page ->
+            when (page) {
+                0 -> {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(scrollState)
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
             // Live Current Time & Today's Nifty 50 Card
             Surface(
                 modifier = Modifier.fillMaxWidth(),
@@ -355,6 +433,25 @@ fun VaralakshmiDashboardScreen(
             )
 
             Spacer(modifier = Modifier.height(24.dp))
+                    }
+                }
+                1 -> {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(fnoScrollState)
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        VeeraLakshmiScreen(
+                            state = veeraLakshmiState,
+                            onSelectInstance = { viewModel.selectFnoInstance(it) },
+                            onRefresh = { viewModel.refreshFno() }
+                        )
+                        Spacer(modifier = Modifier.height(24.dp))
+                    }
+                }
+            }
         }
     }
 
@@ -587,7 +684,7 @@ fun VaralakshmiDashboardScreen(
                     )
 
                     Text(
-                        text = "App Updates & Releases (Current: v1.9.2)",
+                        text = "App Updates & Releases (Current: v1.9.3)",
                         color = TextPrimary,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold
