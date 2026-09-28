@@ -824,4 +824,43 @@ class VeeraLakshmiTest {
         assertEquals("BANKNIFTY_FUT", first.positions[0].symbol)
         assertEquals("TRD_28_01", first.trades[0].tradeId)
     }
+
+    @Test
+    fun testAuthoritativeLedgerReconstructionAndPnlForMaruti() {
+        val pnlHistory = repository.getSeedDailyPnlForInstance("50L")
+        val byDate = pnlHistory.associateBy { it.date }
+
+        // 18 Sep: MARUTI_FUT is held SHORT
+        val day18 = byDate["2026-09-18"]
+        assertNotNull(day18)
+        assertTrue(day18!!.positions.any { it.symbol == "MARUTI_FUT" && it.direction == "SHORT" })
+
+        // 21 Sep: MARUTI_FUT is closed by BUY 60 @ 12350.00 with realized PnL = -7251.0
+        val day21 = byDate["2026-09-21"]
+        assertNotNull(day21)
+        val marutiCloseTrade = day21!!.trades.find { it.symbol == "MARUTI_FUT" }
+        assertNotNull(marutiCloseTrade)
+        assertEquals("BUY", marutiCloseTrade!!.action)
+        assertEquals(60, marutiCloseTrade.quantity)
+        assertEquals(12350.00, marutiCloseTrade.executionPrice, 0.01)
+        assertEquals(-7251.00, marutiCloseTrade.realizedPnl, 0.01)
+        // Position at EOD on 21 Sep is FLAT (MARUTI_FUT must NOT be in positions)
+        assertFalse(day21.positions.any { it.symbol == "MARUTI_FUT" })
+
+        // 22-25 Sep: MARUTI_FUT remains flat
+        for (dt in listOf("2026-09-22", "2026-09-23", "2026-09-24", "2026-09-25")) {
+            val day = byDate[dt]
+            assertNotNull("Day $dt missing", day)
+            assertFalse("MARUTI_FUT should not exist in positions on $dt", day!!.positions.any { it.symbol == "MARUTI_FUT" })
+        }
+
+        // 28 Sep: MARUTI_FUT re-entered as SHORT 60
+        val day28 = byDate["2026-09-28"]
+        assertNotNull(day28)
+        assertTrue(day28!!.positions.any { it.symbol == "MARUTI_FUT" && it.direction == "SHORT" })
+        val marutiEntryTrade = day28.trades.find { it.symbol == "MARUTI_FUT" }
+        assertNotNull(marutiEntryTrade)
+        assertEquals("SELL", marutiEntryTrade!!.action)
+        assertEquals(12229.15, marutiEntryTrade.executionPrice, 0.01)
+    }
 }

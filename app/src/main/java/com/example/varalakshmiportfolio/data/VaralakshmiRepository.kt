@@ -2746,21 +2746,29 @@ class VaralakshmiRepository {
         instanceId: String,
         mult: Double
     ): Pair<List<FnoHistoricalPosition>, List<FnoHistoricalTrade>> {
-        val allPositions = listOf(
-            FnoHistoricalPosition("BANKNIFTY_FUT", "SHORT", "FUT", 1, (30 * mult).toInt().coerceAtLeast(15), 58381.10, 57591.00, 23703.00 * mult, "IndexTrendEngine"),
-            FnoHistoricalPosition("MARUTI_FUT", "SHORT", "FUT", 1, (60 * mult).toInt().coerceAtLeast(20), 12229.15, 12065.00, 9849.00 * mult, "StockMomentumEngine"),
-            FnoHistoricalPosition("RELIANCE_FUT", "SHORT", "FUT", maxOf(1, (2 * mult).toInt()), (1000 * mult).toInt().coerceAtLeast(250), 1242.80, 1226.00, 16800.00 * mult, "StockMomentumEngine"),
-            FnoHistoricalPosition("NIFTY_FUT", "SHORT", "FUT", 1, (65 * mult).toInt().coerceAtLeast(25), 26456.70, 26413.00, 2840.50 * mult, "IndexTrendEngine"),
-            FnoHistoricalPosition("SBIN_FUT", "SHORT", "FUT", 1, (750 * mult).toInt().coerceAtLeast(250), 975.85, 983.00, -5362.50 * mult, "StockMomentumEngine"),
-            FnoHistoricalPosition("TailHedgeBetaHedge", "SHORT", "FUT", 1, (65 * mult).toInt().coerceAtLeast(25), 26456.70, 26413.00, 2840.50 * mult, "TailHedgeBetaHedge")
-        )
+        val bankniftyShort = FnoHistoricalPosition("BANKNIFTY_FUT", "SHORT", "FUT", 1, (30 * mult).toInt().coerceAtLeast(15), 58381.10, 57591.00, 23703.00 * mult, "IndexTrendEngine")
+        val marutiShort = FnoHistoricalPosition("MARUTI_FUT", "SHORT", "FUT", 1, (60 * mult).toInt().coerceAtLeast(20), 12229.15, 12065.00, 9849.00 * mult, "StockMomentumEngine")
+        val relianceShort = FnoHistoricalPosition("RELIANCE_FUT", "SHORT", "FUT", maxOf(1, (2 * mult).toInt()), (1000 * mult).toInt().coerceAtLeast(250), 1242.80, 1226.00, 16800.00 * mult, "StockMomentumEngine")
+        val niftyShort = FnoHistoricalPosition("NIFTY_FUT", "SHORT", "FUT", 1, (65 * mult).toInt().coerceAtLeast(25), 26456.70, 26413.00, 2840.50 * mult, "IndexTrendEngine")
+        val sbinShort = FnoHistoricalPosition("SBIN_FUT", "SHORT", "FUT", 1, (750 * mult).toInt().coerceAtLeast(250), 975.85, 983.00, -5362.50 * mult, "StockMomentumEngine")
+        val tailHedgeShort = FnoHistoricalPosition("TailHedgeBetaHedge", "SHORT", "FUT", 1, (65 * mult).toInt().coerceAtLeast(25), 26456.70, 26413.00, 2840.50 * mult, "TailHedgeBetaHedge")
+
+        // Reconstruct exact held positions from authoritative signed position ledger:
+        // On 2026-09-21 MARUTI_FUT was closed (pnl -7251.0); remained flat 2026-09-21 to 2026-09-25; re-entered 2026-09-28
+        val allPositionsForDate = when (date) {
+            "2026-09-28" -> listOf(bankniftyShort, marutiShort, relianceShort, niftyShort, sbinShort, tailHedgeShort)
+            "2026-09-25", "2026-09-24", "2026-09-23", "2026-09-22" -> listOf(bankniftyShort, relianceShort, niftyShort, sbinShort, tailHedgeShort)
+            "2026-09-21" -> listOf(relianceShort, niftyShort, sbinShort, tailHedgeShort)
+            "2026-09-18", "2026-09-17" -> listOf(marutiShort, relianceShort, niftyShort, sbinShort, tailHedgeShort)
+            else -> listOf(relianceShort, niftyShort, sbinShort, tailHedgeShort)
+        }
 
         val posLimit = when (instanceId) {
             "15L" -> 2
             "20L" -> 3
             else -> 6
         }
-        val posList = allPositions.take(posLimit)
+        val posList = allPositionsForDate.take(posLimit)
 
         val tradesList = when (date) {
             "2026-09-28" -> listOf(
@@ -2786,14 +2794,14 @@ class VaralakshmiRepository {
                 FnoHistoricalTrade("TRD_22_02", "15:15", "TATAMOTORS_FUT", "BUY", "FUT", 1, (575 * mult).toInt().coerceAtLeast(150), 985.00, 9600.0 * mult, "Trailing SL protected profitable bounce")
             )
             "2026-09-21" -> listOf(
-                FnoHistoricalTrade("TRD_21_01", "11:30", "MARUTI_FUT", "BUY", "FUT", 1, (60 * mult).toInt().coerceAtLeast(20), 12350.00, -5050.0 * mult, "Defensive cut on auto sector morning pullback")
+                FnoHistoricalTrade("TRD_21_01", "11:30", "MARUTI_FUT", "BUY", "FUT", 1, (60 * mult).toInt().coerceAtLeast(20), 12350.00, -7251.0 * mult, "Defensive cut on auto sector morning pullback")
             )
             "2026-09-18" -> listOf(
                 FnoHistoricalTrade("TRD_18_01", "09:25", "RELIANCE_FUT", "SELL", "FUT", maxOf(1, (2 * mult).toInt()), (1000 * mult).toInt().coerceAtLeast(250), 1255.00, 0.0, "Breakdown below 20-day high channel"),
                 FnoHistoricalTrade("TRD_18_02", "13:50", "NIFTY 26500 PE", "BUY", "OPT", 1, (65 * mult).toInt().coerceAtLeast(25), 185.00, 16400.0 * mult, "Volatility expansion scalp exit (+88%)")
             )
             "2026-09-17" -> listOf(
-                FnoHistoricalTrade("TRD_17_01", "14:50", "BANKNIFTY_FUT", "BUY", "FUT", 1, (30 * mult).toInt().coerceAtLeast(15), 58650.00, -11400.0 * mult, "Risk guard stop-loss hit on expiry surge")
+                FnoHistoricalTrade("TRD_17_01", "14:50", "BANKNIFTY_FUT", "BUY", "FUT", 1, (30 * mult).toInt().coerceAtLeast(15), 58650.00, -8067.0 * mult, "Risk guard stop-loss hit on expiry surge")
             )
             else -> listOf(
                 FnoHistoricalTrade("TRD_${date.replace("-", "")}_01", "10:15", posList.firstOrNull()?.symbol ?: "NIFTY_FUT", "SELL", "FUT", 1, (65 * mult).toInt().coerceAtLeast(25), 26400.00, 0.0, "Systematic dynamic ATR trend continuation entry")

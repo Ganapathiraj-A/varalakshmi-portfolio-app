@@ -684,7 +684,7 @@ fun VaralakshmiDashboardScreen(
                     )
 
                     Text(
-                        text = "App Updates & Releases (Current: v1.9.7)",
+                        text = "App Updates & Releases (Current: v1.9.8)",
                         color = TextPrimary,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold
