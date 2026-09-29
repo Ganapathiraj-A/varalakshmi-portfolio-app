@@ -2803,9 +2803,16 @@ class VaralakshmiRepository {
             "2026-09-17" -> listOf(
                 FnoHistoricalTrade("TRD_17_01", "14:50", "BANKNIFTY_FUT", "BUY", "FUT", 1, (30 * mult).toInt().coerceAtLeast(15), 58650.00, -8067.0 * mult, "Risk guard stop-loss hit on expiry surge")
             )
-            else -> listOf(
-                FnoHistoricalTrade("TRD_${date.replace("-", "")}_01", "10:15", posList.firstOrNull()?.symbol ?: "NIFTY_FUT", "SELL", "FUT", 1, (65 * mult).toInt().coerceAtLeast(25), 26400.00, 0.0, "Systematic dynamic ATR trend continuation entry")
-            )
+            else -> {
+                val refPos = posList.firstOrNull()
+                val sym = refPos?.symbol ?: "NIFTY_FUT"
+                val qty = refPos?.quantity ?: (65 * mult).toInt().coerceAtLeast(25)
+                val lots = refPos?.lots ?: 1
+                val px = refPos?.entryPrice ?: 26400.00
+                listOf(
+                    FnoHistoricalTrade("TRD_${date.replace("-", "")}_01", "10:15", sym, "SELL", "FUT", lots, qty, px, 0.0, "Systematic dynamic ATR trend continuation entry")
+                )
+            }
         }
 
         val tradeLimit = when (instanceId) {
