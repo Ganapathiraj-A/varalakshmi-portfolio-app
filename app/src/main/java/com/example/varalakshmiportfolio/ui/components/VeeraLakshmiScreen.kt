@@ -12,9 +12,12 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import android.widget.Toast
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -26,6 +29,12 @@ import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.style.TextOverflow
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -961,12 +970,88 @@ private fun FnoMiniMetric(
     }
 }
 
+private fun formatPnlCurrency(amount: Double): String {
+    return if (amount >= 0) {
+        String.format(Locale.US, "+₹%,.2f", amount)
+    } else {
+        String.format(Locale.US, "-₹%,.2f", Math.abs(amount))
+    }
+}
+
+internal fun formatFullHistoryForClipboard(
+    items: List<FnoDailyPnlItem>,
+    winRatePct: Double,
+    netPnl: Double,
+    winDays: Int,
+    lossDays: Int,
+    avgDailyPnl: Double,
+    bestDay: Double
+): String {
+    val sb = StringBuilder()
+    sb.appendLine("================================================================================")
+    sb.appendLine("VEERALAKSHMI F&O PAPER TRADING - FULL PERFORMANCE HISTORY & LEDGER")
+    sb.appendLine("================================================================================")
+    sb.appendLine("Total Days : ${items.size} | Win Rate: ${String.format(Locale.US, "%.1f%%", winRatePct)} (${winDays}W / ${lossDays}L)")
+    sb.appendLine("Net P&L    : ${formatPnlCurrency(netPnl)}")
+    sb.appendLine("Avg Daily  : ${formatPnlCurrency(avgDailyPnl)}")
+    sb.appendLine("Best Day   : ${String.format(Locale.US, "+₹%,.2f", bestDay)}")
+    sb.appendLine("--------------------------------------------------------------------------------")
+    sb.appendLine(String.format(Locale.US, "%-12s | %-14s | %-8s | %-6s | %-16s | %-6s | %-9s",
+        "DATE", "DAILY P&L", "RETURN", "STATUS", "TOTAL EQUITY", "TRADES", "POSITIONS"))
+    sb.appendLine("--------------------------------------------------------------------------------")
+    for (item in items) {
+        val pnlStr = formatPnlCurrency(item.dailyPnl)
+        val retStr = String.format(Locale.US, "%s%.2f%%", if (item.dailyReturnPct >= 0) "+" else "", item.dailyReturnPct)
+        val eqStr = String.format(Locale.US, "₹%,.2f", item.totalEquity)
+        sb.appendLine(String.format(Locale.US, "%-12s | %-14s | %-8s | %-6s | %-16s | %-6d | %-9d",
+            item.date, pnlStr, retStr, item.dayStatus, eqStr, item.tradeCount, item.positionsCount))
+    }
+    sb.appendLine("================================================================================")
+    sb.appendLine("DETAILED DAILY LEDGER (EXECUTED TRADES & POSITIONS HELD)")
+    sb.appendLine("================================================================================")
+    for (item in items) {
+        val pnlStr = formatPnlCurrency(item.dailyPnl)
+        val retStr = String.format(Locale.US, "%s%.2f%%", if (item.dailyReturnPct >= 0) "+" else "", item.dailyReturnPct)
+        sb.appendLine()
+        sb.appendLine("[${item.date}] Net P&L: $pnlStr ($retStr) | Status: ${item.dayStatus} | Total Equity: ${String.format(Locale.US, "₹%,.2f", item.totalEquity)}")
+
+        if (item.trades.isNotEmpty()) {
+            sb.appendLine("  • Executed Trades (${item.trades.size}):")
+            for (t in item.trades) {
+                val trdPnlStr = formatPnlCurrency(t.realizedPnl)
+                sb.appendLine("    - ${t.time} ${t.action} ${t.symbol} ${t.lots} lot (${t.quantity} qty) @ ${String.format(Locale.US, "₹%,.2f", t.executionPrice)} | Realized P&L: $trdPnlStr")
+                if (t.executionReason.isNotBlank()) {
+                    sb.appendLine("      Reason: ${t.executionReason}")
+                }
+            }
+        } else {
+            sb.appendLine("  • Executed Trades: None (holding session)")
+        }
+
+        if (item.positions.isNotEmpty()) {
+            sb.appendLine("  • Positions Held (${item.positions.size}):")
+            for (p in item.positions) {
+                val pPnlStr = formatPnlCurrency(p.dayPnl)
+                sb.appendLine("    - ${p.symbol} ${p.direction} ${p.quantity} units | Entry: ${String.format(Locale.US, "₹%,.2f", p.entryPrice)} | Close: ${String.format(Locale.US, "₹%,.2f", p.closePrice)} | MtM P&L: $pPnlStr (${p.strategyEngine})")
+            }
+        }
+    }
+    sb.appendLine()
+    sb.appendLine("================================================================================")
+    return sb.toString()
+}
+
 @Composable
 private fun FnoDailyPnlHistorySection(
     dailyPnlList: List<FnoDailyPnlItem>,
     modifier: Modifier = Modifier
 ) {
     if (dailyPnlList.isEmpty()) return
+
+    val clipboardManager = LocalClipboardManager.current
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    var isCopied by remember { mutableStateOf(false) }
 
     var selectedFilter by rememberSaveable { mutableStateOf("ALL") }
 
@@ -1004,7 +1089,10 @@ private fun FnoDailyPnlHistorySection(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    modifier = Modifier.weight(1f, fill = false),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Icon(
                         imageVector = Icons.Filled.History,
                         contentDescription = "P&L History",
@@ -1014,23 +1102,81 @@ private fun FnoDailyPnlHistorySection(
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = "DAILY PROFIT & LOSS HISTORY",
-                        fontSize = 12.sp,
+                        fontSize = 11.5.sp,
                         fontWeight = FontWeight.Bold,
                         color = TextPrimary,
-                        letterSpacing = 0.5.sp
+                        letterSpacing = 0.4.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = if (netPnl >= 0.0) ProfitGreenBg else LossRedBg
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Text(
-                        text = String.format(Locale.US, "%.1f%% Win Rate", winRatePct),
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (netPnl >= 0.0) ProfitGreen else LossRed,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                    )
+                    // Copy Full History Button
+                    Surface(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable {
+                                val fullText = formatFullHistoryForClipboard(
+                                    items = dailyPnlList,
+                                    winRatePct = winRatePct,
+                                    netPnl = netPnl,
+                                    winDays = winDays,
+                                    lossDays = lossDays,
+                                    avgDailyPnl = avgDailyPnl,
+                                    bestDay = bestDay
+                                )
+                                clipboardManager.setText(AnnotatedString(fullText))
+                                Toast.makeText(context, "Full history copied to clipboard!", Toast.LENGTH_SHORT).show()
+                                isCopied = true
+                                coroutineScope.launch {
+                                    delay(2000)
+                                    isCopied = false
+                                }
+                            },
+                        shape = RoundedCornerShape(6.dp),
+                        color = if (isCopied) ProfitGreenBg else DarkCard,
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            if (isCopied) ProfitGreen else DarkCardBorder
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (isCopied) Icons.Filled.Check else Icons.Filled.ContentCopy,
+                                contentDescription = if (isCopied) "Copied" else "Copy Full History",
+                                tint = if (isCopied) ProfitGreen else TextSecondary,
+                                modifier = Modifier.size(11.dp)
+                            )
+                            Text(
+                                text = if (isCopied) "Copied!" else "Copy",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isCopied) ProfitGreen else TextSecondary
+                            )
+                        }
+                    }
+
+                    // Win Rate Badge
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = if (netPnl >= 0.0) ProfitGreenBg else LossRedBg
+                    ) {
+                        Text(
+                            text = String.format(Locale.US, "%.1f%% Win", winRatePct),
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (netPnl >= 0.0) ProfitGreen else LossRed,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
                 }
             }
 

@@ -4,6 +4,7 @@ import com.example.varalakshmiportfolio.data.VaralakshmiRepository
 import com.example.varalakshmiportfolio.model.FnoInstanceSummary
 import com.example.varalakshmiportfolio.model.FnoPositionItem
 import com.example.varalakshmiportfolio.ui.VaralakshmiViewModel
+import com.example.varalakshmiportfolio.ui.components.formatFullHistoryForClipboard
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -862,5 +863,32 @@ class VeeraLakshmiTest {
         assertNotNull(marutiEntryTrade)
         assertEquals("SELL", marutiEntryTrade!!.action)
         assertEquals(12229.15, marutiEntryTrade.executionPrice, 0.01)
+    }
+
+    @Test
+    fun testFormatFullHistoryForClipboard() {
+        val pnlHistory = repository.getSeedDailyPnlForInstance("50L")
+        val formatted = formatFullHistoryForClipboard(
+            items = pnlHistory,
+            winRatePct = 80.0,
+            netPnl = 150000.0,
+            winDays = 12,
+            lossDays = 3,
+            avgDailyPnl = 10000.0,
+            bestDay = 32600.0
+        )
+
+        assertNotNull(formatted)
+        assertTrue(formatted.contains("VEERALAKSHMI F&O PAPER TRADING - FULL PERFORMANCE HISTORY"))
+        assertTrue(formatted.contains("Total Days : 15"))
+        assertTrue(formatted.contains("80.0%"))
+        assertTrue(formatted.contains("2026-09-28"))
+        assertTrue(formatted.contains("2026-09-21"))
+        assertTrue(formatted.contains("BANKNIFTY_FUT"))
+        assertTrue(formatted.contains("MARUTI_FUT"))
+        assertTrue(formatted.contains("-₹7,251.00"))
+        assertTrue(formatted.contains("DETAILED DAILY LEDGER"))
+        assertTrue(formatted.contains("Executed Trades"))
+        assertTrue(formatted.contains("Positions Held"))
     }
 }
