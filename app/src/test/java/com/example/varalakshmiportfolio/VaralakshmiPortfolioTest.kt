@@ -279,6 +279,41 @@ class VaralakshmiPortfolioTest {
     }
 
     @Test
+    fun testRepositoryRestorePositionReversesExit() {
+        val repository = VaralakshmiRepository()
+        val initialSummary = repository.getCachedSummary()
+        val ahcl = repository.getCachedPositions().first { it.symbol == "AHCL" }
+
+        // Remove position
+        val (postRemoveSummary, postRemovePositions, postRemoveTx) = repository.removePosition("AHCL")
+        assertEquals(2, postRemovePositions.size)
+        assertFalse(postRemovePositions.any { it.symbol == "AHCL" })
+        assertTrue(postRemoveTx.any { it.side == "SELL" && it.symbol == "AHCL" })
+
+        // Restore position
+        val (restoredSummary, restoredPositions, restoredTx) = repository.restorePosition(ahcl)
+        assertEquals(3, restoredPositions.size)
+        assertTrue(restoredPositions.any { it.symbol == "AHCL" })
+        assertFalse(restoredTx.any { it.side == "SELL" && it.symbol == "AHCL" })
+        assertEquals(initialSummary.totalNav, restoredSummary.totalNav, 0.001)
+        assertEquals(initialSummary.realizedPnl, restoredSummary.realizedPnl, 0.001)
+        assertEquals(initialSummary.deployedCapital, restoredSummary.deployedCapital, 0.001)
+    }
+
+    @Test
+    fun testDismissExitErrorResetsState() {
+        val repository = VaralakshmiRepository()
+        val viewModel = VaralakshmiViewModel(repository)
+
+        // Verify initial state has no exit error
+        assertNull(viewModel.uiState.value.exitErrorDialog)
+
+        // Dismiss when null is safe
+        viewModel.dismissExitError()
+        assertNull(viewModel.uiState.value.exitErrorDialog)
+    }
+
+    @Test
     fun testMultiplierStringLocaleIndependence() {
         val position = PositionItem(
             positionId = "TEST_POS",
@@ -2206,5 +2241,254 @@ class VaralakshmiPortfolioTest {
         assertEquals("38.2x", swiggy.formattedQibMultiple)
         assertFalse(swiggy.isDismissed)
     }
+
+    @Test
+    fun testStockLinkHelperGoogleFinanceUrl() {
+        val sigmaUrl = com.example.varalakshmiportfolio.ui.util.StockLinkHelper.buildGoogleFinanceUrl("SIGMAADV")
+        assertEquals("https://www.google.com/finance/quote/SIGMAADV%3ANSE", sigmaUrl)
+
+        val tfcUrl = com.example.varalakshmiportfolio.ui.util.StockLinkHelper.buildGoogleFinanceUrl("TFCILTD")
+        assertEquals("https://www.google.com/finance/quote/TFCILTD%3ANSE", tfcUrl)
+
+        val raymondUrl = com.example.varalakshmiportfolio.ui.util.StockLinkHelper.buildGoogleFinanceUrl("RAYMOND")
+        assertEquals("https://www.google.com/finance/quote/RAYMOND%3ANSE", raymondUrl)
+
+        val qualifiedUrl = com.example.varalakshmiportfolio.ui.util.StockLinkHelper.buildGoogleFinanceUrl("RELIANCE:BOM")
+        assertEquals("https://www.google.com/finance/quote/RELIANCE%3ABOM", qualifiedUrl)
+    }
+
+    @Test
+    fun testCalculateCurrentCagr() {
+        // ₹600,000 invested, ₹608,484.13 NAV over 20 days:
+        // (608484.13 / 600000.0) ^ (365.0 / 20.0) - 1.0 = ~29.21%
+        val cagr = com.example.varalakshmiportfolio.model.calculateCurrentCagr(
+            totalNav = 608484.13,
+            allocatedCapital = 600000.0,
+            inceptionDateStr = "2026-09-17",
+            asOfDateStr = "2026-10-07"
+        )
+        assertTrue(cagr > 28.0 && cagr < 31.0)
+
+        // Invalid capital or NAV returns 0.0 safely
+        assertEquals(0.0, com.example.varalakshmiportfolio.model.calculateCurrentCagr(0.0, 600000.0), 0.001)
+        assertEquals(0.0, com.example.varalakshmiportfolio.model.calculateCurrentCagr(600000.0, 0.0), 0.001)
+    }
+
+    @Test
+    fun testPortfolioSummaryCagrAndCashInvested() {
+        val summary = com.example.varalakshmiportfolio.model.PortfolioSummary(
+            totalNav = 608484.13,
+            allocatedCapital = 600000.0,
+            cagrPct = 29.21
+        )
+        assertEquals(600000.0, summary.allocatedCapital, 0.001)
+        assertEquals(29.21, summary.cagrPct, 0.001)
+        assertEquals(29.21, summary.effectiveCagr, 0.001)
+
+        // If cagrPct is 0, effectiveCagr falls back to dynamically calculated CAGR
+        val fallbackSummary = com.example.varalakshmiportfolio.model.PortfolioSummary(
+            totalNav = 608484.13,
+            allocatedCapital = 600000.0,
+            cagrPct = 0.0,
+            inceptionDate = "2026-09-17",
+            lastUpdated = "2026-10-07 10:00:00"
+        )
+        assertTrue(fallbackSummary.effectiveCagr > 20.0)
+    }
+
+    @Test
+    fun testApplyCachedJsonStateParsesCagrAndAllocatedCapital() {
+        val repo = VaralakshmiRepository()
+        val json = """
+            {
+                "summary": {
+                    "strategyId": "VARALAKSHMI_ALPHA_SCALE_35",
+                    "strategyName": "VaraLakshmi Alpha",
+                    "totalNav": 608484.13,
+                    "allocatedCapital": 600000.0,
+                    "deployedCapital": 579951.45,
+                    "availableCapital": 1699.89,
+                    "realizedPnl": -18348.66,
+                    "unrealizedPnl": 27024.95,
+                    "totalPnl": 8676.29,
+                    "totalPnlPct": 1.45,
+                    "todayPnl": 5617.74,
+                    "todayPnlPct": 0.93,
+                    "cagrPct": 29.21,
+                    "inceptionDate": "2026-09-17"
+                },
+                "positions": [],
+                "transactions": []
+            }
+        """.trimIndent()
+
+        val applied = repo.applyCachedJsonState(json)
+        assertTrue(applied)
+        val cached = repo.getCachedSummary()
+        assertEquals(600000.0, cached.allocatedCapital, 0.001)
+        assertEquals(29.21, cached.cagrPct, 0.001)
+        assertEquals(29.21, cached.effectiveCagr, 0.001)
+    }
+
+    @Test
+    fun testMarketIndicesFormattingAndPersistence() {
+        val indices = com.example.varalakshmiportfolio.model.createDefaultMarketIndices()
+        assertEquals(4, indices.size)
+        assertEquals("NIFTY 50", indices[0].shortDisplayName)
+        assertEquals("SMLCAP 250", indices[1].shortDisplayName)
+        assertEquals("MIDCAP 150", indices[2].shortDisplayName)
+        assertEquals("500 MOM 50", indices[3].shortDisplayName)
+
+        // Verify formattedChangePct formatting (percentage only, no actual numbers)
+        val posItem = com.example.varalakshmiportfolio.model.MarketIndexItem(symbol = "NIFTY 50", changePct = 0.45)
+        assertEquals("▲ +0.45%", posItem.formattedChangePct)
+
+        val negItem = com.example.varalakshmiportfolio.model.MarketIndexItem(symbol = "NIFTY SMLCAP 250", changePct = -1.23)
+        assertEquals("▼ -1.23%", negItem.formattedChangePct)
+
+        val momItem = com.example.varalakshmiportfolio.model.MarketIndexItem(symbol = "NIFTY 500 MOMENTUM 50", changePct = -0.99)
+        assertEquals("500 MOM 50", momItem.shortDisplayName)
+        assertEquals("▼ -0.99%", momItem.formattedChangePct)
+
+        val repo = VaralakshmiRepository()
+        val cached = repo.getCachedMarketIndices()
+        assertEquals(4, cached.size)
+        assertEquals("NIFTY 50", cached[0].symbol)
+        assertEquals("NIFTY SMLCAP 250", cached[1].symbol)
+        assertEquals("NIFTY MIDCAP 150", cached[2].symbol)
+        assertEquals("NIFTY 500 MOMENTUM 50", cached[3].symbol)
+    }
+
+    @Test
+    fun testDaysSinceStrategyStartedCalculation() {
+        // Test explicit dates
+        val daysSameDay = com.example.varalakshmiportfolio.model.calculateStrategyDaysActive("2026-09-17", "2026-09-17")
+        assertEquals(1, daysSameDay) // coerceAtLeast(1)
+
+        val daysNextDay = com.example.varalakshmiportfolio.model.calculateStrategyDaysActive("2026-09-17", "2026-09-18")
+        assertEquals(1, daysNextDay)
+
+        val daysToOct12 = com.example.varalakshmiportfolio.model.calculateStrategyDaysActive("2026-09-17", "2026-10-12")
+        assertEquals(25, daysToOct12)
+
+        // PortfolioSummary
+        val summary = com.example.varalakshmiportfolio.model.PortfolioSummary(inceptionDate = "2026-09-17")
+        assertTrue("Days active should be at least 25", summary.daysActive >= 25)
+        assertTrue(summary.formattedDaysActive.endsWith("Days Active"))
+
+        // FnoInstanceSummary
+        val fno = com.example.varalakshmiportfolio.model.FnoInstanceSummary(
+            inceptionDate = "2026-10-09",
+            asOfDate = "2026-10-12"
+        )
+        assertEquals(3, fno.daysActive)
+        assertEquals("3 Days Active", fno.formattedDaysActive)
+
+        // SanthanaLakshmiSummary
+        val santhana = com.example.varalakshmiportfolio.model.SanthanaLakshmiSummary(inceptionDate = "2026-09-01")
+        assertTrue("Santhana days active should be >= 40", santhana.daysActive >= 40)
+        assertTrue(santhana.formattedDaysActive.contains("Days Active"))
+    }
+
+    @Test
+    fun testStockRecommendationTodayGainAndAverageGain() {
+        val defaultRecs = VaralakshmiRepository.createDefaultRecommendations()
+        assertEquals(5, defaultRecs.size)
+
+        // 1. Each stock has a valid positive today percentage gain
+        for (item in defaultRecs) {
+            assertTrue("${item.symbol} should have positive or valid todayChangePct", item.todayChangePct != 0.0)
+            assertTrue("${item.symbol} formattedTodayChangePct should contain %", item.formattedTodayChangePct.contains("%"))
+        }
+
+        // 2. Average gain across default recommendations is correctly computed
+        val avgToday = defaultRecs.map { it.todayChangePct }.average()
+        assertTrue("Average today gain should be positive for momentum recommendations", avgToday > 0.0)
+        assertEquals(1.99, avgToday, 0.05)
+
+        // 3. Historical points fallback calculation test
+        val recWithPoints = StockRecommendationItem(
+            rank = 1,
+            symbol = "TESTSTOCK",
+            price = 110.0,
+            score = 9.5,
+            changePct = 0.0,
+            historical2mPoints = listOf(
+                com.example.varalakshmiportfolio.model.HistoricalPricePoint("2026-10-11", 100.0),
+                com.example.varalakshmiportfolio.model.HistoricalPricePoint("2026-10-12", 110.0)
+            )
+        )
+        // 100 -> 110 is +10.00%
+        assertEquals(10.00, recWithPoints.todayChangePct, 0.001)
+        assertEquals("+10.00%", recWithPoints.formattedTodayChangePct)
+
+        // Negative change test
+        val recNegative = StockRecommendationItem(
+            rank = 2,
+            symbol = "TESTDOWN",
+            price = 95.0,
+            score = 8.0,
+            changePct = -5.0
+        )
+        assertEquals(-5.0, recNegative.todayChangePct, 0.001)
+        assertEquals("-5.00%", recNegative.formattedTodayChangePct)
+    }
+
+    @Test
+    fun testOtherZerodhaPositionsParsingAndProperties() {
+        val repo = VaralakshmiRepository()
+        val defaultOthers = repo.getCachedOtherPositions()
+        assertEquals(3, defaultOthers.size)
+
+        val liquidcase = defaultOthers.find { it.symbol == "LIQUIDCASE" }
+        assertNotNull(liquidcase)
+        assertEquals(863, liquidcase!!.quantity)
+        assertFalse(liquidcase.isStrategy)
+        assertEquals("ZERODHA", liquidcase.category)
+        assertEquals(0.03, liquidcase.todayPriceChange, 0.001)
+        assertEquals(25.89, liquidcase.todayValueChange, 0.01)
+
+        val parasyntax = defaultOthers.find { it.symbol == "PARASYNTEX" }
+        assertNotNull(parasyntax)
+        assertEquals(2000, parasyntax!!.quantity)
+        assertFalse(parasyntax.isStrategy)
+        assertEquals("ZERODHA", parasyntax.category)
+        assertEquals(-4.90, parasyntax.todayPriceChange, 0.001)
+        assertEquals(-9800.00, parasyntax.todayValueChange, 0.01)
+
+        val pcjeweller = defaultOthers.find { it.symbol == "PCJEWELLER" }
+        assertNotNull(pcjeweller)
+        assertEquals(7000, pcjeweller!!.quantity)
+        assertFalse(pcjeweller.isStrategy)
+        assertEquals(0.15, pcjeweller.todayPriceChange, 0.001)
+        assertEquals(1050.00, pcjeweller.todayValueChange, 0.01)
+    }
+
+    @Test
+    fun testPositionItemStrategyFlagDefaults() {
+        val stratPos = PositionItem(
+            positionId = "POS_STRAT",
+            symbol = "TFCILTD",
+            quantity = 1426,
+            entryPrice = 139.48,
+            currentPrice = 160.80,
+            marketValue = 229300.80,
+            unrealizedPnl = 30403.85,
+            unrealizedPnlPct = 15.28,
+            peakPrice = 160.80,
+            entryDate = "2026-09-17",
+            previousClose = 158.69
+        )
+        assertTrue(stratPos.isStrategy)
+        assertEquals("STRATEGY", stratPos.category)
+
+        val nonStratPos = stratPos.copy(
+            isStrategy = false,
+            category = "ZERODHA"
+        )
+        assertFalse(nonStratPos.isStrategy)
+        assertEquals("ZERODHA", nonStratPos.category)
+    }
 }
+
 

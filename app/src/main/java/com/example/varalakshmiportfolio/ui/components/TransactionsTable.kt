@@ -8,6 +8,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -227,17 +229,38 @@ private fun TransactionRow(
                 }
             }
 
-            // 3. TICKER
-            Column(modifier = Modifier.weight(1.1f)) {
-                Text(
-                    text = transaction.symbol,
-                    color = TextPrimary,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    softWrap = false,
-                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                )
+            // 3. TICKER (Click to open Google Finance Chart in Chrome)
+            val context = androidx.compose.ui.platform.LocalContext.current
+            Column(
+                modifier = Modifier
+                    .weight(1.1f)
+                    .clip(RoundedCornerShape(6.dp))
+                    .clickable {
+                        com.example.varalakshmiportfolio.ui.util.StockLinkHelper.openGoogleFinance(
+                            context = context,
+                            symbol = transaction.symbol
+                        )
+                    }
+                    .padding(vertical = 2.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = transaction.symbol,
+                        color = TextPrimary,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                        contentDescription = "View Chart on Google Finance",
+                        tint = AccentIndigoLight.copy(alpha = 0.7f),
+                        modifier = Modifier.size(10.dp)
+                    )
+                }
                 Text(
                     text = "${transaction.quantity} qty",
                     color = TextMuted,

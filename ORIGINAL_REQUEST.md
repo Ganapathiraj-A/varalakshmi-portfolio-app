@@ -1,129 +1,58 @@
 # Original User Request
 
-## 2026-09-21T08:30:18Z
-
-Perform a comprehensive 360° code review, security, performance, and financial data audit of the Varalakshmi Portfolio Android application, generate a structured audit report, and implement high-priority remediations.
-
-Working directory: `/home/ganapathiraj/Code/Stock Research/Unified UI/app`
-Integrity mode: development
-
-## Requirements
-
-### R1. Comprehensive 360° Forensic Audit
-Execute an in-depth audit across the following domains:
-1. **Financial Precision & Invariants**: Validate that NAV, unrealized PnL, deployed capital, and available cash calculations maintain mathematical consistency (NAV = Deployed + Available + UnrealizedPnL) without floating-point drift or inaccurate rounding.
-2. **Jetpack Compose Performance & Recomposition**: Audit Composable functions (PortfolioHeaderCard, HoldingsTable, TransactionsTable, VaralakshmiDashboardScreen) for unnecessary recompositions, state hoisting hygiene, stable keys in lists, and efficient memory usage.
-3. **Security & Networking**: Review network layer (HttpURLConnection, URL parsing, cleartext traffic allowance, timeout handling, thread safety with Dispatchers.IO) to ensure robust exception handling and protect against malformed payloads.
-4. **Android & Kotlin Architecture**: Assess adherence to modern Android architecture best practices, lifecycle-aware coroutines, resource management, and UI state encapsulation.
-
-### R2. Forensic Audit Report
-Compile all findings into a structured markdown document (`AUDIT_REPORT.md`) in the project root:
-- Categorize issues by severity: **Critical**, **High**, **Medium**, **Low/Suggestion**.
-- Include exact file paths, line references, risk impact analysis, and remediation strategies.
-
-### R3. Implementation of High-Priority Remediations
-Refactor the codebase to address all identified **Critical** and **High** severity issues:
-- Fix any potential crash hazards, coroutine leaks, or calculation inaccuracies.
-- Optimize Compose recomposition triggers and list rendering performance.
-- Maintain existing visual design, ticker table columns (`TICKER`, `% UP/DN`, `VALUE`, `X`), and recent transactions history.
-
-### R4. Verification & APK Rebuild
-Ensure the refactored project compiles cleanly without warnings or build errors, execute `./gradlew assembleRelease`, and produce an updated release APK (`varalakshmi-portfolio.apk`).
-
-## Acceptance Criteria
-
-### Audit Deliverable
-- [ ] `AUDIT_REPORT.md` exists in `/home/ganapathiraj/Code/Stock Research/Unified UI/app` detailing findings across Security, Performance, Calculation Precision, and Architecture.
-- [ ] Every finding has an assigned severity, code reference, and proposed fix.
-
-### Codebase Remediation
-- [ ] All Critical and High severity findings identified in the audit are resolved in the source code.
-- [ ] No regression in financial calculations (NAV = ₹109,268.80 with default snapshot, consistent PnL tracking).
-- [ ] Holdings table retains ticker %up/down, value, and X multiplier with interactive exit capabilities.
-- [ ] Transactions table retains chronological fill history with date, side, ticker, price, and difference.
-
-### Build Verification
-- [ ] `./gradlew assembleRelease` exits with code 0.
-- [ ] Updated `varalakshmi-portfolio.apk` is generated and passes archive verification.
-
-## 2026-09-21T10:48:45Z
+## 2026-09-23T10:28:30Z
 
 This is a single self-contained fix; keep it small and focused.
 
-Enhance the Varalakshmi Portfolio Android application to display today's NAV value change alongside total portfolio value in the header card, and add a dedicated table below the individual tickers table showing each ticker's current price, today's price change (₹ and %), and today's total value change.
+Enhance the Varalakshmi Portfolio Android application to add a dedicated "Top 5 Stock Recommendations" table at the bottom of the dashboard screen, where tapping any recommendation opens an interactive dialog or modal bottom sheet displaying that stock's past 2-month price trajectory line chart with high/low levels and price tooltips.
 
-Working directory: `/home/ganapathiraj/Code/Stock Research/Unified UI/app`
+Working directory: /home/ganapathiraj/Code/Stock Research/Unified UI/app
 Integrity mode: development
 
 ## Requirements
 
-### R1. Portfolio Header Today's Value Change
-Display today's portfolio NAV change (in ₹ and %) alongside total portfolio NAV and all-time return in the Portfolio Header Card. Ensure the daily change cleanly reflects the sum of today's price changes across all active positions without calculation drift.
+### R1. Top 5 Stock Recommendations Table
+Add a dedicated composable table at the bottom of `VaralakshmiDashboardScreen` (below Recent Transactions):
+- Section header: "TOP 5 STOCK RECOMMENDATIONS" with an icon and badge.
+- Columns: Rank (`#`), Ticker Symbol (`TICKER`), Recommended Entry/Current Price (`PRICE`), Momentum Score / Alpha Rank (`SCORE`), and Action (`CHART` / tap indicator).
+- Visual styling matching the dark trading theme (`Color(0xFF161B22)`, `Color(0xFF0D1117)`, GitHub Dark/OLED styling) with clean border alignment and no horizontal text truncation.
+- Tapping anywhere on a recommendation row triggers the 2-month chart viewer.
 
-### R2. Today's Ticker Changes Table (Below Individual Tickers)
-Add a dedicated table directly below the "INDIVIDUAL TICKERS" table displaying each holding's daily market movements:
-- Ticker Symbol
-- Current Price (LTP)
-- Today's Price Change (₹ difference and % change)
-- Today's Total Value Change (Quantity × Today's Price Change in ₹)
+### R2. Interactive 2-Month Historical Price Chart Modal
+When a user taps any recommended stock, display a clean modal dialog or modal bottom sheet:
+- Ticker symbol header, current price, 2-month net % change, and 2-month high/low range tags.
+- A custom Jetpack Compose Canvas line chart rendering the stock's daily close trajectory over the past 2 months (approx. 45 trading days / 60 calendar days).
+- Chart visual elements:
+  * Smooth gradient fill below the price curve (green if 2-month return > 0, red/accent if < 0).
+  * Horizontal dashed guidelines for 2-month Peak High, Trough Low, and Current Price.
+  * Interactive touch gesture / drag scrub support that displays a floating tooltip with date and price at the touched point.
+  * Prominent close button ("✕" or "Close").
 
-### R3. Data Integration & Model Extension
-Extend `VaralakshmiModels.kt` and `VaralakshmiRepository.kt` with fields for today's price change and today's value change (with previous close / entry price references), ensuring robust calculations in both live Cloudflare HTTPS sync and offline snapshot fallback modes.
+### R3. Data Integration & Offline Cache Fallback
+- Extend `VaralakshmiModels.kt` with a data class for `StockRecommendationItem` (rank, symbol, price, score, targetPrice, stopLossPrice, historical2mPoints).
+- In `VaralakshmiRepository.kt`, provide recommendation loading with both live HTTPS sync (fetching from the live API or Cloudflare payload) and a rich default offline fallback snapshot containing realistic 2-month daily price arrays for the top 5 momentum candidates (e.g. `CUPID`, `ADANIPOWER`, `YASHO`, `DEEDEV`, `ARIHANT`).
 
-### R4. UI/UX Consistency & Preservation
-Maintain existing functionality and styling:
-- Preserve the 5-column aligned holdings table (`TICKER`, `% UP/DN`, `VALUE`, `X`, `EXIT`).
-- Preserve the live ticking seconds clock and sync status card.
-- Preserve the recent transactions table and confirmation modal.
-- Ensure all text and columns are cleanly aligned without wrapping on mobile screens.
-
-### R5. Test Verification & Release Build
-Update unit tests to verify today's portfolio value change calculations and table data mapping, execute `./gradlew testDebugUnitTest`, and build an updated release APK via `./gradlew assembleRelease`.
+### R4. Verification, Testing & Release Build
+- Add unit tests in `VaralakshmiPortfolioTest.kt` verifying:
+  1. Top 5 recommendations parsing and state handling.
+  2. 2-month historical data point sorting and min/max calculation.
+  3. Recommendation click interaction state updates.
+- Verify that `./gradlew testDebugUnitTest` passes with exit code 0.
+- Execute `./gradlew assembleRelease` to generate the production APK (`varalakshmi-portfolio.apk`).
 
 ## Acceptance Criteria
 
-### Header Presentation
-- [ ] Portfolio Header Card displays today's NAV change with value (₹) and percentage (%) side-by-side with total P&L.
-- [ ] Color-coding matches market direction (green for positive daily change, red for negative).
+### UI & UX
+- [ ] "TOP 5 STOCK RECOMMENDATIONS" table renders cleanly at the bottom of the dashboard screen.
+- [ ] Table cleanly shows Rank 1 to 5, symbol, price, and score without wrapping or clipping on mobile screen widths.
+- [ ] Tapping any recommendation opens the 2-month chart modal immediately.
+- [ ] Chart displays a clean price line curve with high/low bounds and touch-to-inspect price tooltips.
+- [ ] Existing dashboard cards (Header, Individual Tickers, Today's Value Change, Recent Transactions) remain fully functional.
 
-### Today's Changes Table
-- [ ] Rendered directly below Individual Tickers and above Recent Transactions.
-- [ ] Contains columns: `TICKER`, `PRICE`, `TODAY CHG (%)`, and `TODAY VALUE (₹)`.
-- [ ] Ticker symbols, prices, and changes fit comfortably on mobile screen widths without clipping or misaligned borders.
-
-### Verification & Deliverables
-- [ ] All unit tests pass cleanly via `./gradlew testDebugUnitTest` with exit code 0.
-- [ ] `./gradlew assembleRelease` completes with exit code 0, generating `varalakshmi-portfolio.apk`.
-- [ ] Release APK is updated on the repository and release asset on GitHub.
-
-## 2026-09-21T10:49:58Z
-
-Additional requirement from the user:
-"also add a link under settings that can be used to download new apks for update"
-
-Please ensure that inside the Server Settings Dialog (in VaralakshmiDashboardScreen.kt), an "App Updates & Releases" section is included with clickable buttons/links using LocalUriHandler.current.openUri(...) to:
-1. Download latest APK directly: `https://github.com/Ganapathiraj-A/varalakshmi-portfolio-app/releases/latest/download/varalakshmi-portfolio.apk` (or the direct release tag URL)
-2. View all GitHub Releases: `https://github.com/Ganapathiraj-A/varalakshmi-portfolio-app/releases`
-
-Please incorporate this seamlessly alongside R1-R5.
-
-## 2026-09-21T11:08:42Z
-
-CRITICAL BUG REPORTED BY USER:
-"When i click refresh it shows latest data but when closing and open it shows 9:26 data. It should show latest data got from server during last refresh"
-
-Root Causes:
-1. `VaralakshmiRepository` stores cached data only in-memory variables (`cachedSummary`, `cachedPositions`, `cachedTransactions`), which are lost when the app process exits.
-2. `VaralakshmiViewModel` does not have an `init { refresh() }` block, so it never automatically syncs with the server when the app is launched.
-
-Remediation Required:
-1. Implement persistent local caching in `VaralakshmiRepository` (e.g. `portfolio_cache.json` in `context.filesDir` or `SharedPreferences`):
-   - Provide a static `VaralakshmiRepository.initialize(cacheDir: File)` called in `MainActivity.onCreate()` or use application context.
-   - On startup, if persistent cache exists, load `cachedSummary`, `cachedPositions`, and `cachedTransactions` from disk so the app immediately starts with the latest refreshed data.
-   - On successful `refreshData()`, save the fetched data to disk.
-2. In `VaralakshmiViewModel`, add `init { refresh() }` so that whenever the ViewModel starts, it immediately and automatically syncs live data from the server in the background.
-
-Please implement this fix immediately, ensure unit tests pass, and rebuild the release APK.
+### Testing & Build Verification
+- [ ] `./gradlew testDebugUnitTest` completes with exit code 0 and all tests passing.
+- [ ] `./gradlew assembleRelease` completes with exit code 0.
+- [ ] `varalakshmi-portfolio.apk` is generated in `app/build/outputs/apk/release/` or copied to project root.
 
 ## 2026-09-23T19:57:18Z
 
@@ -287,3 +216,56 @@ Implement a dedicated `VeeraLakshmiScreen` composable matching the OLED dark tra
 - [ ] `./gradlew assembleRelease` completes with exit code 0.
 - [ ] Production APK `varalakshmi-portfolio.apk` is generated and copied to project root.
 
+
+## 2026-10-02T05:34:28Z
+
+This is a single self-contained fix; keep it small and focused.
+
+Enhance the Varalakshmi Portfolio Android application by adding a dedicated "Daily Returns" section to the main Varalakshmi Equity Portfolio dashboard tab (Tab 0), placed directly below Recent Transactions and above Stock Recommendations, displaying historical session-by-session performance.
+
+Working directory: /home/ganapathiraj/Code/Stock Research/Unified UI/app
+Integrity mode: development
+
+## Requirements
+
+### R1. Daily Returns Table Composable
+Add a dedicated composable table (`DailyReturnsTable`) to `VaralakshmiDashboardScreen.kt` in the main equity dashboard tab (Tab 0):
+- Section header: "DAILY RETURNS" with an appropriate icon (e.g., `Icons.Filled.ShowChart` or `Icons.Filled.CalendarToday`) and badge indicating recent session count.
+- Columns:
+  * `DATE`: Session date (e.g., "YYYY-MM-DD" or formatted date).
+  * `DAILY P&L`: Absolute net profit or loss for the day in ₹ (e.g., `+₹12,450.00` or `-₹4,200.00`).
+  * `RETURN %`: Percentage change for the day (e.g., `+1.24%` or `-0.42%`).
+  * `STATUS`: Compact status badge (e.g., `WIN` in green, `LOSS` in red, or `FLAT` in neutral).
+- Styling consistent with the application's dark trading theme (`DarkCardBg`, `DarkCardBorder`, `TextPrimary`, `TextSecondary`, `ProfitGreen`, `LossRed`, clean alignment, and no horizontal text clipping).
+
+### R2. Data Model & State Integration
+- In `VaralakshmiModels.kt`, declare a data class `DailyReturnItem` representing a daily performance record:
+  * `date: String`
+  * `dailyPnl: Double`
+  * `returnPct: Double`
+  * `totalNav: Double` (or closing equity)
+  * `tradeCount: Int` (optional / default 0)
+  * `status: String` (derived or explicit: "WIN", "LOSS", "FLAT")
+  * Helper getters: `formattedPnl`, `formattedReturnPct`, `isProfit`
+- In `VaralakshmiUiState`, add `dailyReturns: List<DailyReturnItem> = emptyList()`.
+- In `VaralakshmiViewModel.kt` and `VaralakshmiRepository.kt`, populate `dailyReturns` with authentic historical equity performance records, supporting both offline fallback seed data and live network sync if available.
+
+### R3. Verification Test Suite
+- Add unit tests in `app/src/test/java/com/example/varalakshmiportfolio/` validating:
+  * Model parsing and formatting of `DailyReturnItem` (positive, negative, and zero values).
+  * Inclusion of `dailyReturns` in `VaralakshmiUiState` upon repository load.
+  * Correct sign formatting and status attribution.
+
+## Acceptance Criteria
+
+### UI Presentation & Alignment
+- [ ] The "DAILY RETURNS" table renders on Tab 0 (Varalakshmi Portfolio) below Recent Transactions without layout overflows or text truncation.
+- [ ] Positive P&L and return percentages display in `ProfitGreen` with a leading `+` sign.
+- [ ] Negative P&L and return percentages display in `LossRed` with a leading `-` sign.
+- [ ] Zero / flat days render cleanly in muted/neutral styling.
+
+### Data & Architecture
+- [ ] `VaralakshmiUiState` exposes `dailyReturns: List<DailyReturnItem>`.
+- [ ] `VaralakshmiRepository` provides realistic daily return records in the offline fallback state.
+- [ ] All existing app unit tests pass cleanly via `./gradlew testDebugUnitTest`.
+- [ ] New unit tests verifying daily returns state and formatting pass cleanly.

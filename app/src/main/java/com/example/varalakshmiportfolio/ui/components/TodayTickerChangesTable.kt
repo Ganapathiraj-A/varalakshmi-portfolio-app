@@ -8,6 +8,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -26,9 +28,14 @@ import java.util.Locale
 @Composable
 fun TodayTickerChangesTable(
     positions: List<PositionItem>,
+    otherPositions: List<PositionItem> = emptyList(),
     modifier: Modifier = Modifier,
     summaryTodayPnl: Double? = null
 ) {
+    val allPositions = remember(positions, otherPositions) {
+        positions + otherPositions
+    }
+
     Card(
         modifier = modifier
             .fillMaxWidth()
@@ -48,13 +55,18 @@ fun TodayTickerChangesTable(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f, fill = false)
+                ) {
                     Text(
                         text = "TODAY'S TICKER MOVEMENTS",
                         style = MaterialTheme.typography.titleMedium,
                         color = TextPrimary,
                         fontWeight = FontWeight.Bold,
-                        letterSpacing = 0.5.sp
+                        letterSpacing = 0.5.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Surface(
@@ -63,19 +75,23 @@ fun TodayTickerChangesTable(
                         border = androidx.compose.foundation.BorderStroke(1.dp, DarkCardBorder)
                     ) {
                         Text(
-                            text = "${positions.size} Active",
+                            text = "${allPositions.size} Active",
                             color = AccentIndigoLight,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
                 }
 
                 Text(
-                    text = "Daily Delta",
+                    text = if (otherPositions.isNotEmpty()) "Strategy + Zerodha" else "Daily Delta",
                     fontSize = 11.sp,
-                    color = TextMuted
+                    color = TextMuted,
+                    maxLines = 1,
+                    softWrap = false
                 )
             }
 
@@ -136,7 +152,7 @@ fun TodayTickerChangesTable(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            if (positions.isEmpty()) {
+            if (allPositions.isEmpty()) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -146,10 +162,10 @@ fun TodayTickerChangesTable(
                     Text("No active ticker movements", color = TextMuted, fontSize = 13.sp)
                 }
             } else {
-                positions.forEachIndexed { index, position ->
+                allPositions.forEachIndexed { index, position ->
                     key(position.positionId) {
                         TodayTickerRow(position = position)
-                        if (index < positions.size - 1) {
+                        if (index < allPositions.size - 1) {
                             HorizontalDivider(
                                 modifier = Modifier.padding(vertical = 4.dp),
                                 color = DarkCardBorder.copy(alpha = 0.5f),
@@ -159,8 +175,28 @@ fun TodayTickerChangesTable(
                     }
                 }
 
-                // Summary footer row confirming total daily delta matches header card exactly
-                val totalTodayValChg = java.math.BigDecimal.valueOf(positions.sumOf { it.todayValueChange })
+                // Strategy Delta calculation
+                val stratTodayValChg = java.math.BigDecimal.valueOf(positions.sumOf { it.todayValueChange })
+                    .setScale(2, java.math.RoundingMode.HALF_EVEN).toDouble()
+                val isStratValPositive = stratTodayValChg > 0
+                val isStratValNegative = stratTodayValChg < 0
+
+                val stratValColor = when {
+                    isStratValPositive -> ProfitGreen
+                    isStratValNegative -> LossRed
+                    else -> TextSecondary
+                }
+
+                val stratValChgStr = when {
+                    isStratValPositive -> "+₹" + String.format(Locale.US, "%,.2f", stratTodayValChg)
+                    isStratValNegative -> "-₹" + String.format(Locale.US, "%,.2f", kotlin.math.abs(stratTodayValChg))
+                    else -> "₹0.00"
+                }
+
+                val isHeaderMatched = summaryTodayPnl == null || kotlin.math.abs(stratTodayValChg - summaryTodayPnl) < 0.005
+
+                // Total Zerodha (all positions combined) Delta calculation
+                val totalTodayValChg = java.math.BigDecimal.valueOf(allPositions.sumOf { it.todayValueChange })
                     .setScale(2, java.math.RoundingMode.HALF_EVEN).toDouble()
                 val isTotalValPositive = totalTodayValChg > 0
                 val isTotalValNegative = totalTodayValChg < 0
@@ -177,8 +213,6 @@ fun TodayTickerChangesTable(
                     else -> "₹0.00"
                 }
 
-                val isHeaderMatched = summaryTodayPnl == null || kotlin.math.abs(totalTodayValChg - summaryTodayPnl) < 0.005
-
                 Spacer(modifier = Modifier.height(10.dp))
                 HorizontalDivider(
                     color = DarkCardBorder.copy(alpha = 0.8f),
@@ -186,55 +220,102 @@ fun TodayTickerChangesTable(
                 )
                 Spacer(modifier = Modifier.height(10.dp))
 
-                Surface(
+                Column(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    color = DarkCard,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, DarkCardBorder)
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                    // 1. Strategy Delta Row (strictly matching the header card)
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        color = DarkCard,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, DarkCardBorder)
                     ) {
                         Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = "TOTAL TODAY'S DELTA",
-                                color = TextMuted,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 0.5.sp
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = if (isHeaderMatched) ProfitGreenBg else LossRedBg,
-                                border = androidx.compose.foundation.BorderStroke(
-                                    1.dp,
-                                    if (isHeaderMatched) ProfitGreen.copy(alpha = 0.4f) else LossRed.copy(alpha = 0.4f)
-                                )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = if (isHeaderMatched) "Header Match ✓" else "Delta Mismatch",
-                                    color = if (isHeaderMatched) ProfitGreen else LossRed,
-                                    fontSize = 9.5.sp,
+                                    text = "STRATEGY TODAY'S DELTA",
+                                    color = TextMuted,
+                                    fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    letterSpacing = 0.5.sp
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = if (isHeaderMatched) ProfitGreenBg else LossRedBg,
+                                    border = androidx.compose.foundation.BorderStroke(
+                                        1.dp,
+                                        if (isHeaderMatched) ProfitGreen.copy(alpha = 0.4f) else LossRed.copy(alpha = 0.4f)
+                                    )
+                                ) {
+                                    Text(
+                                        text = if (isHeaderMatched) "Header Match ✓" else "Delta Mismatch",
+                                        color = if (isHeaderMatched) ProfitGreen else LossRed,
+                                        fontSize = 9.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+
+                            Text(
+                                text = stratValChgStr,
+                                color = stratValColor,
+                                fontSize = 13.5.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                textAlign = TextAlign.End
+                            )
+                        }
+                    }
+
+                    // 2. Total Zerodha Delta (if non-strategy positions exist)
+                    if (otherPositions.isNotEmpty()) {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            color = DarkBackground,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, DarkCardBorder.copy(alpha = 0.6f))
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 9.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = "TOTAL ZERODHA ACCOUNT DELTA",
+                                        color = TextSecondary,
+                                        fontSize = 10.5.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "(${allPositions.size} holdings)",
+                                        color = TextMuted,
+                                        fontSize = 9.5.sp
+                                    )
+                                }
+
+                                Text(
+                                    text = totalValChgStr,
+                                    color = totalValColor,
+                                    fontSize = 12.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    textAlign = TextAlign.End
                                 )
                             }
                         }
-
-                        Text(
-                            text = totalValChgStr,
-                            color = totalValColor,
-                            fontSize = 13.5.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            textAlign = TextAlign.End
-                        )
                     }
                 }
             }
@@ -295,25 +376,64 @@ private fun TodayTickerRow(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 1. TICKER Column
-            Column(modifier = Modifier.weight(1.30f)) {
-                Text(
-                    text = position.symbol,
-                    color = TextPrimary,
-                    fontSize = 12.5.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    maxLines = 1,
-                    softWrap = false,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = "${position.quantity} shares",
-                    color = TextMuted,
-                    fontSize = 10.sp,
-                    maxLines = 1,
-                    softWrap = false,
-                    overflow = TextOverflow.Ellipsis
-                )
+            // 1. TICKER Column (Click to open Google Finance Chart in Chrome)
+            val context = androidx.compose.ui.platform.LocalContext.current
+            Column(
+                modifier = Modifier
+                    .weight(1.30f)
+                    .clip(RoundedCornerShape(6.dp))
+                    .clickable {
+                        com.example.varalakshmiportfolio.ui.util.StockLinkHelper.openGoogleFinance(
+                            context = context,
+                            symbol = position.symbol
+                        )
+                    }
+                    .padding(vertical = 2.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = position.symbol,
+                        color = TextPrimary,
+                        fontSize = 12.5.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                        contentDescription = "View Chart on Google Finance",
+                        tint = AccentIndigoLight.copy(alpha = 0.7f),
+                        modifier = Modifier.size(10.dp)
+                    )
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "${position.quantity} shs",
+                        color = TextMuted,
+                        fontSize = 9.5.sp,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (!position.isStrategy) {
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = PurpleGrey40.copy(alpha = 0.25f),
+                            border = androidx.compose.foundation.BorderStroke(0.5.dp, PurpleGrey40.copy(alpha = 0.4f))
+                        ) {
+                            Text(
+                                text = "OTHER",
+                                color = Purple80,
+                                fontSize = 8.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 3.dp, vertical = 0.5.dp)
+                            )
+                        }
+                    }
+                }
             }
 
             // 2. PRICE Column (LTP & reference price)
@@ -447,6 +567,21 @@ private fun TodayTickerRow(
                         value = if (position.isBoughtToday) "Entry Execution (Bought Today)"
                                 else if (position.previousClose > 0.0) "₹" + String.format(Locale.US, "%.2f", position.previousClose)
                                 else "N/A (Entry ref)"
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    DetailItem(
+                        label = "Position Type",
+                        value = if (position.isStrategy) "VaraLakshmi Strategy" else "Other Zerodha Holding",
+                        valueColor = if (position.isStrategy) AccentIndigoLight else Purple80
+                    )
+                    DetailItem(
+                        label = "Total Market Value",
+                        value = "₹" + String.format(Locale.US, "%,.2f", position.marketValue)
                     )
                 }
             }

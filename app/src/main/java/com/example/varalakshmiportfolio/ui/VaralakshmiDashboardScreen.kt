@@ -606,6 +606,7 @@ fun VaralakshmiDashboardScreen(
             // 3. Today's Ticker Changes Table (Ticker, Price, Today Chg %, Today Value ₹)
             TodayTickerChangesTable(
                 positions = uiState.positions,
+                otherPositions = uiState.otherPositions,
                 summaryTodayPnl = uiState.summary.todayPnl
             )
 

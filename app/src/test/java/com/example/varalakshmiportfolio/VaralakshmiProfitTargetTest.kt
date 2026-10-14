@@ -49,6 +49,31 @@ class VaralakshmiProfitTargetTest {
     }
 
     @Test
+    fun testProfitTargetPriceCalculationAndFormatting() {
+        // RAYMOND from user's live position: Entry = 1183.36
+        val raymond = PositionItem(
+            positionId = "POS_RAYMOND",
+            symbol = "RAYMOND",
+            quantity = 168,
+            entryPrice = 1183.36,
+            currentPrice = 1308.00,
+            marketValue = 219744.0,
+            unrealizedPnl = 20939.50,
+            unrealizedPnlPct = 10.53,
+            peakPrice = 1316.90,
+            entryDate = "2026-09-25 11:36:52"
+        )
+        // 1183.36 * 1.35 = 1597.536 -> 1597.54
+        assertEquals(1597.54, raymond.profitTargetPrice, 0.001)
+        assertEquals("₹1597.54", raymond.formattedProfitTargetPrice)
+
+        // Entry = 50.0 -> 50.0 * 1.35 = 67.50
+        val pos2 = raymond.copy(entryPrice = 50.0)
+        assertEquals(67.50, pos2.profitTargetPrice, 0.001)
+        assertEquals("₹67.50", pos2.formattedProfitTargetPrice)
+    }
+
+    @Test
     fun testVaralakshmiRepositoryPersistenceOfToggleState() {
         val repository = VaralakshmiRepository()
         repository.resetToDefaultSeed()
@@ -346,5 +371,44 @@ class VaralakshmiProfitTargetTest {
         assertEquals(1, loaded.size)
         val pos = loaded.first()
         assertFalse("Position with isProfitTargetEnabled: null and profit_target_override: null must be false", pos.isProfitTargetEnabled)
+    }
+
+    @Test
+    fun testAdditionalGainToTargetCalculation() {
+        // RAYMOND from user's live position: 166 shares, Entry = 1183.36, Current = 1267.10
+        val raymond = PositionItem(
+            positionId = "POS_RAYMOND",
+            symbol = "RAYMOND",
+            quantity = 166,
+            entryPrice = 1183.36,
+            currentPrice = 1267.10,
+            marketValue = 210338.60,
+            unrealizedPnl = 13900.84,
+            unrealizedPnlPct = 7.08,
+            peakPrice = 1339.00,
+            entryDate = "2026-09-25 11:36:52",
+            isProfitTargetEnabled = true
+        )
+
+        // Profit target: 1183.36 * 1.35 = 1597.54
+        assertEquals(1597.54, raymond.profitTargetPrice, 0.001)
+        // Additional gain: (1597.54 - 1267.10) * 166 = 330.44 * 166 = 54853.04
+        assertEquals(54853.04, raymond.additionalGainToTarget, 0.01)
+        assertEquals("₹54,853.04", raymond.formattedAdditionalGainToTarget)
+
+        // When currentPrice reaches or exceeds profit target price
+        val reached = raymond.copy(currentPrice = 1600.00)
+        assertEquals(0.0, reached.additionalGainToTarget, 0.001)
+        assertEquals("₹0.00", reached.formattedAdditionalGainToTarget)
+
+        // When profit target is toggled OFF (Uncapped Runner)
+        val uncapped = raymond.copy(isProfitTargetEnabled = false)
+        assertEquals(0.0, uncapped.additionalGainToTarget, 0.001)
+
+        // Zero quantity or zero price edge cases
+        val zeroQty = raymond.copy(quantity = 0)
+        assertEquals(0.0, zeroQty.additionalGainToTarget, 0.001)
+        val zeroPrice = raymond.copy(currentPrice = 0.0)
+        assertEquals(0.0, zeroPrice.additionalGainToTarget, 0.001)
     }
 }

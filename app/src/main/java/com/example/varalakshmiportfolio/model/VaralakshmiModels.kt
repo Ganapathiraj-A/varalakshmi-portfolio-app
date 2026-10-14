@@ -328,7 +328,9 @@ data class PositionItem(
         if (todayPriceChange.isNaN() || todayPriceChange.isInfinite()) 0.0
         else java.math.BigDecimal.valueOf(quantity * todayPriceChange).setScale(2, java.math.RoundingMode.HALF_EVEN).toDouble()
     },
-    val isProfitTargetEnabled: Boolean = true
+    val isProfitTargetEnabled: Boolean = true,
+    val isStrategy: Boolean = true,
+    val category: String = if (isStrategy) "STRATEGY" else "ZERODHA"
 ) {
     val returnMultiplier: Double
         get() = if (entryPrice > 0 && !currentPrice.isNaN() && !currentPrice.isInfinite() && !entryPrice.isNaN() && !entryPrice.isInfinite()) currentPrice / entryPrice else 1.0

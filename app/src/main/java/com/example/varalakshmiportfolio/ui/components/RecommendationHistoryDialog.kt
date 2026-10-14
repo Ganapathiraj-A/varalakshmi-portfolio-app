@@ -10,6 +10,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.automirrored.filled.TrendingDown
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.Close
@@ -109,7 +110,7 @@ fun RecommendationHistoryDialog(
                                 letterSpacing = 0.2.sp
                             )
                             Text(
-                                text = "Past 3 Months • Varalakshmi Alpha Engine",
+                                text = "Past 3 Months • Vara Alpha Engine",
                                 color = TextMuted,
                                 fontSize = 11.sp
                             )
@@ -346,13 +347,34 @@ private fun HistoricalRecommendationCard(
                 Row(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = item.symbol,
-                        color = TextPrimary,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.ExtraBold
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
+                    val context = androidx.compose.ui.platform.LocalContext.current
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable {
+                                com.example.varalakshmiportfolio.ui.util.StockLinkHelper.openGoogleFinance(
+                                    context = context,
+                                    symbol = item.symbol
+                                )
+                            }
+                            .padding(vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = item.symbol,
+                            color = TextPrimary,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                            contentDescription = "View Chart on Google Finance",
+                            tint = AccentIndigoLight.copy(alpha = 0.7f),
+                            modifier = Modifier.size(11.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(6.dp))
                     Surface(
                         shape = RoundedCornerShape(6.dp),
                         color = DarkSurface,

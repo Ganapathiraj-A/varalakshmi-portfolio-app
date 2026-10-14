@@ -34,9 +34,13 @@ import com.example.varalakshmiportfolio.theme.*
 fun IpoActionBanner(
     notifications: List<IpoActionNotification>,
     onDismiss: (String) -> Unit,
+    appliedSymbols: Set<String> = emptySet(),
     modifier: Modifier = Modifier
 ) {
-    val activeNotifications = notifications.filterNot { it.isDismissed }
+    val activeNotifications = notifications
+        .filterNot { it.isDismissed }
+        .filter { it.isDeadlineTodayOrFuture }
+        .filterNot { appliedSymbols.contains(it.symbol.uppercase().trim()) }
     if (activeNotifications.isEmpty()) return
 
     Column(

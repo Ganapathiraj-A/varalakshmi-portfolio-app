@@ -13,6 +13,8 @@ import com.example.varalakshmiportfolio.model.HistoricalRecommendationItem
 import com.example.varalakshmiportfolio.model.RecommendationHistorySummary
 import com.example.varalakshmiportfolio.model.IpoActionNotification
 import com.example.varalakshmiportfolio.model.VeeraLakshmiUiState
+import com.example.varalakshmiportfolio.model.SanthanaLakshmiUiState
+import com.example.varalakshmiportfolio.model.SanthanaLakshmiTradeItem
 import com.example.varalakshmiportfolio.util.MarketHours
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -22,18 +24,30 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import com.example.varalakshmiportfolio.model.DailyReturnItem
 import java.util.Locale
+
+data class ExitOrderError(
+    val symbol: String,
+    val quantity: Int,
+    val errorMessage: String,
+    val kiteUrl: String = "https://kite.zerodha.com/holdings"
+)
 
 data class VaralakshmiUiState(
     val summary: PortfolioSummary,
     val positions: List<PositionItem>,
+    val otherPositions: List<PositionItem> = emptyList(),
     val transactions: List<TransactionItem>,
+    val dailyReturns: List<DailyReturnItem> = emptyList(),
     val nifty: MarketIndexItem = MarketIndexItem(),
+    val marketIndices: List<MarketIndexItem> = com.example.varalakshmiportfolio.model.createDefaultMarketIndices(),
     val recommendations: List<StockRecommendationItem> = emptyList(),
     val recommendationHistory: List<HistoricalRecommendationItem> = emptyList(),
     val recommendationHistorySummary: RecommendationHistorySummary = RecommendationHistorySummary(0, 0.0, 0.0, 0, 0),
     val ipoNotifications: List<IpoActionNotification> = emptyList(),
     val selectedRecommendationForChart: StockRecommendationItem? = null,
+    val selectedDailyReturnForDetail: DailyReturnItem? = null,
     val showRecommendationHistory: Boolean = false,
     val selectedHistoryFilter: String = "ALL",
     val isRefreshing: Boolean = false,
@@ -41,6 +55,8 @@ data class VaralakshmiUiState(
     val authToken: String = VaralakshmiRepository.DEFAULT_AUTH_TOKEN,
     val showSettingsDialog: Boolean = false,
     val positionToExit: PositionItem? = null,
+    val exitErrorDialog: ExitOrderError? = null,
+    val isExitingPosition: Boolean = false,
     val snackbarMessage: String? = null,
     val isLiveSync: Boolean = false,
     val isAutoSyncEnabled: Boolean = true,
@@ -61,16 +77,19 @@ class VaralakshmiViewModel(
     private val repository: VaralakshmiRepository = VaralakshmiRepository(),
     autoRefresh: Boolean = true,
     private val enablePeriodicSync: Boolean = autoRefresh,
-    val syncIntervalMillis: Long = 15 * 60 * 1000L,
-    private val checkIntervalMillis: Long = 30_000L
+    val syncIntervalMillis: Long = 1 * 60 * 1000L,
+    private val checkIntervalMillis: Long = 10_000L
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(
         VaralakshmiUiState(
             summary = repository.getCachedSummary(),
             positions = repository.getCachedPositions(),
+            otherPositions = repository.getCachedOtherPositions(),
             transactions = repository.getCachedTransactions(),
+            dailyReturns = repository.getCachedDailyReturns(),
             nifty = repository.getCachedNifty(),
+            marketIndices = repository.getCachedMarketIndices(),
             recommendations = repository.getCachedRecommendations(),
             recommendationHistory = repository.getCachedRecommendationHistory(),
             recommendationHistorySummary = repository.getCachedRecommendationHistorySummary(),
@@ -88,8 +107,12 @@ class VaralakshmiViewModel(
     private val _veeraLakshmiState = MutableStateFlow(repository.getCachedFnoState())
     val veeraLakshmiState: StateFlow<VeeraLakshmiUiState> = _veeraLakshmiState.asStateFlow()
 
+    private val _santhanaLakshmiState = MutableStateFlow(repository.getCachedSanthanaState())
+    val santhanaLakshmiState: StateFlow<SanthanaLakshmiUiState> = _santhanaLakshmiState.asStateFlow()
+
     private var periodicSyncJob: Job? = null
     private var fnoSyncJob: Job? = null
+    private var santhanaSyncJob: Job? = null
 
     init {
         if (autoRefresh) {
@@ -144,11 +167,43 @@ class VaralakshmiViewModel(
         }
     }
 
+    fun selectSanthanaFilter(filter: String) {
+        _santhanaLakshmiState.update { it.copy(selectedFilter = filter) }
+    }
+
+    fun selectSanthanaTradeDetail(trade: SanthanaLakshmiTradeItem?) {
+        _santhanaLakshmiState.update { it.copy(selectedTradeDetail = trade) }
+    }
+
+    fun refreshSanthana() {
+        santhanaSyncJob?.cancel()
+        santhanaSyncJob = viewModelScope.launch {
+            _santhanaLakshmiState.update { it.copy(isLoading = true) }
+            try {
+                val synced = repository.refreshSanthana(_uiState.value.serverUrl, _uiState.value.authToken)
+                _santhanaLakshmiState.value = synced
+            } catch (e: Exception) {
+                _santhanaLakshmiState.update { it.copy(isLoading = false, errorMessage = e.message) }
+            }
+        }
+    }
+
+    fun confirmIpoMandate(symbol: String, newStatus: String = "APPROVED") {
+        val updatedState = repository.updateIpoMandateStatus(symbol, newStatus)
+        _santhanaLakshmiState.value = updatedState
+    }
+
+    fun updateIpoAllotmentStatus(symbol: String, newStatus: String) {
+        val updatedState = repository.updateIpoAllotmentStatus(symbol, newStatus)
+        _santhanaLakshmiState.value = updatedState
+    }
+
     fun refresh(isSilent: Boolean = false) {
         if (_uiState.value.isRefreshing) return
         viewModelScope.launch {
             _uiState.update { it.copy(isRefreshing = true) }
             _veeraLakshmiState.update { it.copy(isLoading = true) }
+            _santhanaLakshmiState.update { it.copy(isLoading = true) }
 
             // Concurrent F&O sync
             fnoSyncJob?.cancel()
@@ -164,6 +219,17 @@ class VaralakshmiViewModel(
                 }
             }
 
+            // Concurrent SanthanaLakshmi sync
+            santhanaSyncJob?.cancel()
+            santhanaSyncJob = launch {
+                try {
+                    val santhanaSynced = repository.refreshSanthana(_uiState.value.serverUrl, _uiState.value.authToken)
+                    _santhanaLakshmiState.value = santhanaSynced
+                } catch (_: Exception) {
+                    _santhanaLakshmiState.update { it.copy(isLoading = false) }
+                }
+            }
+
             val syncResult = repository.refreshData(_uiState.value.serverUrl, _uiState.value.authToken)
             val now = System.currentTimeMillis()
             val isMarket = MarketHours.isMarketHours()
@@ -174,8 +240,11 @@ class VaralakshmiViewModel(
                         it.copy(
                             summary = syncResult.summary,
                             positions = syncResult.positions,
+                            otherPositions = syncResult.otherPositions,
                             transactions = syncResult.transactions,
+                            dailyReturns = syncResult.dailyReturns,
                             nifty = syncResult.nifty,
+                            marketIndices = syncResult.marketIndices.ifEmpty { it.marketIndices },
                             recommendations = syncResult.recommendations,
                             recommendationHistory = syncResult.recommendationHistory,
                             recommendationHistorySummary = syncResult.recommendationHistorySummary,
@@ -194,8 +263,11 @@ class VaralakshmiViewModel(
                         it.copy(
                             summary = syncResult.summary,
                             positions = syncResult.positions,
+                            otherPositions = syncResult.otherPositions,
                             transactions = syncResult.transactions,
+                            dailyReturns = syncResult.dailyReturns,
                             nifty = syncResult.nifty,
+                            marketIndices = syncResult.marketIndices.ifEmpty { it.marketIndices },
                             recommendations = syncResult.recommendations,
                             recommendationHistory = syncResult.recommendationHistory,
                             recommendationHistorySummary = syncResult.recommendationHistorySummary,
@@ -297,6 +369,14 @@ class VaralakshmiViewModel(
         _uiState.update { it.copy(selectedRecommendationForChart = null) }
     }
 
+    fun selectDailyReturn(dailyReturn: DailyReturnItem) {
+        _uiState.update { it.copy(selectedDailyReturnForDetail = dailyReturn) }
+    }
+
+    fun dismissDailyReturnDetail() {
+        _uiState.update { it.copy(selectedDailyReturnForDetail = null) }
+    }
+
     fun requestExit(position: PositionItem) {
         _uiState.update { it.copy(positionToExit = position) }
     }
@@ -318,7 +398,8 @@ class VaralakshmiViewModel(
                 positions = newPositions,
                 transactions = newTransactions,
                 positionToExit = null,
-                snackbarMessage = "Exited ${target.symbol} • Freed up ₹${String.format(Locale.US, "%,.2f", target.marketValue)}"
+                isExitingPosition = true,
+                snackbarMessage = "Exited ${target.symbol} • Submitting live exit order to Zerodha Kite..."
             )
         }
 
@@ -334,16 +415,40 @@ class VaralakshmiViewModel(
                     onSuccess = { msg ->
                         _uiState.update { current ->
                             current.copy(
+                                isExitingPosition = false,
                                 snackbarMessage = "Exited ${target.symbol} • $msg"
                             )
                         }
                         refresh()
                     },
                     onFailure = { err ->
-                        _uiState.update { current ->
-                            current.copy(
-                                snackbarMessage = "Exit order issue for ${target.symbol}: ${err.message}"
-                            )
+                        val errMsg = err.message ?: "Broker order failed or was rejected"
+                        val isOffline = errMsg.contains("Offline", ignoreCase = true)
+                        if (!isOffline) {
+                            // Online execution failed: Roll back and restore position to prevent misleading user
+                            val (restoredSummary, restoredPositions, restoredTransactions) = repository.restorePosition(target)
+                            _uiState.update { current ->
+                                current.copy(
+                                    summary = restoredSummary,
+                                    positions = restoredPositions,
+                                    transactions = restoredTransactions,
+                                    isExitingPosition = false,
+                                    exitErrorDialog = ExitOrderError(
+                                        symbol = target.symbol,
+                                        quantity = target.quantity,
+                                        errorMessage = errMsg,
+                                        kiteUrl = "https://kite.zerodha.com/holdings"
+                                    ),
+                                    snackbarMessage = "Zerodha exit failed for ${target.symbol}: $errMsg"
+                                )
+                            }
+                        } else {
+                            _uiState.update { current ->
+                                current.copy(
+                                    isExitingPosition = false,
+                                    snackbarMessage = "Exited ${target.symbol} locally (Offline mode)"
+                                )
+                            }
                         }
                     }
                 )
@@ -351,6 +456,10 @@ class VaralakshmiViewModel(
         } catch (e: Throwable) {
             // Safeguard against unconfigured Main dispatcher in headless JVM tests
         }
+    }
+
+    fun dismissExitError() {
+        _uiState.update { it.copy(exitErrorDialog = null) }
     }
 
     fun toggleProfitTarget(position: PositionItem) {
@@ -364,7 +473,7 @@ class VaralakshmiViewModel(
                     it.copy(isProfitTargetEnabled = newEnabled)
                 } else it
             }
-            val targetLabel = if (newEnabled) "+35% Cap" else "Uncapped Runner"
+            val targetLabel = if (newEnabled) "+35% Cap (${position.formattedProfitTargetPrice})" else "Uncapped Runner"
             current.copy(
                 positions = updatedPositions,
                 snackbarMessage = "${position.symbol}: Profit Target set to $targetLabel"
@@ -423,6 +532,13 @@ class VaralakshmiViewModel(
     fun dismissIpoNotification(id: String) {
         val updated = repository.dismissIpoNotification(id)
         _uiState.update { it.copy(ipoNotifications = updated) }
+        _santhanaLakshmiState.update { current ->
+            current.copy(
+                activeAlerts = current.activeAlerts.map {
+                    if (it.id == id || it.symbol.equals(id, ignoreCase = true)) it.copy(isDismissed = true) else it
+                }
+            )
+        }
     }
 
     internal fun setPositionsForTesting(positions: List<PositionItem>) {

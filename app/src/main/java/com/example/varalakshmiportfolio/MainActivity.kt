@@ -22,14 +22,18 @@ class MainActivity : ComponentActivity() {
 
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
-    ) { _ ->
-        // Permission outcome
+    ) { isGranted ->
+        if (isGranted) {
+            com.example.varalakshmiportfolio.service.VaraMarketService.startService(this)
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         VaralakshmiRepository.initialize(filesDir)
         IpoNotificationManager.createNotificationChannel(this)
+        com.example.varalakshmiportfolio.notification.VaraBadgeManager.createNotificationChannel(this)
+        com.example.varalakshmiportfolio.service.VaraMarketService.startService(this)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(
@@ -52,5 +56,10 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        com.example.varalakshmiportfolio.service.VaraMarketService.updateNow(this)
     }
 }

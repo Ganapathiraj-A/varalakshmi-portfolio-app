@@ -5,6 +5,7 @@ import androidx.compose.ui.graphics.Color
 val DarkBackground = Color(0xFF090D16)
 val DarkSurface = Color(0xFF111726)
 val DarkCard = Color(0xFF161F33)
+val DarkCardBg = Color(0xFF161F33)
 val DarkCardBorder = Color(0xFF22304D)
 
 val ProfitGreen = Color(0xFF10B981)

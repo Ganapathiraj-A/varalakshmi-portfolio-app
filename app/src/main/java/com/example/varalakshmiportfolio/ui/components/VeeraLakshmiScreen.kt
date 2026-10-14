@@ -14,6 +14,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import android.widget.Toast
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.automirrored.filled.TrendingUp
+import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
@@ -149,118 +152,185 @@ fun VeeraLakshmiScreen(
                     }
                 }
 
-                // Instance Selector Pills (50L, 20L, 15L)
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    val instances = listOf(
-                        Triple("50L", "50L", "Quad-Engine"),
-                        Triple("20L", "20L", "Balanced"),
-                        Triple("15L", "15L", "Lean & Agile")
+                // VeeraLakshmi V3 (₹10L Flagship) Spotlight Card at Top
+                val inst10L = state.instances["10L"]
+                val isSelected10L = state.selectedInstanceId == "10L"
+                val pnl10L = inst10L?.unrealizedPnl ?: 0.0
+                val cap10L = inst10L?.allocatedCapital ?: 1000000.0
+                val nav10L = cap10L + pnl10L
+                val pnlPct10L = if (cap10L > 0.0) (pnl10L / cap10L) * 100.0 else 0.0
+                val isProfit10L = pnl10L >= 0.0
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onSelectInstance("10L") },
+                    shape = RoundedCornerShape(10.dp),
+                    color = if (isSelected10L) AccentIndigo.copy(alpha = 0.25f) else DarkCard,
+                    border = androidx.compose.foundation.BorderStroke(
+                        if (isSelected10L) 1.5.dp else 1.dp,
+                        if (isSelected10L) AccentIndigo else GoldAccent.copy(alpha = 0.6f)
                     )
-                    instances.forEach { (id, tierName, engineDesc) ->
-                        val isSelected = state.selectedInstanceId == id
-                        val instSummary = state.instances[id]
-                        val isProfit = (instSummary?.unrealizedPnl ?: 0.0) >= 0.0
-                        Surface(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clickable { onSelectInstance(id) },
-                            shape = RoundedCornerShape(8.dp),
-                            color = if (isSelected) AccentIndigo.copy(alpha = 0.2f) else DarkCard,
-                            border = androidx.compose.foundation.BorderStroke(
-                                1.dp,
-                                if (isSelected) AccentIndigo else DarkCardBorder
-                            )
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f, fill = false)
                         ) {
-                            Column(
+                            Box(
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 8.dp, horizontal = 4.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
+                                    .size(24.dp)
+                                    .clip(CircleShape)
+                                    .background(if (isSelected10L) AccentIndigo.copy(alpha = 0.3f) else GoldAccentBg),
+                                contentAlignment = Alignment.Center
                             ) {
-                                Text(
-                                    text = "$tierName ($engineDesc)",
-                                    fontSize = 10.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                    color = if (isSelected) TextPrimary else TextSecondary,
-                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                                    maxLines = 2,
-                                    lineHeight = 12.sp
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = if (instSummary != null) {
-                                        val sign = if (isProfit) "+" else "-"
-                                        val absPnl = kotlin.math.abs(instSummary.unrealizedPnl)
-                                        String.format(Locale.US, "%s₹%,.0f", sign, absPnl)
-                                    } else "—",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (isProfit) ProfitGreen else LossRed
+                                Icon(
+                                    imageVector = Icons.Filled.Bolt,
+                                    contentDescription = "VeeraLakshmi V3",
+                                    tint = if (isSelected10L) AccentIndigoLight else GoldAccent,
+                                    modifier = Modifier.size(15.dp)
                                 )
                             }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = "VEERALAKSHMI V3",
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isSelected10L) AccentIndigoLight else TextPrimary,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = ProfitGreenBg
+                                    ) {
+                                        Text(
+                                            text = "₹10L FLAGSHIP",
+                                            fontSize = 8.5.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = ProfitGreen,
+                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                    }
+                                }
+                                Text(
+                                    text = "Multi-Engine Quant Flagship",
+                                    fontSize = 9.sp,
+                                    color = TextSecondary,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        Column(
+                            horizontalAlignment = Alignment.End,
+                            modifier = Modifier.wrapContentWidth()
+                        ) {
+                            Text(
+                                text = "NAV ₹" + String.format(Locale.US, "%,.0f", nav10L),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimary,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                            Text(
+                                text = String.format(
+                                    Locale.US,
+                                    "%s₹%,.0f (%s%.2f%%)",
+                                    if (isProfit10L) "+" else "-",
+                                    kotlin.math.abs(pnl10L),
+                                    if (pnlPct10L >= 0) "+" else "",
+                                    pnlPct10L
+                                ),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = if (isProfit10L) ProfitGreen else LossRed,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                            Text(
+                                text = if (isSelected10L) "ACTIVE VIEW" else "TAP TO VIEW",
+                                fontSize = 8.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (isSelected10L) AccentIndigoLight else TextMuted,
+                                maxLines = 1,
+                                softWrap = false
+                            )
                         }
                     }
                 }
             }
         }
 
-        // 2. Capital & Margin Utilization Dashboard Card
+        // 2. Capital & Margin Utilization Dashboard Card (Aligned with Vara PortfolioHeaderCard)
         Surface(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp),
+            shape = RoundedCornerShape(16.dp),
             color = DarkSurface,
             border = androidx.compose.foundation.BorderStroke(1.dp, DarkCardBorder)
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                // Top row: Unrealized P&L Spotlight
+                // Top Strategy Header Row
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column {
-                        Text(
-                            text = "UNREALIZED P&L (${currentInst.instanceId})",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = TextMuted,
-                            letterSpacing = 0.5.sp
-                        )
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
                             Text(
-                                text = currentInst.formattedUnrealizedPnl,
-                                fontSize = 22.sp,
+                                text = "VEERALAKSHMI QUANT (${currentInst.instanceId})",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = AccentIndigoLight,
                                 fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Monospace,
-                                color = if (currentInst.unrealizedPnl >= 0.0) ProfitGreen else LossRed
+                                letterSpacing = 1.2.sp
                             )
-                            Spacer(modifier = Modifier.width(6.dp))
                             Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = if (currentInst.unrealizedPnl >= 0.0) ProfitGreenBg else LossRedBg
+                                shape = RoundedCornerShape(4.dp),
+                                color = DarkCard,
+                                border = androidx.compose.foundation.BorderStroke(0.8.dp, DarkCardBorder)
                             ) {
                                 Text(
-                                    text = String.format(
-                                        Locale.US,
-                                        "%s%.2f%% margin",
-                                        if (currentInst.returnOnMarginPct >= 0.0) "+" else "",
-                                        currentInst.returnOnMarginPct
-                                    ),
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = if (currentInst.unrealizedPnl >= 0.0) ProfitGreen else LossRed,
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    text = "DAY ${currentInst.daysActive}",
+                                    color = GoldAccent,
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.5.dp),
+                                    letterSpacing = 0.5.sp
                                 )
                             }
                         }
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "${currentInst.name} • ${currentInst.formattedDaysActive}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
 
                     // Open positions count badge
@@ -269,22 +339,246 @@ fun VeeraLakshmiScreen(
                         color = DarkCard,
                         border = androidx.compose.foundation.BorderStroke(1.dp, DarkCardBorder)
                     ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(6.dp)
+                                    .clip(CircleShape)
+                                    .background(if (state.activePositions.isNotEmpty()) ProfitGreen else GoldAccent)
+                            )
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Text(
+                                text = "${state.activePositions.size} Active • ${currentInst.daysActive}D",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimary
+                            )
+                        }
+                    }
+                }
+
+                // Large Portfolio NAV & Cash Invested (Exact same layout as Vara)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Bottom
+                ) {
+                    Column(modifier = Modifier.weight(1f, fill = false)) {
+                        Text(
+                            text = "PORTFOLIO VALUE (NAV)",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextMuted,
+                            fontWeight = FontWeight.SemiBold,
+                            letterSpacing = 1.sp
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "₹" + String.format(Locale.US, "%,.2f", currentInst.totalNav),
+                            fontSize = if (currentInst.totalNav >= 1000000.0) 22.sp else 28.sp,
+                            color = TextPrimary,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontFamily = FontFamily.SansSerif,
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = DarkCard,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, DarkCardBorder),
+                        modifier = Modifier.padding(bottom = 2.dp)
+                    ) {
                         Column(
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                             horizontalAlignment = Alignment.End
                         ) {
                             Text(
-                                text = "POSITIONS",
+                                text = "ALLOCATED CAPITAL",
                                 fontSize = 8.5.sp,
-                                color = TextMuted,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = "${state.activePositions.size} Active",
-                                fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = AccentIndigoLight
+                                color = TextMuted,
+                                letterSpacing = 0.8.sp,
+                                maxLines = 1,
+                                softWrap = false
                             )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = currentInst.formattedAllocatedCapital,
+                                fontSize = 13.5.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = TextPrimary,
+                                fontFamily = FontFamily.SansSerif,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
+                    }
+                }
+
+                // Side-by-side Return Badges (Total Return & Available Cash Buffer - Just like Vara!)
+                val isTotalPositive = currentInst.unrealizedPnl > 0.0
+                val isTotalNegative = currentInst.unrealizedPnl < 0.0
+                val totalPnlColor = when {
+                    isTotalPositive -> ProfitGreen
+                    isTotalNegative -> LossRed
+                    else -> TextSecondary
+                }
+                val totalPnlBg = when {
+                    isTotalPositive -> ProfitGreenBg
+                    isTotalNegative -> LossRedBg
+                    else -> DarkCard
+                }
+                val totalIcon = when {
+                    isTotalPositive -> Icons.AutoMirrored.Filled.TrendingUp
+                    isTotalNegative -> Icons.Filled.ArrowDownward
+                    else -> Icons.Filled.CheckCircle
+                }
+
+                val totalValStr = when {
+                    isTotalPositive -> "+₹" + String.format(Locale.US, "%,.2f", currentInst.unrealizedPnl)
+                    isTotalNegative -> "-₹" + String.format(Locale.US, "%,.2f", kotlin.math.abs(currentInst.unrealizedPnl))
+                    else -> "₹0.00"
+                }
+                val totalPctStr = when {
+                    isTotalPositive || isTotalNegative -> String.format(Locale.US, "(%+.2f%%)", currentInst.totalPnlPct)
+                    else -> "(0.00%)"
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(IntrinsicSize.Min),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // 1. Total Return Pill
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = totalPnlBg,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, totalPnlColor.copy(alpha = 0.35f)),
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = totalIcon,
+                                contentDescription = "Total Return Direction",
+                                tint = totalPnlColor,
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Column(modifier = Modifier.weight(1f, fill = false)) {
+                                Text(
+                                    text = "TOTAL RETURN (P&L)",
+                                    fontSize = 8.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TextMuted,
+                                    letterSpacing = 0.5.sp,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                                Spacer(modifier = Modifier.height(1.dp))
+                                Text(
+                                    text = totalValStr,
+                                    color = totalPnlColor,
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = totalPctStr,
+                                    color = totalPnlColor,
+                                    fontSize = 9.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Spacer(modifier = Modifier.height(1.dp))
+                                Text(
+                                    text = "RoM: " + String.format(Locale.US, "%s%.2f%%", if (currentInst.returnOnMarginPct >= 0) "+" else "", currentInst.returnOnMarginPct),
+                                    color = if (currentInst.returnOnMarginPct >= 0) ProfitGreenLight else LossRedLight,
+                                    fontSize = 8.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+
+                    // 2. Free Cash Buffer Pill
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = DarkCard,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, DarkCardBorder),
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Security,
+                                contentDescription = "Cash Buffer Protection",
+                                tint = AccentIndigoLight,
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Column(modifier = Modifier.weight(1f, fill = false)) {
+                                Text(
+                                    text = "AVAILABLE CASH",
+                                    fontSize = 8.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TextMuted,
+                                    letterSpacing = 0.5.sp,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                                Spacer(modifier = Modifier.height(1.dp))
+                                Text(
+                                    text = "₹" + String.format(Locale.US, "%,.2f", currentInst.cashBuffer),
+                                    color = TextPrimary,
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = String.format(Locale.US, "%.1f%% Utilized", currentInst.marginUtilizationPct),
+                                    color = if (currentInst.marginUtilizationPct > 50.0) GoldAccent else TextSecondary,
+                                    fontSize = 9.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Spacer(modifier = Modifier.height(1.dp))
+                                Text(
+                                    text = "Margin: ${currentInst.formattedMarginBlocked}",
+                                    color = TextMuted,
+                                    fontSize = 8.5.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
                         }
                     }
                 }
@@ -323,7 +617,7 @@ fun VeeraLakshmiScreen(
                     )
                 }
 
-                // 3-Metric Mini Grid
+                // 4-Metric Mini Grid (Aligned with Vara)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -334,7 +628,12 @@ fun VeeraLakshmiScreen(
                         modifier = Modifier.weight(1f)
                     )
                     FnoMiniMetric(
-                        label = "FREE CASH BUFFER",
+                        label = "MARGIN BLOCKED",
+                        value = currentInst.formattedMarginBlocked,
+                        modifier = Modifier.weight(1f)
+                    )
+                    FnoMiniMetric(
+                        label = "FREE CASH",
                         value = currentInst.formattedCashBuffer,
                         modifier = Modifier.weight(1f)
                     )
@@ -472,17 +771,50 @@ fun VeeraLakshmiScreen(
                 HorizontalDivider(color = DarkCardBorder)
 
                 if (state.activePositions.isEmpty()) {
-                    Box(
+                    val noTradeReason = state.statusInfo.noTradeReason
+                    val isNoTrade = !noTradeReason.isNullOrBlank() || state.statusInfo.status.startsWith("NO TRADE")
+                    Surface(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 24.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "No active positions for ${currentInst.name}",
-                            fontSize = 12.sp,
-                            color = TextMuted
+                            .padding(vertical = 12.dp),
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (isNoTrade) GoldAccentBg else DarkCard,
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            if (isNoTrade) GoldAccent.copy(alpha = 0.5f) else DarkCardBorder
                         )
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Icon(
+                                imageVector = if (isNoTrade) Icons.Filled.Info else Icons.Filled.CheckCircle,
+                                contentDescription = if (isNoTrade) "No Trade" else "Positions Flat",
+                                tint = if (isNoTrade) GoldAccent else AccentIndigoLight,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = if (isNoTrade) "SESSION STATUS: NO TRADE" else "NO OPEN POSITIONS",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isNoTrade) GoldAccent else TextPrimary
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = if (isNoTrade) {
+                                    noTradeReason ?: state.statusInfo.status
+                                } else {
+                                    "No open positions. Intraday straddles square off daily by 15:15 IST."
+                                },
+                                fontSize = 11.sp,
+                                color = TextSecondary,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                        }
                     }
                 } else {
                     state.activePositions.forEach { position ->
@@ -491,6 +823,9 @@ fun VeeraLakshmiScreen(
                 }
             }
         }
+
+        // Today's Executed Trades Section
+        FnoTodayTradesSection(trades = state.todayTrades)
 
         // 5. 10-Year Quant Backtest Baseline Card
         Surface(
@@ -600,7 +935,7 @@ private fun FnoPositionCard(
                 .padding(10.dp),
             verticalArrangement = Arrangement.spacedBy(7.dp)
         ) {
-            // Row 1: Symbol, Direction Pill, Engine, Lots, Unrealized PnL badge, Chevron
+            // Row 1: Symbol & Direction Pill on Left, Unrealized PnL & Chevron on Right
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -628,37 +963,69 @@ private fun FnoPositionCard(
                         )
                     }
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = position.symbol,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = TextPrimary
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "• ${position.lots} ${if (position.lots == 1) "lot" else "lots"} (${position.quantity} qty)",
-                        fontSize = 10.5.sp,
-                        color = TextSecondary
-                    )
+                    val context = androidx.compose.ui.platform.LocalContext.current
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable {
+                                com.example.varalakshmiportfolio.ui.util.StockLinkHelper.openGoogleFinance(
+                                    context = context,
+                                    symbol = position.symbol
+                                )
+                            }
+                            .padding(vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = position.symbol,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                            contentDescription = "View Chart on Google Finance",
+                            tint = AccentIndigoLight.copy(alpha = 0.7f),
+                            modifier = Modifier.size(10.dp)
+                        )
+                    }
                 }
 
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    // Unrealized PnL badge
+                    // Unrealized PnL & % P/L badge (like in Vara)
                     Surface(
                         shape = RoundedCornerShape(6.dp),
-                        color = if (isProfit) ProfitGreenBg else LossRedBg
-                    ) {
-                        Text(
-                            text = position.formattedUnrealizedPnl,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace,
-                            color = if (isProfit) ProfitGreen else LossRed,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        color = if (isProfit) ProfitGreenBg else LossRedBg,
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            (if (isProfit) ProfitGreen else LossRed).copy(alpha = 0.35f)
                         )
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = position.formattedUnrealizedPnl,
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace,
+                                color = if (isProfit) ProfitGreen else LossRed
+                            )
+                            Text(
+                                text = String.format(Locale.US, "(%s%.2f%%)", if (position.pnlPct >= 0) "+" else "", position.pnlPct),
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (isProfit) ProfitGreen else LossRed
+                            )
+                        }
                     }
 
                     // Chevron indicator
@@ -673,16 +1040,19 @@ private fun FnoPositionCard(
                 }
             }
 
-            // Row 2: Strategy Engine & Price Trajectory
+            // Row 2: Strategy Engine & Lots on Left, Price Trajectory on Right
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = position.strategyEngine,
+                    text = "${position.strategyEngine} • ${position.lots} ${if (position.lots == 1) "lot" else "lots"} (${position.quantity} qty)",
                     fontSize = 10.sp,
-                    color = AccentIndigoLight
+                    color = AccentIndigoLight,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis
                 )
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -987,14 +1357,25 @@ internal fun formatFullHistoryForClipboard(
     avgDailyPnl: Double,
     bestDay: Double
 ): String {
+    if (items.isEmpty()) {
+        val sb = StringBuilder()
+        sb.appendLine("================================================================================")
+        sb.appendLine("VEERALAKSHMI V2 (₹3,00,000) - FORWARD PAPER TEST LEDGER")
+        sb.appendLine("================================================================================")
+        sb.appendLine("Total Sessions : 0 | Awaiting forward paper test sessions starting Monday 2026-10-12")
+        sb.appendLine("Allocated Cap  : ₹3,00,000.00")
+        sb.appendLine("================================================================================")
+        return sb.toString()
+    }
+
     val sb = StringBuilder()
     sb.appendLine("================================================================================")
-    sb.appendLine("VEERALAKSHMI F&O PAPER TRADING - FULL PERFORMANCE HISTORY & LEDGER")
+    sb.appendLine("VEERALAKSHMI V2 (₹3,00,000) - FORWARD PERFORMANCE HISTORY & LEDGER")
     sb.appendLine("================================================================================")
-    sb.appendLine("Total Days : ${items.size} | Win Rate: ${String.format(Locale.US, "%.1f%%", winRatePct)} (${winDays}W / ${lossDays}L)")
-    sb.appendLine("Net P&L    : ${formatPnlCurrency(netPnl)}")
-    sb.appendLine("Avg Daily  : ${formatPnlCurrency(avgDailyPnl)}")
-    sb.appendLine("Best Day   : ${String.format(Locale.US, "+₹%,.2f", bestDay)}")
+    sb.appendLine("Total Sessions : ${items.size} | Win Rate: ${String.format(Locale.US, "%.1f%%", winRatePct)} (${winDays}W / ${lossDays}L)")
+    sb.appendLine("Net P&L        : ${formatPnlCurrency(netPnl)}")
+    sb.appendLine("Avg Daily      : ${formatPnlCurrency(avgDailyPnl)}")
+    sb.appendLine("Best Day       : ${String.format(Locale.US, "+₹%,.2f", bestDay)}")
     sb.appendLine("--------------------------------------------------------------------------------")
     sb.appendLine(String.format(Locale.US, "%-12s | %-14s | %-8s | %-6s | %-16s | %-6s | %-9s",
         "DATE", "DAILY P&L", "RETURN", "STATUS", "TOTAL EQUITY", "TRADES", "POSITIONS"))
@@ -1046,7 +1427,43 @@ private fun FnoDailyPnlHistorySection(
     dailyPnlList: List<FnoDailyPnlItem>,
     modifier: Modifier = Modifier
 ) {
-    if (dailyPnlList.isEmpty()) return
+    if (dailyPnlList.isEmpty()) {
+        Surface(
+            modifier = modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            color = DarkSurface,
+            border = androidx.compose.foundation.BorderStroke(1.dp, DarkCardBorder)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.History,
+                    contentDescription = "Forward Paper Test Ledger",
+                    tint = AccentIndigoLight,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "FORWARD PAPER TEST LEDGER (90 SESSIONS)",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Awaiting forward test sessions starting Monday 2026-10-12. Real paper fills will be recorded here.",
+                    fontSize = 11.sp,
+                    color = TextSecondary,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+            }
+        }
+        return
+    }
 
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
@@ -1786,6 +2203,88 @@ private fun HistoricalTradeSubCard(
                     color = TextMuted,
                     lineHeight = 12.sp
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun FnoTodayTradesSection(
+    trades: List<FnoHistoricalTrade>,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        color = DarkSurface,
+        border = androidx.compose.foundation.BorderStroke(1.dp, DarkCardBorder)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(24.dp)
+                            .clip(CircleShape)
+                            .background(AccentIndigoBg),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Bolt,
+                            contentDescription = "Today's Trades",
+                            tint = AccentIndigoLight,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "TODAY'S EXECUTED TRADES",
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary
+                    )
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(4.dp),
+                    color = DarkCard
+                ) {
+                    Text(
+                        text = "${trades.size} TRADES",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextSecondary,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+            }
+
+            if (trades.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 12.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "No trades executed today.",
+                        fontSize = 11.sp,
+                        color = TextMuted
+                    )
+                }
+            } else {
+                trades.forEach { trade ->
+                    HistoricalTradeSubCard(trade = trade)
+                }
             }
         }
     }

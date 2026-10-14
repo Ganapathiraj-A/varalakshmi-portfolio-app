@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.TrendingUp
@@ -55,13 +56,18 @@ fun HoldingsTable(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f, fill = false)
+                ) {
                     Text(
                         text = "INDIVIDUAL TICKERS",
                         style = MaterialTheme.typography.titleMedium,
                         color = TextPrimary,
                         fontWeight = FontWeight.Bold,
-                        letterSpacing = 0.5.sp
+                        letterSpacing = 0.5.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Surface(
@@ -74,16 +80,52 @@ fun HoldingsTable(
                             color = AccentIndigoLight,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
                 }
 
-                Text(
-                    text = "Tap row for details",
-                    fontSize = 11.sp,
-                    color = TextMuted
-                )
+                if (positions.isNotEmpty()) {
+                    val avgToday = positions.map { it.todayPriceChangePct }.average()
+                    val isAvgPos = avgToday > 0
+                    val isAvgNeg = avgToday < 0
+                    val avgColor = when {
+                        isAvgPos -> ProfitGreen
+                        isAvgNeg -> LossRed
+                        else -> TextSecondary
+                    }
+                    val avgBg = when {
+                        isAvgPos -> ProfitGreenBg
+                        isAvgNeg -> LossRedBg
+                        else -> DarkCard
+                    }
+                    val avgSign = if (isAvgPos) "+" else ""
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = avgBg,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, avgColor.copy(alpha = 0.4f))
+                    ) {
+                        Text(
+                            text = String.format(Locale.US, "Avg Today: %s%.2f%%", avgSign, avgToday),
+                            color = avgColor,
+                            fontSize = 10.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
+                } else {
+                    Text(
+                        text = "Tap row for details",
+                        fontSize = 11.sp,
+                        color = TextMuted,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(14.dp))
@@ -183,6 +225,7 @@ private fun HoldingRow(
     val isPositive = position.unrealizedPnl >= 0
     val pnlColor = if (isPositive) ProfitGreen else LossRed
     val pnlBg = if (isPositive) ProfitGreenBg else LossRedBg
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     Column(
         modifier = Modifier
@@ -195,17 +238,40 @@ private fun HoldingRow(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 1. Ticker Column
-            Column(modifier = Modifier.weight(1.30f)) {
-                Text(
-                    text = position.symbol,
-                    color = TextPrimary,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    maxLines = 1,
-                    softWrap = false,
-                    overflow = TextOverflow.Ellipsis
-                )
+            // 1. Ticker Column (Click to open Google Finance Chart in Chrome)
+            Column(
+                modifier = Modifier
+                    .weight(1.30f)
+                    .clip(RoundedCornerShape(6.dp))
+                    .clickable(
+                        role = Role.Button,
+                        onClickLabel = "Open ${position.symbol} on Google Finance"
+                    ) {
+                        com.example.varalakshmiportfolio.ui.util.StockLinkHelper.openGoogleFinance(
+                            context = context,
+                            symbol = position.symbol
+                        )
+                    }
+                    .padding(vertical = 4.dp, horizontal = 2.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = position.symbol,
+                        color = TextPrimary,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                        contentDescription = "View Chart on Google Finance",
+                        tint = AccentIndigoLight.copy(alpha = 0.85f),
+                        modifier = Modifier.size(11.dp)
+                    )
+                }
                 Text(
                     text = "${position.quantity} shares",
                     color = TextMuted,
@@ -214,10 +280,10 @@ private fun HoldingRow(
                 )
             }
 
-            // 2. % UP/DOWN Column
-            Box(
+            // 2. % UP/DOWN Column (Total & 1D Today)
+            Column(
                 modifier = Modifier.weight(1.05f),
-                contentAlignment = Alignment.CenterStart
+                horizontalAlignment = Alignment.Start
             ) {
                 Surface(
                     shape = RoundedCornerShape(7.dp),
@@ -228,11 +294,26 @@ private fun HoldingRow(
                         text = (if (isPositive) "+" else "") +
                                 String.format(Locale.US, "%.2f%%", position.unrealizedPnlPct),
                         color = pnlColor,
-                        fontSize = 11.5.sp,
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.5.dp)
                     )
                 }
+                Spacer(modifier = Modifier.height(2.dp))
+                val isTodayPos = position.todayPriceChangePct > 0
+                val isTodayNeg = position.todayPriceChangePct < 0
+                val todayColor = when {
+                    isTodayPos -> ProfitGreenLight
+                    isTodayNeg -> LossRedLight
+                    else -> TextMuted
+                }
+                val todaySign = if (isTodayPos) "+" else ""
+                Text(
+                    text = String.format(Locale.US, "1D: %s%.2f%%", todaySign, position.todayPriceChangePct),
+                    color = todayColor,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
             }
 
             // 3. VALUE Column
@@ -306,31 +387,75 @@ private fun HoldingRow(
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    DetailItem(label = "Entry Price", value = "₹" + String.format(Locale.US, "%.2f", position.entryPrice))
-                    DetailItem(label = "Peak Price", value = "₹" + String.format(Locale.US, "%.2f", position.peakPrice))
+                    DetailItem(
+                        label = "Entry Price",
+                        value = "₹" + String.format(Locale.US, "%.2f", position.entryPrice),
+                        modifier = Modifier.weight(0.95f)
+                    )
+                    DetailItem(
+                        label = "Peak Price",
+                        value = "₹" + String.format(Locale.US, "%.2f", position.peakPrice),
+                        modifier = Modifier.weight(0.95f)
+                    )
                     DetailItem(
                         label = "Unrealized P&L",
                         value = (if (isPositive) "+₹" else "-₹") + String.format(Locale.US, "%,.2f", kotlin.math.abs(position.unrealizedPnl)),
-                        valueColor = pnlColor
+                        valueColor = pnlColor,
+                        modifier = Modifier.weight(1.10f)
                     )
                 }
-                Spacer(modifier = Modifier.height(8.dp))
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                val entryDateOnly = position.entryDate.trim().let { raw ->
+                    when {
+                        raw.contains(" ") -> raw.substringBefore(" ")
+                        raw.contains("T") -> raw.substringBefore("T")
+                        raw.length >= 10 -> raw.take(10)
+                        else -> raw
+                    }
+                }
+
+                val trailStopPrice = position.peakPrice * 0.92
+                val trailProfitPerShare = trailStopPrice - position.entryPrice
+                val trailProfitTotal = trailProfitPerShare * position.quantity
+                val trailProfitPct = if (position.entryPrice > 0.0) (trailProfitPerShare / position.entryPrice) * 100.0 else 0.0
+                val isTrailProfit = trailProfitTotal >= 0.0
+                val trailProfitColor = if (isTrailProfit) ProfitGreen else LossRed
+                val trailProfitBg = if (isTrailProfit) ProfitGreenBg else LossRedBg
+                val trailProfitSign = if (isTrailProfit) "+" else "-"
+                val trailProfitBadge = String.format(
+                    Locale.US,
+                    "%s₹%,.0f (%s%.1f%%)",
+                    trailProfitSign, kotlin.math.abs(trailProfitTotal),
+                    if (trailProfitPct >= 0) "+" else "", trailProfitPct
+                )
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    DetailItem(label = "Entry Timestamp", value = position.entryDate)
                     DetailItem(
-                        label = "Trail Stop (-8%)",
-                        value = "₹" + String.format(Locale.US, "%.2f", position.peakPrice * 0.92),
-                        valueColor = GoldAccent
+                        label = "Entry Date",
+                        value = entryDateOnly,
+                        modifier = Modifier.weight(0.85f)
                     )
                     DetailItem(
-                        label = "Profit Target",
-                        value = if (position.isProfitTargetEnabled) "+35%" else "Uncapped Runner",
-                        valueColor = if (position.isProfitTargetEnabled) ProfitGreenLight else TextMuted
+                        label = "Trail Stop (-8%)",
+                        value = "₹" + String.format(Locale.US, "%.2f", trailStopPrice),
+                        valueColor = GoldAccent,
+                        badgeText = trailProfitBadge,
+                        badgeColor = trailProfitColor,
+                        badgeBg = trailProfitBg,
+                        modifier = Modifier.weight(1.40f)
+                    )
+                    DetailItem(
+                        label = "Profit Target (+35%)",
+                        value = if (position.isProfitTargetEnabled) position.formattedProfitTargetPrice else "Uncapped Runner",
+                        valueColor = if (position.isProfitTargetEnabled) ProfitGreenLight else TextMuted,
+                        modifier = Modifier.weight(0.95f)
                     )
                 }
                 Spacer(modifier = Modifier.height(8.dp))
@@ -343,14 +468,74 @@ private fun HoldingRow(
                     ),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(
-                        text = if (position.isProfitTargetEnabled) "Profit Target: +35%" else "Profit Target: Uncapped Runner",
-                        color = if (position.isProfitTargetEnabled) ProfitGreenLight else TextMuted,
-                        fontSize = 11.5.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        textAlign = TextAlign.Center
-                    )
+                    Column(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = if (position.isProfitTargetEnabled) "Profit Target: +35% (${position.formattedProfitTargetPrice})" else "Profit Target: Uncapped Runner",
+                            color = if (position.isProfitTargetEnabled) ProfitGreenLight else TextMuted,
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            textAlign = TextAlign.Center
+                        )
+                        if (position.isProfitTargetEnabled) {
+                            Spacer(modifier = Modifier.height(2.dp))
+                            val addGain = position.additionalGainToTarget
+                            val addGainStr = if (addGain > 0.0) {
+                                "Additional Gain Needed: +₹" + String.format(Locale.US, "%,.2f", addGain)
+                            } else {
+                                "Target Price Reached (+35% Achieved)"
+                            }
+                            Text(
+                                text = addGainStr,
+                                color = if (addGain > 0.0) ProfitGreen else ProfitGreenLight,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = DarkSurface,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, AccentIndigoLight.copy(alpha = 0.45f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable(
+                            role = Role.Button,
+                            onClickLabel = "Open ${position.symbol} on Google Finance"
+                        ) {
+                            com.example.varalakshmiportfolio.ui.util.StockLinkHelper.openGoogleFinance(
+                                context = context,
+                                symbol = position.symbol
+                            )
+                        }
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 10.dp, vertical = 7.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                            contentDescription = "View ${position.symbol} Chart on Google Finance",
+                            tint = AccentIndigoLight,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "View ${position.symbol} Chart on Google Finance",
+                            color = AccentIndigoLight,
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
         }
@@ -439,10 +624,53 @@ fun TargetToggleSwitch(
 private fun DetailItem(
     label: String,
     value: String,
-    valueColor: Color = TextPrimary
+    valueColor: Color = TextPrimary,
+    badgeText: String? = null,
+    badgeColor: Color = TextPrimary,
+    badgeBg: Color = DarkSurface,
+    modifier: Modifier = Modifier
 ) {
-    Column {
-        Text(text = label, color = TextMuted, fontSize = 10.sp)
-        Text(text = value, color = valueColor, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+    Column(modifier = modifier) {
+        Text(
+            text = label,
+            color = TextMuted,
+            fontSize = 9.5.sp,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis
+        )
+        Spacer(modifier = Modifier.height(2.dp))
+        Row(
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = value,
+                color = valueColor,
+                fontSize = 11.5.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (!badgeText.isNullOrBlank()) {
+                Spacer(modifier = Modifier.width(4.dp))
+                Surface(
+                    shape = RoundedCornerShape(4.dp),
+                    color = badgeBg,
+                    border = androidx.compose.foundation.BorderStroke(0.6.dp, badgeColor.copy(alpha = 0.45f))
+                ) {
+                    Text(
+                        text = badgeText,
+                        color = badgeColor,
+                        fontSize = 8.5.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        modifier = Modifier.padding(horizontal = 3.5.dp, vertical = 1.dp),
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                }
+            }
+        }
     }
 }

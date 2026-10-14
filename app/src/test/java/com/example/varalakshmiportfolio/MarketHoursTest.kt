@@ -116,7 +116,7 @@ class MarketHoursTest {
         )
 
         assertTrue(viewModel.uiState.value.isAutoSyncEnabled)
-        assertEquals(15 * 60 * 1000L, viewModel.syncIntervalMillis)
+        assertEquals(1 * 60 * 1000L, viewModel.syncIntervalMillis)
 
         viewModel.toggleAutoSync(false)
         assertFalse(viewModel.uiState.value.isAutoSyncEnabled)

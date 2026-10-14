@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.automirrored.filled.ShowChart
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.TouchApp
@@ -129,15 +130,35 @@ fun StockChartDialog(
                                 modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
                             )
                         }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = recommendation.symbol,
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = TextPrimary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        val context = androidx.compose.ui.platform.LocalContext.current
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable {
+                                    com.example.varalakshmiportfolio.ui.util.StockLinkHelper.openGoogleFinance(
+                                        context = context,
+                                        symbol = recommendation.symbol
+                                    )
+                                }
+                                .padding(horizontal = 4.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = recommendation.symbol,
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = TextPrimary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                                contentDescription = "Open Google Finance in Chrome",
+                                tint = AccentIndigoLight,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
                     }
 
                     IconButton(
@@ -177,7 +198,34 @@ fun StockChartDialog(
                         )
                     }
 
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        val isTodayPos = recommendation.todayChangePct > 0
+                        val isTodayNeg = recommendation.todayChangePct < 0
+                        val todayC = when {
+                            isTodayPos -> ProfitGreen
+                            isTodayNeg -> LossRed
+                            else -> TextSecondary
+                        }
+                        val todayB = when {
+                            isTodayPos -> ProfitGreenBg
+                            isTodayNeg -> LossRedBg
+                            else -> DarkCard
+                        }
+                        val todayS = if (isTodayPos) "+" else ""
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = todayB,
+                            border = BorderStroke(1.dp, todayC.copy(alpha = 0.4f))
+                        ) {
+                            Text(
+                                text = String.format(Locale.US, "%s%.2f%% (1D)", todayS, recommendation.todayChangePct),
+                                color = todayC,
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp)
+                            )
+                        }
+
                         Surface(
                             shape = RoundedCornerShape(8.dp),
                             color = trendBg,
@@ -187,9 +235,9 @@ fun StockChartDialog(
                             Text(
                                 text = "$sign${String.format(Locale.US, "%.1f", recommendation.return2mPct)}% (2M)",
                                 color = trendColor,
-                                fontSize = 12.sp,
+                                fontSize = 11.5.sp,
                                 fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp)
                             )
                         }
 
@@ -201,9 +249,9 @@ fun StockChartDialog(
                             Text(
                                 text = "Score: ${recommendation.formattedScore}",
                                 color = GoldAccent,
-                                fontSize = 12.sp,
+                                fontSize = 11.5.sp,
                                 fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp)
                             )
                         }
                     }
@@ -379,6 +427,47 @@ fun StockChartDialog(
                 }
 
                 Spacer(modifier = Modifier.height(18.dp))
+
+                // Button to open Google Finance in Chrome
+                val context = androidx.compose.ui.platform.LocalContext.current
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = AccentIndigoBg,
+                    border = BorderStroke(1.dp, AccentIndigoLight.copy(alpha = 0.5f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable {
+                            com.example.varalakshmiportfolio.ui.util.StockLinkHelper.openGoogleFinance(
+                                context = context,
+                                symbol = recommendation.symbol
+                            )
+                        }
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 12.dp, horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                            contentDescription = "Open ${recommendation.symbol} on Google Finance",
+                            tint = AccentIndigoLight,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Open in Google Finance (Chrome)",
+                            color = AccentIndigoLight,
+                            fontSize = 13.5.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
 
                 // Prominent Close Button
                 Button(

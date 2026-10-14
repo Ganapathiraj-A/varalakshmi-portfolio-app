@@ -1,8 +1,10 @@
 package com.example.varalakshmiportfolio.data
 
 import com.example.varalakshmiportfolio.model.PortfolioSummary
+import com.example.varalakshmiportfolio.model.calculateCurrentCagr
 import com.example.varalakshmiportfolio.model.PositionItem
 import com.example.varalakshmiportfolio.model.TransactionItem
+import com.example.varalakshmiportfolio.model.DailyReturnItem
 import com.example.varalakshmiportfolio.model.StockRecommendationItem
 import com.example.varalakshmiportfolio.model.HistoricalPricePoint
 import com.example.varalakshmiportfolio.model.IpoActionNotification
@@ -11,6 +13,9 @@ import com.example.varalakshmiportfolio.model.FnoInstanceSummary
 import com.example.varalakshmiportfolio.model.FnoPositionItem
 import com.example.varalakshmiportfolio.model.FnoStatusInfo
 import com.example.varalakshmiportfolio.model.VeeraLakshmiUiState
+import com.example.varalakshmiportfolio.model.SanthanaLakshmiTradeItem
+import com.example.varalakshmiportfolio.model.SanthanaLakshmiSummary
+import com.example.varalakshmiportfolio.model.SanthanaLakshmiUiState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -27,6 +32,7 @@ import java.net.URI
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
+import java.util.TimeZone
 import java.util.Locale
 
 /**
@@ -36,21 +42,27 @@ sealed class SyncResult {
     abstract val summary: PortfolioSummary
     abstract val positions: List<PositionItem>
     abstract val transactions: List<TransactionItem>
+    abstract val dailyReturns: List<DailyReturnItem>
     abstract val nifty: MarketIndexItem
+    abstract val marketIndices: List<MarketIndexItem>
     abstract val recommendations: List<StockRecommendationItem>
     abstract val recommendationHistory: List<HistoricalRecommendationItem>
     abstract val recommendationHistorySummary: RecommendationHistorySummary
     abstract val ipoNotifications: List<IpoActionNotification>
+    abstract val otherPositions: List<PositionItem>
 
     data class Success(
         override val summary: PortfolioSummary,
         override val positions: List<PositionItem>,
         override val transactions: List<TransactionItem>,
+        override val dailyReturns: List<DailyReturnItem> = emptyList(),
         override val nifty: MarketIndexItem = MarketIndexItem(),
+        override val marketIndices: List<MarketIndexItem> = emptyList(),
         override val recommendations: List<StockRecommendationItem> = emptyList(),
         override val recommendationHistory: List<HistoricalRecommendationItem> = emptyList(),
         override val recommendationHistorySummary: RecommendationHistorySummary = RecommendationHistorySummary(0, 0.0, 0.0, 0, 0),
-        override val ipoNotifications: List<IpoActionNotification> = emptyList()
+        override val ipoNotifications: List<IpoActionNotification> = emptyList(),
+        override val otherPositions: List<PositionItem> = emptyList()
     ) : SyncResult()
 
     data class OfflineCacheFallback(
@@ -58,11 +70,14 @@ sealed class SyncResult {
         override val positions: List<PositionItem>,
         override val transactions: List<TransactionItem>,
         val message: String,
+        override val dailyReturns: List<DailyReturnItem> = emptyList(),
         override val nifty: MarketIndexItem = MarketIndexItem(),
+        override val marketIndices: List<MarketIndexItem> = emptyList(),
         override val recommendations: List<StockRecommendationItem> = emptyList(),
         override val recommendationHistory: List<HistoricalRecommendationItem> = emptyList(),
         override val recommendationHistorySummary: RecommendationHistorySummary = RecommendationHistorySummary(0, 0.0, 0.0, 0, 0),
-        override val ipoNotifications: List<IpoActionNotification> = emptyList()
+        override val ipoNotifications: List<IpoActionNotification> = emptyList(),
+        override val otherPositions: List<PositionItem> = emptyList()
     ) : SyncResult()
 }
 
@@ -73,6 +88,7 @@ class VaralakshmiRepository {
         const val DEFAULT_AUTH_TOKEN = "eyJlbWFpbCI6ImdhbmFwYXRoaXJhakBnbWFpbC5jb20iLCJleHAiOjIxMDUzNDA5NzgsIm5vbmNlIjoiYTFkYWE3NTlmMWU2ZmU1MjgxMDFlZTRmZDRjYTIzODQifQ.uEdogGmmZ7NeYDuwiWdv416rE7P5Im1s8CPByRwzgR0"
         const val CACHE_FILE_NAME = "portfolio_cache.json"
         const val FNO_CACHE_FILE_NAME = "veeralakshmi_fno_cache.json"
+        const val SANTHANA_CACHE_FILE_NAME = "santhanalakshmi_cache.json"
 
         @Volatile
         private var cacheDirectory: File? = null
@@ -120,7 +136,9 @@ class VaralakshmiRepository {
             todayPnlPct = 3.81,
             activeSlots = 3,
             maxSlots = 3,
-            lastUpdated = "2026-09-21 09:26:07"
+            lastUpdated = "2026-09-21 09:26:07",
+            cagrPct = 74.20,
+            inceptionDate = "2026-09-17"
         )
 
         fun createDefaultNifty() = MarketIndexItem(
@@ -135,6 +153,34 @@ class VaralakshmiRepository {
             timestamp = "2026-09-23 09:20:00",
             status = "LIVE"
         )
+
+        fun createDefaultMarketIndices(): List<MarketIndexItem> =
+            com.example.varalakshmiportfolio.model.createDefaultMarketIndices()
+
+        fun parseMarketIndexItem(niftyObj: JSONObject, defaultItem: MarketIndexItem = MarketIndexItem()): MarketIndexItem {
+            val sym = niftyObj.optString("symbol", defaultItem.symbol)
+            val ltp = optSafeDouble(niftyObj, "ltp", defaultItem.ltp)
+            val change = optSafeDouble(niftyObj, "change", defaultItem.change)
+            val changePct = optSafeDouble(niftyObj, "changePct", optSafeDouble(niftyObj, "change_pct", defaultItem.changePct))
+            val open = optSafeDouble(niftyObj, "open", defaultItem.open)
+            val high = optSafeDouble(niftyObj, "high", defaultItem.high)
+            val low = optSafeDouble(niftyObj, "low", defaultItem.low)
+            val prev = optSafeDouble(niftyObj, "previousClose", optSafeDouble(niftyObj, "previous_close", defaultItem.previousClose))
+            val ts = niftyObj.optString("timestamp", defaultItem.timestamp)
+            val stat = niftyObj.optString("status", defaultItem.status)
+            return MarketIndexItem(
+                symbol = sym,
+                ltp = ltp,
+                change = change,
+                changePct = changePct,
+                open = open,
+                high = high,
+                low = low,
+                previousClose = prev,
+                timestamp = ts,
+                status = stat
+            )
+        }
 
         fun createDefaultPositions() = listOf(
             PositionItem(
@@ -190,6 +236,73 @@ class VaralakshmiRepository {
                 todayPriceChangePct = 5.62,
                 todayValueChange = 1786.10,
                 isProfitTargetEnabled = true
+            )
+        )
+
+        fun createDefaultOtherPositions() = listOf(
+            PositionItem(
+                positionId = "ZERODHA_HOLDING_LIQUIDCASE",
+                symbol = "LIQUIDCASE",
+                quantity = 863,
+                entryPrice = 115.82,
+                currentPrice = 116.37,
+                marketValue = 100427.31,
+                unrealizedPnl = 474.65,
+                unrealizedPnlPct = 0.47,
+                peakPrice = 116.37,
+                entryDate = "",
+                status = "OPEN",
+                previousClose = 116.34,
+                referencePrice = 116.34,
+                todayPriceChange = 0.03,
+                todayPriceChangePct = 0.03,
+                todayValueChange = 25.89,
+                isProfitTargetEnabled = false,
+                isStrategy = false,
+                category = "ZERODHA"
+            ),
+            PositionItem(
+                positionId = "ZERODHA_HOLDING_PARASYNTEX",
+                symbol = "PARASYNTEX",
+                quantity = 2000,
+                entryPrice = 127.00,
+                currentPrice = 93.75,
+                marketValue = 187500.00,
+                unrealizedPnl = -66500.00,
+                unrealizedPnlPct = -26.18,
+                peakPrice = 127.00,
+                entryDate = "",
+                status = "OPEN",
+                previousClose = 98.65,
+                referencePrice = 98.65,
+                todayPriceChange = -4.90,
+                todayPriceChangePct = -4.97,
+                todayValueChange = -9800.00,
+                isProfitTargetEnabled = false,
+                isStrategy = false,
+                category = "ZERODHA"
+            ),
+            PositionItem(
+                positionId = "ZERODHA_DAY_PCJEWELLER",
+                symbol = "PCJEWELLER",
+                quantity = 7000,
+                entryPrice = 14.32,
+                currentPrice = 14.47,
+                marketValue = 101290.00,
+                unrealizedPnl = 1050.00,
+                unrealizedPnlPct = 1.05,
+                peakPrice = 14.47,
+                entryDate = "today",
+                status = "OPEN",
+                previousClose = 14.32,
+                referencePrice = 14.32,
+                isBoughtToday = true,
+                todayPriceChange = 0.15,
+                todayPriceChangePct = 1.05,
+                todayValueChange = 1050.00,
+                isProfitTargetEnabled = false,
+                isStrategy = false,
+                category = "ZERODHA"
             )
         )
 
@@ -321,7 +434,9 @@ class VaralakshmiRepository {
                     score = 10.02,
                     targetPrice = 1390.00,
                     stopLossPrice = 980.00,
-                    historical2mPoints = toPoints(raymondPrices)
+                    historical2mPoints = toPoints(raymondPrices),
+                    changePct = 2.45,
+                    change = 26.70
                 ),
                 StockRecommendationItem(
                     rank = 2,
@@ -330,7 +445,9 @@ class VaralakshmiRepository {
                     score = 8.91,
                     targetPrice = 395.00,
                     stopLossPrice = 275.00,
-                    historical2mPoints = toPoints(xtranetPrices)
+                    historical2mPoints = toPoints(xtranetPrices),
+                    changePct = 3.18,
+                    change = 9.80
                 ),
                 StockRecommendationItem(
                     rank = 3,
@@ -339,7 +456,9 @@ class VaralakshmiRepository {
                     score = 8.87,
                     targetPrice = 128.00,
                     stopLossPrice = 89.00,
-                    historical2mPoints = toPoints(aareydrugsPrices)
+                    historical2mPoints = toPoints(aareydrugsPrices),
+                    changePct = 1.95,
+                    change = 1.95
                 ),
                 StockRecommendationItem(
                     rank = 4,
@@ -348,7 +467,9 @@ class VaralakshmiRepository {
                     score = 8.77,
                     targetPrice = 800.00,
                     stopLossPrice = 560.00,
-                    historical2mPoints = toPoints(gcslPrices)
+                    historical2mPoints = toPoints(gcslPrices),
+                    changePct = 0.55,
+                    change = 3.50
                 ),
                 StockRecommendationItem(
                     rank = 5,
@@ -357,7 +478,9 @@ class VaralakshmiRepository {
                     score = 8.76,
                     targetPrice = 1790.00,
                     stopLossPrice = 1250.00,
-                    historical2mPoints = toPoints(gmmpfaudlrPrices)
+                    historical2mPoints = toPoints(gmmpfaudlrPrices),
+                    changePct = 1.82,
+                    change = 25.60
                 )
             )
         }
@@ -405,6 +528,18 @@ class VaralakshmiRepository {
                         if (obj.has("stopLossPrice")) optSafeDouble(obj, "stopLossPrice", 0.0)
                         else roundPaise(price * 0.88)
                     )
+                    val changePct = optSafeDouble(
+                        obj, "change_pct",
+                        if (obj.has("changePct")) optSafeDouble(obj, "changePct", 0.0)
+                        else if (obj.has("pnl_pct")) optSafeDouble(obj, "pnl_pct", 0.0)
+                        else if (obj.has("today_change_pct")) optSafeDouble(obj, "today_change_pct", 0.0)
+                        else 0.0
+                    )
+                    val change = optSafeDouble(
+                        obj, "change",
+                        if (obj.has("today_change")) optSafeDouble(obj, "today_change", 0.0)
+                        else 0.0
+                    )
 
                     val ptsArray = when {
                         obj.has("historical_2m") -> obj.optJSONArray("historical_2m")
@@ -442,7 +577,9 @@ class VaralakshmiRepository {
                             score = score,
                             targetPrice = targetPrice,
                             stopLossPrice = stopLossPrice,
-                            historical2mPoints = effectivePoints
+                            historical2mPoints = effectivePoints,
+                            changePct = changePct,
+                            change = change
                         )
                     )
                 }
@@ -868,6 +1005,489 @@ class VaralakshmiRepository {
                 emptyList()
             }
         }
+
+        fun createDefaultDailyReturns(): List<DailyReturnItem> = listOf(
+            DailyReturnItem(
+                date = "2026-10-01",
+                dailyPnl = -18310.80,
+                returnPct = -2.98,
+                totalNav = 598256.00,
+                tradeCount = 3,
+                status = "LOSS",
+                trades = listOf(
+                    TransactionItem(
+                        transactionId = "TX_ORD_VARALAKSHMI_ALPHA_SCALE_35_STLNETWORK_20261001_SELL",
+                        timestamp = "2026-10-01 15:15:18",
+                        side = "SELL",
+                        symbol = "STLNETWORK",
+                        quantity = 4150,
+                        fillPrice = 47.17,
+                        grossAmount = 195764.75,
+                        fees = 218.78,
+                        realizedPnl = -8861.67,
+                        pnlDifference = "-₹8,861.67"
+                    ),
+                    TransactionItem(
+                        transactionId = "TX_ORD_VARALAKSHMI_ALPHA_SCALE_35_CUBEXTUB_20261001_BUY",
+                        timestamp = "2026-10-01 15:15:18",
+                        side = "BUY",
+                        symbol = "CUBEXTUB",
+                        quantity = 1155,
+                        fillPrice = 166.10,
+                        grossAmount = 191845.50,
+                        fees = 227.58,
+                        realizedPnl = 0.00,
+                        pnlDifference = "₹0.00"
+                    ),
+                    TransactionItem(
+                        transactionId = "TX_ORD_VARALAKSHMI_ALPHA_SCALE_35_GMMPFAUDLR_20261001_SELL",
+                        timestamp = "2026-10-01 11:10:50",
+                        side = "SELL",
+                        symbol = "GMMPFAUDLR",
+                        quantity = 121,
+                        fillPrice = 1435.32,
+                        grossAmount = 173673.50,
+                        fees = 195.89,
+                        realizedPnl = -9449.13,
+                        pnlDifference = "-₹9,449.13"
+                    )
+                )
+            ),
+            DailyReturnItem(
+                date = "2026-09-30",
+                dailyPnl = 1115.27,
+                returnPct = 0.18,
+                totalNav = 614241.70,
+                tradeCount = 2,
+                status = "WIN",
+                trades = listOf(
+                    TransactionItem(
+                        transactionId = "TX_ORD_VARALAKSHMI_ALPHA_SCALE_35_STLNETWORK_20260930_BUY",
+                        timestamp = "2026-09-30 15:11:12",
+                        side = "BUY",
+                        symbol = "STLNETWORK",
+                        quantity = 4150,
+                        fillPrice = 49.20,
+                        grossAmount = 204165.46,
+                        fees = 242.18,
+                        realizedPnl = 0.00,
+                        pnlDifference = "₹0.00"
+                    ),
+                    TransactionItem(
+                        transactionId = "TX_ORD_VARALAKSHMI_ALPHA_SCALE_35_TBZ_20260930_SELL",
+                        timestamp = "2026-09-30 09:59:22",
+                        side = "SELL",
+                        symbol = "TBZ",
+                        quantity = 53,
+                        fillPrice = 622.70,
+                        grossAmount = 33003.10,
+                        fees = 50.12,
+                        realizedPnl = 1115.27,
+                        pnlDifference = "+₹1,115.27"
+                    )
+                )
+            ),
+            DailyReturnItem(
+                date = "2026-09-28",
+                dailyPnl = 0.00,
+                returnPct = 0.00,
+                totalNav = 613126.43,
+                tradeCount = 1,
+                status = "FLAT",
+                trades = listOf(
+                    TransactionItem(
+                        transactionId = "TX_ORD_VARALAKSHMI_ALPHA_SCALE_35_GMMPFAUDLR_20260926_BUY",
+                        timestamp = "2026-09-28 09:16:05",
+                        side = "BUY",
+                        symbol = "GMMPFAUDLR",
+                        quantity = 121,
+                        fillPrice = 1510.00,
+                        grossAmount = 182710.00,
+                        fees = 216.74,
+                        realizedPnl = 0.00,
+                        pnlDifference = "₹0.00"
+                    )
+                )
+            ),
+            DailyReturnItem(
+                date = "2026-09-25",
+                dailyPnl = 4345.07,
+                returnPct = 0.71,
+                totalNav = 613126.43,
+                tradeCount = 3,
+                status = "WIN",
+                trades = listOf(
+                    TransactionItem(
+                        transactionId = "TX_ORD_VARALAKSHMI_ALPHA_SCALE_35_STLNETWORK_20260925_SELL",
+                        timestamp = "2026-09-25 15:15:20",
+                        side = "SELL",
+                        symbol = "STLNETWORK",
+                        quantity = 855,
+                        fillPrice = 54.61,
+                        grossAmount = 46691.55,
+                        fees = 64.32,
+                        realizedPnl = 12215.46,
+                        pnlDifference = "+₹12,215.46"
+                    ),
+                    TransactionItem(
+                        transactionId = "TX_ORD_VARALAKSHMI_ALPHA_SCALE_35_AHCL_20260925_SELL",
+                        timestamp = "2026-09-25 11:36:52",
+                        side = "SELL",
+                        symbol = "AHCL",
+                        quantity = 6903,
+                        fillPrice = 27.97,
+                        grossAmount = 193110.82,
+                        fees = 216.04,
+                        realizedPnl = -7870.39,
+                        pnlDifference = "-₹7,870.39"
+                    ),
+                    TransactionItem(
+                        transactionId = "TX_ORD_VARALAKSHMI_ALPHA_SCALE_35_RAYMOND_20260925_BUY",
+                        timestamp = "2026-09-25 11:36:52",
+                        side = "BUY",
+                        symbol = "RAYMOND",
+                        quantity = 168,
+                        fillPrice = 1183.36,
+                        grossAmount = 198804.50,
+                        fees = 235.82,
+                        realizedPnl = 0.00,
+                        pnlDifference = "₹0.00"
+                    )
+                )
+            ),
+            DailyReturnItem(
+                date = "2026-09-24",
+                dailyPnl = 8781.36,
+                returnPct = 1.46,
+                totalNav = 608781.36,
+                tradeCount = 2,
+                status = "WIN",
+                capitalInflow = 490731.20,
+                realizedPnl = 8781.36,
+                trades = listOf(
+                    TransactionItem(
+                        transactionId = "TX_ORD_VARALAKSHMI_ALPHA_SCALE_35_AHCL_20260924_BUY",
+                        timestamp = "2026-09-24 15:27:49",
+                        side = "BUY",
+                        symbol = "AHCL",
+                        quantity = 6903,
+                        fillPrice = 29.05,
+                        grossAmount = 200527.29,
+                        fees = 237.88,
+                        realizedPnl = 0.00,
+                        pnlDifference = "₹0.00"
+                    ),
+                    TransactionItem(
+                        transactionId = "TX_ORD_VARALAKSHMI_ALPHA_SCALE_35_AHCL_20260924_SELL",
+                        timestamp = "2026-09-24 14:38:50",
+                        side = "SELL",
+                        symbol = "AHCL",
+                        quantity = 1472,
+                        fillPrice = 28.70,
+                        grossAmount = 42246.40,
+                        fees = 59.70,
+                        realizedPnl = 8781.36,
+                        pnlDifference = "+₹8,781.36"
+                    )
+                )
+            ),
+            DailyReturnItem(
+                date = "2026-09-21",
+                dailyPnl = 4007.77,
+                returnPct = 3.81,
+                totalNav = 109268.80,
+                tradeCount = 1,
+                status = "WIN",
+                trades = listOf(
+                    TransactionItem(
+                        transactionId = "TX_ORD_VARALAKSHMI_ALPHA_SCALE_35_TBZ_20260919_BUY_53",
+                        timestamp = "2026-09-21 09:26:07",
+                        side = "BUY",
+                        symbol = "TBZ",
+                        quantity = 53,
+                        fillPrice = 600.00,
+                        grossAmount = 31800.00,
+                        fees = 37.71,
+                        realizedPnl = 0.00,
+                        pnlDifference = "+₹4,007.77"
+                    )
+                )
+            ),
+            DailyReturnItem(
+                date = "2026-09-18",
+                dailyPnl = 2154.20,
+                returnPct = 2.09,
+                totalNav = 105261.03,
+                tradeCount = 2,
+                status = "WIN",
+                trades = listOf(
+                    TransactionItem(
+                        transactionId = "TX_ORD_VARALAKSHMI_ALPHA_SCALE_35_AHCL_20260918_BUY_1472",
+                        timestamp = "2026-09-18 09:23:45",
+                        side = "BUY",
+                        symbol = "AHCL",
+                        quantity = 1472,
+                        fillPrice = 22.67,
+                        grossAmount = 33365.77,
+                        fees = 39.57,
+                        realizedPnl = 0.00,
+                        pnlDifference = "₹0.00"
+                    ),
+                    TransactionItem(
+                        transactionId = "TX_ORD_VARALAKSHMI_ALPHA_SCALE_35_TBZ_20260918_BUY_58",
+                        timestamp = "2026-09-18 09:11:58",
+                        side = "BUY",
+                        symbol = "TBZ",
+                        quantity = 58,
+                        fillPrice = 574.85,
+                        grossAmount = 33341.30,
+                        fees = 39.54,
+                        realizedPnl = 0.00,
+                        pnlDifference = "+₹2,154.20"
+                    )
+                )
+            ),
+            DailyReturnItem(
+                date = "2026-09-17",
+                dailyPnl = 3106.83,
+                returnPct = 3.10,
+                totalNav = 103106.83,
+                tradeCount = 2,
+                status = "WIN",
+                trades = listOf(
+                    TransactionItem(
+                        transactionId = "TX_ORD_VARALAKSHMI_ALPHA_SCALE_35_STLNETWORK_20260917_BUY_855",
+                        timestamp = "2026-09-17 08:41:42",
+                        side = "BUY",
+                        symbol = "STLNETWORK",
+                        quantity = 855,
+                        fillPrice = 40.20,
+                        grossAmount = 34371.00,
+                        fees = 40.77,
+                        realizedPnl = 0.00,
+                        pnlDifference = "+₹3,106.83"
+                    )
+                )
+            ),
+            DailyReturnItem(
+                date = "2026-09-16",
+                dailyPnl = -450.50,
+                returnPct = -0.45,
+                totalNav = 100000.00,
+                tradeCount = 1,
+                status = "LOSS"
+            ),
+            DailyReturnItem(
+                date = "2026-09-15",
+                dailyPnl = 1280.00,
+                returnPct = 1.29,
+                totalNav = 100450.50,
+                tradeCount = 2,
+                status = "WIN"
+            ),
+            DailyReturnItem(
+                date = "2026-09-14",
+                dailyPnl = -820.00,
+                returnPct = -0.82,
+                totalNav = 99170.50,
+                tradeCount = 0,
+                status = "LOSS"
+            ),
+            DailyReturnItem(
+                date = "2026-09-11",
+                dailyPnl = 0.00,
+                returnPct = 0.00,
+                totalNav = 99990.50,
+                tradeCount = 0,
+                status = "FLAT"
+            )
+        )
+
+        fun normalizeDate(raw: String): String {
+            val trimmed = raw.trim()
+            if (trimmed.isEmpty()) return ""
+            val epoch = trimmed.toLongOrNull()
+            if (epoch != null && epoch > 1_000_000_000L) {
+                val millis = if (epoch < 100_000_000_000L) epoch * 1000L else epoch
+                val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+                    timeZone = TimeZone.getTimeZone("Asia/Kolkata")
+                }
+                return sdf.format(Date(millis))
+            }
+            return trimmed.substringBefore("T").substringBefore(" ")
+        }
+
+        fun parseDailyReturnsJson(array: JSONArray): List<DailyReturnItem> {
+            val list = mutableListOf<DailyReturnItem>()
+            for (i in 0 until array.length()) {
+                val obj = array.optJSONObject(i) ?: continue
+                val rawDate = obj.optString("date", "")
+                    .ifBlank { obj.optString("session_date", "") }
+                    .ifBlank { obj.optString("sessionDate", "") }
+                    .ifBlank { obj.optString("timestamp", "") }
+                    .ifBlank { obj.optString("day", "") }
+                    .ifBlank { obj.optString("created_at", "") }
+                val date = normalizeDate(rawDate)
+
+                val dailyPnl = when {
+                    obj.has("daily_pnl") -> optSafeDouble(obj, "daily_pnl", 0.0)
+                    obj.has("dailyPnl") -> optSafeDouble(obj, "dailyPnl", 0.0)
+                    obj.has("net_pnl") -> optSafeDouble(obj, "net_pnl", 0.0)
+                    obj.has("netPnl") -> optSafeDouble(obj, "netPnl", 0.0)
+                    obj.has("pnl") -> optSafeDouble(obj, "pnl", 0.0)
+                    else -> 0.0
+                }
+                val returnPct = when {
+                    obj.has("return_pct") -> optSafeDouble(obj, "return_pct", 0.0)
+                    obj.has("returnPct") -> optSafeDouble(obj, "returnPct", 0.0)
+                    obj.has("pnl_pct") -> optSafeDouble(obj, "pnl_pct", 0.0)
+                    obj.has("pnlPct") -> optSafeDouble(obj, "pnlPct", 0.0)
+                    obj.has("daily_return_pct") -> optSafeDouble(obj, "daily_return_pct", 0.0)
+                    else -> 0.0
+                }
+                val totalNav = when {
+                    obj.has("total_nav") -> optSafeDouble(obj, "total_nav", 0.0)
+                    obj.has("totalNav") -> optSafeDouble(obj, "totalNav", 0.0)
+                    obj.has("nav") -> optSafeDouble(obj, "nav", 0.0)
+                    obj.has("closing_nav") -> optSafeDouble(obj, "closing_nav", 0.0)
+                    obj.has("closingNav") -> optSafeDouble(obj, "closingNav", 0.0)
+                    else -> 0.0
+                }
+                val prevNav = totalNav - dailyPnl
+                val safeReturnPct = if (returnPct != 0.0) {
+                    returnPct
+                } else if (dailyPnl != 0.0 && prevNav > 0.0) {
+                    roundPaise((dailyPnl / prevNav) * 100.0)
+                } else {
+                    0.0
+                }
+
+                val tradeCount = when {
+                    obj.has("trade_count") -> obj.optInt("trade_count", 0)
+                    obj.has("tradeCount") -> obj.optInt("tradeCount", 0)
+                    obj.has("trades_count") -> obj.optInt("trades_count", 0)
+                    obj.has("trades") && obj.optJSONArray("trades") != null -> obj.optJSONArray("trades")!!.length()
+                    obj.has("trades") -> obj.optInt("trades", 0)
+                    obj.has("tradesCount") -> obj.optInt("tradesCount", 0)
+                    obj.has("trade_qty") -> obj.optInt("trade_qty", 0)
+                    else -> 0
+                }
+                val safeTradeCount = if (tradeCount < 0) 0 else tradeCount
+
+                val defaultStatus = when {
+                    dailyPnl >= 0.005 -> "WIN"
+                    dailyPnl <= -0.005 -> "LOSS"
+                    else -> "FLAT"
+                }
+                val rawStatus = obj.optString("status", "")
+                    .ifBlank { obj.optString("day_status", "") }
+                    .ifBlank { obj.optString("dayStatus", "") }
+                    .uppercase(Locale.US)
+                    .trim()
+                val status = when (rawStatus) {
+                    "WIN", "PROFIT", "GAIN" -> "WIN"
+                    "LOSS", "DEFICIT" -> "LOSS"
+                    "FLAT", "NEUTRAL", "EVEN", "PRE_INCEPTION", "BREAKEVEN" -> "FLAT"
+                    else -> defaultStatus
+                }
+
+                val parsedTrades = mutableListOf<TransactionItem>()
+                val tradesArray = obj.optJSONArray("trades")
+                if (tradesArray != null) {
+                    for (j in 0 until tradesArray.length()) {
+                        val tObj = tradesArray.optJSONObject(j) ?: continue
+                        val tSide = tObj.optString("side", "BUY")
+                        val tRealized = optSafeDouble(tObj, "realized_pnl", optSafeDouble(tObj, "realizedPnl", 0.0))
+                        val tGross = optSafeDouble(tObj, "gross_amount", optSafeDouble(tObj, "grossAmount", 0.0))
+                        val rawFees = optSafeDouble(tObj, "fees", 0.0)
+                        val tFees = if (rawFees <= 0.0 || rawFees == 20.0) calculateZerodhaDeliveryFees(tGross, tSide) else rawFees
+                        val tFillPrice = optSafeDouble(tObj, "fill_price", optSafeDouble(tObj, "fillPrice", 0.0))
+                        val tQuantity = tObj.optInt("quantity", 0)
+                        val tDiffStr = tObj.optString("pnlDifference", tObj.optString("pnl_difference", "")).ifBlank {
+                            if (tSide.equals("SELL", ignoreCase = true) || tRealized != 0.0) {
+                                (if (tRealized >= 0) "+₹" else "-₹") + String.format(Locale.US, "%,.2f", kotlin.math.abs(tRealized))
+                            } else {
+                                "₹0.00"
+                            }
+                        }
+                        parsedTrades.add(
+                            TransactionItem(
+                                transactionId = tObj.optString("transaction_id", tObj.optString("transactionId", "")),
+                                timestamp = tObj.optString("timestamp", ""),
+                                side = tSide,
+                                symbol = tObj.optString("symbol", ""),
+                                quantity = tQuantity,
+                                fillPrice = tFillPrice,
+                                grossAmount = tGross,
+                                fees = tFees,
+                                realizedPnl = tRealized,
+                                pnlDifference = tDiffStr
+                            )
+                        )
+                    }
+                }
+
+                val capitalInflow = when {
+                    obj.has("capital_inflow") -> optSafeDouble(obj, "capital_inflow", 0.0)
+                    obj.has("capitalInflow") -> optSafeDouble(obj, "capitalInflow", 0.0)
+                    obj.has("inflow") -> optSafeDouble(obj, "inflow", 0.0)
+                    obj.has("deposit") -> optSafeDouble(obj, "deposit", 0.0)
+                    obj.has("topup") -> optSafeDouble(obj, "topup", 0.0)
+                    obj.has("top_up") -> optSafeDouble(obj, "top_up", 0.0)
+                    obj.has("withdrawal") -> -optSafeDouble(obj, "withdrawal", 0.0)
+                    else -> 0.0
+                }
+                val realizedPnl = when {
+                    obj.has("realized_pnl") -> optSafeDouble(obj, "realized_pnl", dailyPnl)
+                    obj.has("realizedPnl") -> optSafeDouble(obj, "realizedPnl", dailyPnl)
+                    else -> dailyPnl
+                }
+                val unrealizedPnlChange = when {
+                    obj.has("unrealized_pnl_change") -> optSafeDouble(obj, "unrealized_pnl_change", 0.0)
+                    obj.has("unrealizedPnlChange") -> optSafeDouble(obj, "unrealizedPnlChange", 0.0)
+                    obj.has("mtm_adjustment") -> optSafeDouble(obj, "mtm_adjustment", 0.0)
+                    else -> 0.0
+                }
+
+                list.add(
+                    DailyReturnItem(
+                        date = date,
+                        dailyPnl = dailyPnl,
+                        returnPct = safeReturnPct,
+                        totalNav = totalNav,
+                        tradeCount = if (parsedTrades.isNotEmpty()) parsedTrades.size else safeTradeCount,
+                        status = status,
+                        trades = parsedTrades,
+                        capitalInflow = capitalInflow,
+                        realizedPnl = realizedPnl,
+                        unrealizedPnlChange = unrealizedPnlChange
+                    )
+                )
+            }
+            return list
+        }
+
+        fun parseDailyReturnsJson(jsonStr: String): List<DailyReturnItem> {
+            return try {
+                val trimmed = jsonStr.trim()
+                val array = when {
+                    trimmed.startsWith("{") -> {
+                        val root = JSONObject(trimmed)
+                        root.optJSONArray("daily_returns")
+                            ?: root.optJSONArray("dailyReturns")
+                            ?: root.optJSONArray("daily_pnl")
+                            ?: root.optJSONArray("dailyPnl")
+                            ?: root.optJSONArray("sessions")
+                            ?: root.optJSONArray("history")
+                    }
+                    trimmed.startsWith("[") -> JSONArray(trimmed)
+                    else -> null
+                } ?: return emptyList()
+                parseDailyReturnsJson(array)
+            } catch (e: Exception) {
+                emptyList()
+            }
+        }
     }
 
     private val lock = Any()
@@ -879,19 +1499,28 @@ class VaralakshmiRepository {
     private var cachedSummary = createDefaultSummary()
     private val cachedPositions = createDefaultPositions().toMutableList()
     private val cachedTransactions = createDefaultTransactions().toMutableList()
+    private val cachedDailyReturns = createDefaultDailyReturns().toMutableList()
     private var cachedNifty = createDefaultNifty()
+    private val cachedMarketIndices = createDefaultMarketIndices().toMutableList()
     private val cachedRecommendations = createDefaultRecommendations().toMutableList()
     private val cachedRecommendationHistory = createDefaultRecommendationHistory().toMutableList()
     private var cachedRecommendationHistorySummary = calculateRecommendationHistorySummary(cachedRecommendationHistory)
     private val cachedIpoNotifications = createDefaultIpoNotifications().toMutableList()
+    private val cachedOtherPositions = createDefaultOtherPositions().toMutableList()
 
     fun resetToDefaultSeed() = synchronized(lock) {
         cachedSummary = createDefaultSummary()
         cachedPositions.clear()
         cachedPositions.addAll(createDefaultPositions())
+        cachedOtherPositions.clear()
+        cachedOtherPositions.addAll(createDefaultOtherPositions())
         cachedTransactions.clear()
         cachedTransactions.addAll(createDefaultTransactions())
+        cachedDailyReturns.clear()
+        cachedDailyReturns.addAll(createDefaultDailyReturns())
         cachedNifty = createDefaultNifty()
+        cachedMarketIndices.clear()
+        cachedMarketIndices.addAll(createDefaultMarketIndices())
         cachedRecommendations.clear()
         cachedRecommendations.addAll(createDefaultRecommendations())
         cachedRecommendationHistory.clear()
@@ -948,8 +1577,11 @@ class VaralakshmiRepository {
 
     fun getCachedSummary(): PortfolioSummary = synchronized(lock) { ensureLoaded(); cachedSummary }
     fun getCachedPositions(): List<PositionItem> = synchronized(lock) { ensureLoaded(); cachedPositions.toList() }
+    fun getCachedOtherPositions(): List<PositionItem> = synchronized(lock) { ensureLoaded(); cachedOtherPositions.toList() }
     fun getCachedTransactions(): List<TransactionItem> = synchronized(lock) { ensureLoaded(); cachedTransactions.toList() }
+    fun getCachedDailyReturns(): List<DailyReturnItem> = synchronized(lock) { ensureLoaded(); cachedDailyReturns.toList() }
     fun getCachedNifty(): MarketIndexItem = synchronized(lock) { ensureLoaded(); cachedNifty }
+    fun getCachedMarketIndices(): List<MarketIndexItem> = synchronized(lock) { ensureLoaded(); cachedMarketIndices.toList() }
     fun getCachedRecommendations(): List<StockRecommendationItem> = synchronized(lock) {
         ensureLoaded()
         val heldSymbols = cachedPositions.map { it.symbol.trim().uppercase(Locale.US) }.toSet()
@@ -959,7 +1591,10 @@ class VaralakshmiRepository {
     }
     fun getCachedRecommendationHistory(): List<HistoricalRecommendationItem> = synchronized(lock) { ensureLoaded(); cachedRecommendationHistory.toList() }
     fun getCachedRecommendationHistorySummary(): RecommendationHistorySummary = synchronized(lock) { ensureLoaded(); cachedRecommendationHistorySummary }
-    fun getCachedIpoNotifications(): List<IpoActionNotification> = synchronized(lock) { ensureLoaded(); cachedIpoNotifications.toList() }
+    fun getCachedIpoNotifications(): List<IpoActionNotification> = synchronized(lock) {
+        ensureLoaded()
+        cachedIpoNotifications.filter { it.isDeadlineTodayOrFuture }.toList()
+    }
 
     fun dismissIpoNotification(id: String): List<IpoActionNotification> = synchronized(lock) {
         ensureLoaded()
@@ -969,7 +1604,21 @@ class VaralakshmiRepository {
             cachedIpoNotifications[index] = old.copy(isDismissed = true)
             saveToDisk()
         }
+        val sState = cachedSanthanaState ?: loadSanthanaFromDisk()
+        if (sState != null) {
+            val updatedAlerts = sState.activeAlerts.map {
+                if (it.id == id || it.symbol.equals(id, ignoreCase = true)) it.copy(isDismissed = true) else it
+            }
+            val newSState = sState.copy(activeAlerts = updatedAlerts)
+            cachedSanthanaState = newSState
+            saveSanthanaToDisk(newSState)
+        }
         cachedIpoNotifications.toList()
+    }
+
+    fun setIpoNotificationsForTesting(notifications: List<IpoActionNotification>) = synchronized(lock) {
+        cachedIpoNotifications.clear()
+        cachedIpoNotifications.addAll(notifications)
     }
 
     suspend fun syncWithServer(serverBaseUrl: String = getServerUrl(), authToken: String = getAuthToken()): SyncResult =
@@ -979,11 +1628,14 @@ class VaralakshmiRepository {
         val cleanUrl = serverBaseUrl.trimEnd('/')
 
         var fetchedPositions: List<PositionItem>? = null
+        var fetchedOtherPositions: List<PositionItem>? = null
         var fetchedTransactions: List<TransactionItem>? = null
         var fetchedNifty: MarketIndexItem? = null
+        var fetchedMarketIndices: List<MarketIndexItem>? = null
         var fetchedRecommendations: List<StockRecommendationItem>? = null
         var fetchedRecommendationHistory: List<HistoricalRecommendationItem>? = null
         var fetchedIpoNotifications: List<IpoActionNotification>? = null
+        var fetchedDailyReturns: List<DailyReturnItem>? = null
         var networkError: String? = null
 
         val tokenQuery = if (authToken.isNotBlank()) "&token=$authToken" else ""
@@ -1020,6 +1672,18 @@ class VaralakshmiRepository {
                     )
                 }
 
+                val indicesArray = root.optJSONArray("market_indices") ?: root.optJSONArray("indices")
+                if (indicesArray != null && indicesArray.length() > 0) {
+                    val list = mutableListOf<MarketIndexItem>()
+                    for (i in 0 until indicesArray.length()) {
+                        val obj = indicesArray.optJSONObject(i) ?: continue
+                        list.add(parseMarketIndexItem(obj))
+                    }
+                    if (list.isNotEmpty()) {
+                        fetchedMarketIndices = list
+                    }
+                }
+
                 val recArray = root.optJSONArray("candidates")
                     ?: root.optJSONArray("recommendations")
                 if (recArray != null && recArray.length() > 0) {
@@ -1046,6 +1710,17 @@ class VaralakshmiRepository {
                     val parsedIpos = parseIpoNotificationsJson(root.toString())
                     if (parsedIpos.isNotEmpty()) {
                         fetchedIpoNotifications = parsedIpos
+                    }
+                }
+
+                val drArray = root.optJSONArray("daily_returns")
+                    ?: root.optJSONArray("dailyReturns")
+                    ?: root.optJSONArray("daily_pnl")
+                    ?: root.optJSONArray("dailyPnl")
+                if (drArray != null && drArray.length() > 0) {
+                    val parsedDr = parseDailyReturnsJson(drArray)
+                    if (parsedDr.isNotEmpty()) {
+                        fetchedDailyReturns = parsedDr
                     }
                 }
 
@@ -1160,6 +1835,91 @@ class VaralakshmiRepository {
                     }
                     fetchedPositions = parsedPositions
                 }
+
+                val otherArray = root.optJSONArray("other_positions") ?: root.optJSONArray("zerodha_positions")
+                if (otherArray != null) {
+                    val parsedOthers = mutableListOf<PositionItem>()
+                    for (i in 0 until otherArray.length()) {
+                        val obj = otherArray.optJSONObject(i) ?: continue
+                        val symbol = obj.optString("symbol", "")
+                        val quantity = obj.optInt("quantity", 0)
+                        val entryPrice = obj.optDouble("entry_price", 0.0)
+                        val currentPrice = obj.optDouble("current_price", 0.0)
+                        val marketValue = if (obj.has("market_value") && !obj.isNull("market_value")) {
+                            roundPaise(obj.optDouble("market_value", 0.0))
+                        } else roundPaise(quantity * currentPrice)
+                        val unrealizedPnl = if (obj.has("unrealized_pnl") && !obj.isNull("unrealized_pnl")) {
+                            roundPaise(obj.optDouble("unrealized_pnl", 0.0))
+                        } else roundPaise(marketValue - (quantity * entryPrice))
+                        val unrealizedPnlPct = if (obj.has("unrealized_pnl_pct") && !obj.isNull("unrealized_pnl_pct")) {
+                            roundPaise(obj.optDouble("unrealized_pnl_pct", 0.0))
+                        } else {
+                            if (entryPrice > 0.0) roundPaise(((currentPrice - entryPrice) / entryPrice) * 100.0) else 0.0
+                        }
+                        val peakPrice = if (obj.has("peak_price") && !obj.isNull("peak_price")) {
+                            obj.optDouble("peak_price", currentPrice)
+                        } else currentPrice
+                        val entryDate = obj.optString("entry_date", "")
+                        val status = obj.optString("status", "OPEN")
+                        val prevClose = if (obj.has("previous_close") && !obj.isNull("previous_close")) {
+                            obj.optDouble("previous_close", 0.0)
+                        } else if (obj.has("prev_close") && !obj.isNull("prev_close")) {
+                            obj.optDouble("prev_close", 0.0)
+                        } else 0.0
+
+                        val effectivePrevClose = if (prevClose > 0.0) prevClose else entryPrice
+                        val isBoughtToday = isPositionBoughtToday(entryDate)
+                        val refPrice = calculateReferencePrice(entryDate, entryPrice, effectivePrevClose)
+
+                        val todayChg = if (refPrice > 0.0) {
+                            roundPaise(currentPrice - refPrice)
+                        } else if (obj.has("today_price_change") && !obj.isNull("today_price_change")) {
+                            roundPaise(obj.optDouble("today_price_change", 0.0))
+                        } else {
+                            0.0
+                        }
+
+                        val todayChgPct = if (refPrice > 0.0) {
+                            roundPaise(((currentPrice - refPrice) / refPrice) * 100.0)
+                        } else if (obj.has("today_price_change_pct") && !obj.isNull("today_price_change_pct")) {
+                            roundPaise(obj.optDouble("today_price_change_pct", 0.0))
+                        } else {
+                            0.0
+                        }
+
+                        val todayValChg = if (obj.has("today_value_change") && !obj.isNull("today_value_change")) {
+                            roundPaise(obj.optDouble("today_value_change", 0.0))
+                        } else {
+                            roundPaise(quantity * todayChg)
+                        }
+
+                        parsedOthers.add(
+                            PositionItem(
+                                positionId = obj.optString("position_id", "ZERODHA_${symbol}"),
+                                symbol = symbol,
+                                quantity = quantity,
+                                entryPrice = entryPrice,
+                                currentPrice = currentPrice,
+                                marketValue = marketValue,
+                                unrealizedPnl = unrealizedPnl,
+                                unrealizedPnlPct = unrealizedPnlPct,
+                                peakPrice = peakPrice,
+                                entryDate = entryDate,
+                                status = status,
+                                previousClose = effectivePrevClose,
+                                referencePrice = refPrice,
+                                isBoughtToday = isBoughtToday,
+                                todayPriceChange = todayChg,
+                                todayPriceChangePct = todayChgPct,
+                                todayValueChange = todayValChg,
+                                isProfitTargetEnabled = false,
+                                isStrategy = false,
+                                category = obj.optString("category", "ZERODHA")
+                            )
+                        )
+                    }
+                    fetchedOtherPositions = parsedOthers
+                }
             } else {
                 networkError = "Positions endpoint returned empty response"
             }
@@ -1205,7 +1965,11 @@ class VaralakshmiRepository {
                                 quantity = obj.optInt("quantity", 0),
                                 fillPrice = obj.optDouble("fill_price", 0.0),
                                 grossAmount = obj.optDouble("gross_amount", 0.0),
-                                fees = obj.optDouble("fees", 20.0),
+                                fees = run {
+                                    val gross = obj.optDouble("gross_amount", 0.0)
+                                    val raw = obj.optDouble("fees", 0.0)
+                                    if (raw <= 0.0 || raw == 20.0) calculateZerodhaDeliveryFees(gross, side) else raw
+                                },
                                 realizedPnl = realized,
                                 pnlDifference = diffStr
                             )
@@ -1224,6 +1988,8 @@ class VaralakshmiRepository {
         var fetchedAvailableCapital: Double? = null
         var fetchedReservedCapital: Double? = null
         var fetchedRealizedPnl: Double? = null
+        var fetchedCagrPct: Double? = null
+        var fetchedInceptionDate: String? = null
 
         try {
             // 3. Fetch strategies to sync dynamic capital allocation
@@ -1250,6 +2016,14 @@ class VaralakshmiRepository {
                             }
                             if (obj.has("realized_pnl") && !obj.isNull("realized_pnl")) {
                                 fetchedRealizedPnl = roundPaise(obj.optDouble("realized_pnl", 0.0))
+                            }
+                            if (obj.has("current_cagr") && !obj.isNull("current_cagr")) {
+                                fetchedCagrPct = roundPaise(obj.optDouble("current_cagr", 0.0))
+                            } else if (obj.has("cagr_pct") && !obj.isNull("cagr_pct")) {
+                                fetchedCagrPct = roundPaise(obj.optDouble("cagr_pct", 0.0))
+                            }
+                            if (obj.has("created_at") && !obj.isNull("created_at")) {
+                                fetchedInceptionDate = obj.optString("created_at", "2026-09-17")
                             }
                             break
                         }
@@ -1349,9 +2123,38 @@ class VaralakshmiRepository {
             }
         }
 
+        if (fetchedDailyReturns == null) {
+            try {
+                val drUrl = "$cleanUrl/api/live-trading/daily-returns?strategy=VARALAKSHMI_ALPHA_SCALE_35$tokenQuery"
+                val drJson = httpGet(drUrl, authToken)
+                if (drJson != null) {
+                    val parsed = parseDailyReturnsJson(drJson)
+                    if (parsed.isNotEmpty()) {
+                        fetchedDailyReturns = parsed
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Keep cached daily returns
+            }
+        }
+
         synchronized(lock) {
             if (fetchedNifty != null) {
                 cachedNifty = fetchedNifty
+            }
+
+            if (fetchedMarketIndices != null && fetchedMarketIndices.isNotEmpty()) {
+                cachedMarketIndices.clear()
+                cachedMarketIndices.addAll(fetchedMarketIndices)
+                cachedNifty = fetchedMarketIndices[0]
+            } else if (fetchedNifty != null) {
+                if (cachedMarketIndices.isNotEmpty()) {
+                    cachedMarketIndices[0] = fetchedNifty
+                } else {
+                    cachedMarketIndices.add(fetchedNifty)
+                }
             }
 
             if (fetchedRecommendations != null) {
@@ -1366,14 +2169,22 @@ class VaralakshmiRepository {
             }
 
             if (fetchedIpoNotifications != null) {
-                // Merge with existing dismissed states
+                // Filter out legacy sample alert and only keep today or future deadlines
+                val validFetched = fetchedIpoNotifications
+                    .filterNot { it.id == "IPO-ALERT-SANTHANA-001" }
+                    .filter { it.isDeadlineTodayOrFuture }
                 val dismissedIds = cachedIpoNotifications.filter { it.isDismissed }.map { it.id }.toSet()
                 cachedIpoNotifications.clear()
                 cachedIpoNotifications.addAll(
-                    fetchedIpoNotifications.map {
+                    validFetched.map {
                         if (it.id in dismissedIds) it.copy(isDismissed = true) else it
                     }
                 )
+            }
+
+            if (fetchedDailyReturns != null && fetchedDailyReturns.isNotEmpty()) {
+                cachedDailyReturns.clear()
+                cachedDailyReturns.addAll(fetchedDailyReturns)
             }
 
             if (fetchedPositions != null) {
@@ -1400,6 +2211,8 @@ class VaralakshmiRepository {
                 val prevNav = nav - todayPnl
                 val todayPnlPct = if (prevNav > 0.0) roundPaise((todayPnl / prevNav) * 100.0) else if (allocated > 0.0) roundPaise((todayPnl / allocated) * 100.0) else 0.0
                 val nowStr = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())
+                val inceptDate = fetchedInceptionDate ?: cachedSummary.inceptionDate
+                val computedCagr = fetchedCagrPct ?: calculateCurrentCagr(nav, allocated, inceptDate, nowStr)
 
                 cachedSummary = cachedSummary.copy(
                     totalNav = nav,
@@ -1414,7 +2227,9 @@ class VaralakshmiRepository {
                     todayPnl = todayPnl,
                     todayPnlPct = todayPnlPct,
                     activeSlots = cachedPositions.size,
-                    lastUpdated = nowStr
+                    lastUpdated = nowStr,
+                    cagrPct = computedCagr,
+                    inceptionDate = inceptDate
                 )
                 saveToDisk()
 
@@ -1423,15 +2238,23 @@ class VaralakshmiRepository {
                     .filterNot { it.symbol.trim().uppercase(Locale.US) in heldSymbols }
                     .mapIndexed { idx, item -> item.copy(rank = idx + 1) }
 
+                if (fetchedOtherPositions != null) {
+                    cachedOtherPositions.clear()
+                    cachedOtherPositions.addAll(fetchedOtherPositions)
+                }
+
                 SyncResult.Success(
                     summary = cachedSummary,
                     positions = cachedPositions.toList(),
                     transactions = cachedTransactions.toList(),
+                    dailyReturns = cachedDailyReturns.toList(),
                     nifty = cachedNifty,
+                    marketIndices = cachedMarketIndices.toList(),
                     recommendations = cleanRecommendations,
                     recommendationHistory = cachedRecommendationHistory.toList(),
                     recommendationHistorySummary = cachedRecommendationHistorySummary,
-                    ipoNotifications = cachedIpoNotifications.toList()
+                    ipoNotifications = cachedIpoNotifications.toList(),
+                    otherPositions = cachedOtherPositions.toList()
                 )
             } else {
                 val heldSymbols = cachedPositions.map { it.symbol.trim().uppercase(Locale.US) }.toSet()
@@ -1445,11 +2268,14 @@ class VaralakshmiRepository {
                     positions = cachedPositions.toList(),
                     transactions = cachedTransactions.toList(),
                     message = networkError ?: "Offline mode: server unreachable",
+                    dailyReturns = cachedDailyReturns.toList(),
                     nifty = cachedNifty,
+                    marketIndices = cachedMarketIndices.toList(),
                     recommendations = cleanRecommendations,
                     recommendationHistory = cachedRecommendationHistory.toList(),
                     recommendationHistorySummary = cachedRecommendationHistorySummary,
-                    ipoNotifications = cachedIpoNotifications.toList()
+                    ipoNotifications = cachedIpoNotifications.toList(),
+                    otherPositions = cachedOtherPositions.toList()
                 )
             }
         }
@@ -1525,6 +2351,50 @@ class VaralakshmiRepository {
             Triple(cachedSummary, cachedPositions.toList(), cachedTransactions.toList())
         }
 
+    fun restorePosition(position: PositionItem): Triple<PortfolioSummary, List<PositionItem>, List<TransactionItem>> = synchronized(lock) {
+        ensureLoaded()
+        if (cachedPositions.none { it.symbol.equals(position.symbol, ignoreCase = true) }) {
+            cachedPositions.add(position)
+            cachedTransactions.removeAll { it.side == "SELL" && it.symbol.equals(position.symbol, ignoreCase = true) }
+
+            val proceeds = roundPaise(position.marketValue)
+            val realizedGain = roundPaise(position.unrealizedPnl)
+            val costBasis = roundPaise(position.marketValue - position.unrealizedPnl)
+
+            val newRealizedPnl = roundPaise(cachedSummary.realizedPnl - realizedGain)
+            val newAvailableCapital = roundPaise((cachedSummary.availableCapital - proceeds).coerceAtLeast(0.0))
+            val newDeployedCapital = roundPaise(cachedSummary.deployedCapital + costBasis)
+            val totalUnrealized = roundPaise(cachedPositions.sumOf { it.unrealizedPnl })
+            val reserved = cachedSummary.reservedCapital
+            val nav = roundPaise(newDeployedCapital + newAvailableCapital + reserved + totalUnrealized)
+            val allocated = cachedSummary.allocatedCapital
+            val totalPnl = roundPaise(newRealizedPnl + totalUnrealized)
+            val totalPnlPct = if (allocated > 0) (totalPnl / allocated) * 100.0 else 0.0
+            val totalTodayPnl = roundPaise(cachedPositions.sumOf { it.todayValueChange })
+            val prevNav = nav - totalTodayPnl
+            val todayPnlPct = if (prevNav > 0.0) roundPaise((totalTodayPnl / prevNav) * 100.0) else 0.0
+
+            val nowStr = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())
+
+            cachedSummary = cachedSummary.copy(
+                totalNav = nav,
+                deployedCapital = newDeployedCapital,
+                availableCapital = newAvailableCapital,
+                reservedCapital = reserved,
+                realizedPnl = newRealizedPnl,
+                unrealizedPnl = totalUnrealized,
+                totalPnl = totalPnl,
+                totalPnlPct = totalPnlPct,
+                todayPnl = totalTodayPnl,
+                todayPnlPct = todayPnlPct,
+                activeSlots = cachedPositions.size,
+                lastUpdated = nowStr
+            )
+            saveToDisk()
+        }
+        Triple(cachedSummary, cachedPositions.toList(), cachedTransactions.toList())
+    }
+
     fun updateProfitTarget(symbol: String, enabled: Boolean): List<PositionItem> = synchronized(lock) {
         ensureLoaded()
         val index = cachedPositions.indexOfFirst { it.symbol.equals(symbol, ignoreCase = true) }
@@ -1582,21 +2452,36 @@ class VaralakshmiRepository {
             val payload = JSONObject().apply {
                 put("strategy_id", strategyId)
                 put("symbol", symbol)
+                put("confirmation_token", "CONFIRMED_BY_USER")
             }
             val res = httpPost(endpoint, payload.toString(), authToken)
             if (res != null) {
                 val json = JSONObject(res)
                 val success = json.optBoolean("success", false)
-                val msg = json.optString("message", if (success) "Exit order submitted to broker" else "Exit order rejected")
+                val zerodhaId = json.optString("zerodha_order_id", "")
+                val clientOrderId = json.optString("client_order_id", "")
+                val orderLabel = when {
+                    zerodhaId.isNotBlank() -> "Zerodha Order ID: $zerodhaId"
+                    clientOrderId.isNotBlank() -> "Client Order: $clientOrderId"
+                    else -> ""
+                }
+                val defaultSuccessMsg = if (orderLabel.isNotBlank()) {
+                    "Live exit order submitted to Zerodha Kite ($orderLabel)"
+                } else {
+                    "Live exit order submitted to Zerodha Kite"
+                }
+                val msg = json.optString("message", defaultSuccessMsg)
                 if (success) {
                     removePosition(symbol)
                     Result.success(msg)
                 } else {
-                    val err = json.optString("error", msg)
-                    if (json.optString("status") == "NOT_FOUND" || err.contains("No open position", ignoreCase = true)) {
+                    val err = json.optString("reason", json.optString("error", json.optString("message", "Exit order rejected by broker / risk gateway")))
+                    val status = json.optString("status")
+                    if (status == "CLOSED" || status == "NOT_FOUND" || err.contains("already closed", ignoreCase = true) || err.contains("No open position", ignoreCase = true)) {
                         removePosition(symbol)
                         Result.success("Position already closed on server")
                     } else {
+                        // Strict safety: DO NOT remove position locally when broker order fails or is rejected
                         Result.failure(Exception(err))
                     }
                 }
@@ -1675,8 +2560,12 @@ class VaralakshmiRepository {
             if (responseCode in 200..299) {
                 conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
             } else {
-                conn.errorStream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
-                null
+                val errText = conn.errorStream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+                if (!errText.isNullOrBlank()) {
+                    errText
+                } else {
+                    null
+                }
             }
         } catch (e: CancellationException) {
             throw e
@@ -1716,6 +2605,8 @@ class VaralakshmiRepository {
                 put("activeSlots", cachedSummary.activeSlots)
                 put("maxSlots", cachedSummary.maxSlots)
                 put("lastUpdated", cachedSummary.lastUpdated)
+                put("cagrPct", cachedSummary.cagrPct)
+                put("inceptionDate", cachedSummary.inceptionDate)
             }
             root.put("summary", summaryObj)
             root.put("serverUrl", cachedServerUrl)
@@ -1765,6 +2656,42 @@ class VaralakshmiRepository {
             }
             root.put("transactions", txArray)
 
+            val drArray = JSONArray()
+            val dailyReturnsSnapshot = synchronized(lock) { cachedDailyReturns.toList() }
+            for (dr in dailyReturnsSnapshot) {
+                val drObj = JSONObject().apply {
+                    put("date", dr.date)
+                    put("daily_pnl", dr.dailyPnl)
+                    put("return_pct", dr.returnPct)
+                    put("total_nav", dr.totalNav)
+                    put("trade_count", dr.tradeCount)
+                    put("status", dr.status)
+                    val tradesArray = JSONArray()
+                    for (t in dr.trades) {
+                        val tObj = JSONObject().apply {
+                            put("transactionId", t.transactionId)
+                            put("transaction_id", t.transactionId)
+                            put("timestamp", t.timestamp)
+                            put("side", t.side)
+                            put("symbol", t.symbol)
+                            put("quantity", t.quantity)
+                            put("fillPrice", t.fillPrice)
+                            put("fill_price", t.fillPrice)
+                            put("grossAmount", t.grossAmount)
+                            put("gross_amount", t.grossAmount)
+                            put("fees", t.fees)
+                            put("realizedPnl", t.realizedPnl)
+                            put("realized_pnl", t.realizedPnl)
+                            put("pnlDifference", t.pnlDifference)
+                        }
+                        tradesArray.put(tObj)
+                    }
+                    put("trades", tradesArray)
+                }
+                drArray.put(drObj)
+            }
+            root.put("daily_returns", drArray)
+
             val niftyObj = JSONObject().apply {
                 put("symbol", cachedNifty.symbol)
                 put("ltp", cachedNifty.ltp)
@@ -1778,6 +2705,24 @@ class VaralakshmiRepository {
                 put("status", cachedNifty.status)
             }
             root.put("nifty", niftyObj)
+
+            val indicesArray = JSONArray()
+            for (idx in cachedMarketIndices) {
+                val idxObj = JSONObject().apply {
+                    put("symbol", idx.symbol)
+                    put("ltp", idx.ltp)
+                    put("change", idx.change)
+                    put("changePct", idx.changePct)
+                    put("open", idx.open)
+                    put("high", idx.high)
+                    put("low", idx.low)
+                    put("previousClose", idx.previousClose)
+                    put("timestamp", idx.timestamp)
+                    put("status", idx.status)
+                }
+                indicesArray.put(idxObj)
+            }
+            root.put("market_indices", indicesArray)
 
             val recArray = JSONArray()
             for (r in cachedRecommendations) {
@@ -1882,7 +2827,12 @@ class VaralakshmiRepository {
                     todayPnlPct = optSafeDouble(summaryObj, "todayPnlPct", cachedSummary.todayPnlPct),
                     activeSlots = summaryObj.optInt("activeSlots", cachedSummary.activeSlots),
                     maxSlots = summaryObj.optInt("maxSlots", cachedSummary.maxSlots),
-                    lastUpdated = summaryObj.optString("lastUpdated", cachedSummary.lastUpdated)
+                    lastUpdated = summaryObj.optString("lastUpdated", cachedSummary.lastUpdated),
+                    cagrPct = optSafeDouble(
+                        summaryObj, "cagrPct",
+                        optSafeDouble(summaryObj, "cagr_pct", optSafeDouble(summaryObj, "current_cagr", cachedSummary.cagrPct))
+                    ),
+                    inceptionDate = summaryObj.optString("inceptionDate", summaryObj.optString("inception_date", cachedSummary.inceptionDate))
                 )
             } else null
 
@@ -2015,7 +2965,11 @@ class VaralakshmiRepository {
                             quantity = tx.optInt("quantity", 0),
                             fillPrice = optSafeDouble(tx, "fillPrice", if (tx.has("fill_price")) optSafeDouble(tx, "fill_price", 0.0) else 0.0),
                             grossAmount = optSafeDouble(tx, "grossAmount", if (tx.has("gross_amount")) optSafeDouble(tx, "gross_amount", 0.0) else 0.0),
-                            fees = optSafeDouble(tx, "fees", 20.0),
+                            fees = run {
+                                val gross = optSafeDouble(tx, "grossAmount", if (tx.has("gross_amount")) optSafeDouble(tx, "gross_amount", 0.0) else 0.0)
+                                val raw = optSafeDouble(tx, "fees", 0.0)
+                                if (raw <= 0.0 || raw == 20.0) calculateZerodhaDeliveryFees(gross, side) else raw
+                            },
                             realizedPnl = realized,
                             pnlDifference = pnlDiff
                         )
@@ -2026,18 +2980,18 @@ class VaralakshmiRepository {
 
             val niftyObj = root.optJSONObject("nifty")
             val parsedNifty = if (niftyObj != null) {
-                MarketIndexItem(
-                    symbol = niftyObj.optString("symbol", cachedNifty.symbol),
-                    ltp = optSafeDouble(niftyObj, "ltp", cachedNifty.ltp),
-                    change = optSafeDouble(niftyObj, "change", cachedNifty.change),
-                    changePct = optSafeDouble(niftyObj, "changePct", optSafeDouble(niftyObj, "change_pct", cachedNifty.changePct)),
-                    open = optSafeDouble(niftyObj, "open", cachedNifty.open),
-                    high = optSafeDouble(niftyObj, "high", cachedNifty.high),
-                    low = optSafeDouble(niftyObj, "low", cachedNifty.low),
-                    previousClose = optSafeDouble(niftyObj, "previousClose", optSafeDouble(niftyObj, "previous_close", cachedNifty.previousClose)),
-                    timestamp = niftyObj.optString("timestamp", cachedNifty.timestamp),
-                    status = niftyObj.optString("status", cachedNifty.status)
-                )
+                parseMarketIndexItem(niftyObj, cachedNifty)
+            } else null
+
+            val indicesArray = root.optJSONArray("market_indices")
+                ?: root.optJSONArray("indices")
+            val parsedIndices = if (indicesArray != null && indicesArray.length() > 0) {
+                val list = mutableListOf<MarketIndexItem>()
+                for (i in 0 until indicesArray.length()) {
+                    val obj = indicesArray.optJSONObject(i) ?: continue
+                    list.add(parseMarketIndexItem(obj))
+                }
+                list
             } else null
 
             val recArray = root.optJSONArray("candidates")
@@ -2056,6 +3010,14 @@ class VaralakshmiRepository {
                 ?: root.optJSONArray("ipo_signals")
             val parsedIpos = if (ipoArray != null && ipoArray.length() > 0) {
                 parseIpoNotificationsJson(root.toString())
+            } else null
+
+            val drArray = root.optJSONArray("daily_returns")
+                ?: root.optJSONArray("dailyReturns")
+                ?: root.optJSONArray("daily_pnl")
+                ?: root.optJSONArray("dailyPnl")
+            val parsedDailyReturns = if (drArray != null && drArray.length() > 0) {
+                parseDailyReturnsJson(drArray)
             } else null
 
             if (root.has("serverUrl") && !root.isNull("serverUrl")) {
@@ -2106,8 +3068,15 @@ class VaralakshmiRepository {
                 cachedTransactions.clear()
                 cachedTransactions.addAll(parsedTransactions)
             }
-            if (parsedNifty != null) {
+            if (parsedIndices != null && parsedIndices.isNotEmpty()) {
+                cachedMarketIndices.clear()
+                cachedMarketIndices.addAll(parsedIndices)
+                cachedNifty = parsedIndices[0]
+            } else if (parsedNifty != null) {
                 cachedNifty = parsedNifty
+                if (cachedMarketIndices.isNotEmpty()) {
+                    cachedMarketIndices[0] = parsedNifty
+                }
             }
             if (parsedRecommendations != null && parsedRecommendations.isNotEmpty()) {
                 val isOldPlaceholder = parsedRecommendations.any { it.symbol == "CUPID" }
@@ -2129,10 +3098,23 @@ class VaralakshmiRepository {
                 cachedRecommendationHistorySummary = calculateRecommendationHistorySummary(cachedRecommendationHistory)
             }
             if (parsedIpos != null) {
-                // Filter out legacy sample alert so it doesn't linger after app update
-                val cleanIpos = parsedIpos.filterNot { it.id == "IPO-ALERT-SANTHANA-001" }
+                // Filter out legacy sample alert and only keep today or future deadlines
+                val cleanIpos = parsedIpos
+                    .filterNot { it.id == "IPO-ALERT-SANTHANA-001" }
+                    .filter { it.isDeadlineTodayOrFuture }
                 cachedIpoNotifications.clear()
                 cachedIpoNotifications.addAll(cleanIpos)
+            }
+            if (parsedDailyReturns != null && parsedDailyReturns.isNotEmpty()) {
+                val isLegacyReturnsCache = parsedDailyReturns.size == 7 &&
+                    parsedDailyReturns.firstOrNull()?.date == "2026-09-21" &&
+                    parsedDailyReturns.all { it.trades.isEmpty() }
+                cachedDailyReturns.clear()
+                if (!isLegacyReturnsCache) {
+                    cachedDailyReturns.addAll(parsedDailyReturns)
+                } else {
+                    cachedDailyReturns.addAll(createDefaultDailyReturns())
+                }
             }
             isLoadedFromDisk = true
             true
@@ -2214,12 +3196,8 @@ class VaralakshmiRepository {
     fun selectFnoInstance(instanceId: String): VeeraLakshmiUiState {
         synchronized(lock) {
             val current = getCachedFnoState()
-            val filteredPositions = getSeedPositionsForInstance(instanceId)
-            val filteredDailyPnl = getSeedDailyPnlForInstance(instanceId)
             val updated = current.copy(
-                selectedInstanceId = instanceId,
-                activePositions = if (current.isLiveSync && current.selectedInstanceId == instanceId) current.activePositions else filteredPositions,
-                dailyPnlHistory = if (current.isLiveSync && current.dailyPnlHistory.isNotEmpty()) current.dailyPnlHistory else filteredDailyPnl
+                selectedInstanceId = instanceId
             )
             cachedFnoState = updated
             return updated
@@ -2228,7 +3206,7 @@ class VaralakshmiRepository {
 
     suspend fun syncFno(
         serverUrl: String,
-        selectedInstanceId: String = "50L",
+        selectedInstanceId: String = "10L",
         authToken: String? = null
     ): VeeraLakshmiUiState = withContext(Dispatchers.IO) {
         val sUrl = serverUrl.trim().trimEnd('/')
@@ -2238,6 +3216,10 @@ class VaralakshmiRepository {
         var statusInfo = FnoStatusInfo()
         var isLive = false
         var errorMsg: String? = null
+        var positionsJson: String? = null
+        var instancesJson: String? = null
+        var statusJson: String? = null
+        var dailyPnlJson: String? = null
 
         try {
             coroutineScope {
@@ -2246,24 +3228,24 @@ class VaralakshmiRepository {
                 val statusDeferred = async { httpGet("$sUrl/api/fno/status", authToken) }
                 val dailyPnlDeferred = async { httpGet("$sUrl/api/fno/daily-pnl?instance=$selectedInstanceId", authToken) }
 
-                val instancesJson = instancesDeferred.await()
-                val positionsJson = positionsDeferred.await()
-                val statusJson = statusDeferred.await()
-                val dailyPnlJson = dailyPnlDeferred.await()
+                instancesJson = instancesDeferred.await()
+                positionsJson = positionsDeferred.await()
+                statusJson = statusDeferred.await()
+                dailyPnlJson = dailyPnlDeferred.await()
 
                 if (!instancesJson.isNullOrBlank()) {
-                    instancesMap = parseFnoInstances(instancesJson)
+                    instancesMap = parseFnoInstances(instancesJson!!)
                     isLive = true
                 }
                 if (!positionsJson.isNullOrBlank()) {
-                    positionsList = parseFnoPositions(positionsJson)
+                    positionsList = parseFnoPositions(positionsJson!!)
                     isLive = true
                 }
                 if (!statusJson.isNullOrBlank()) {
-                    statusInfo = parseFnoStatus(statusJson)
+                    statusInfo = parseFnoStatus(statusJson!!)
                 }
                 if (!dailyPnlJson.isNullOrBlank()) {
-                    dailyPnlList = parseFnoDailyPnl(dailyPnlJson)
+                    dailyPnlList = parseFnoDailyPnl(dailyPnlJson!!)
                 }
             }
         } catch (e: Exception) {
@@ -2271,31 +3253,30 @@ class VaralakshmiRepository {
             errorMsg = e.message ?: "Failed to sync F&O data"
         }
 
-        val baseState = getCachedFnoState()
         val newState = if (isLive && instancesMap.isNotEmpty()) {
-            val resolvedPositions = if (positionsList.isNotEmpty()) positionsList else getSeedPositionsForInstance(selectedInstanceId)
-            val resolvedDailyPnl = if (dailyPnlList.isNotEmpty()) dailyPnlList else getSeedDailyPnlForInstance(selectedInstanceId)
+            val posJson = positionsJson
+            val closedFromPositions = if (!posJson.isNullOrBlank()) parseFnoClosedTrades(posJson) else emptyList()
+            val tradesFromDaily = dailyPnlList.firstOrNull { it.isToday }?.trades ?: emptyList()
+            val todayTrades = if (tradesFromDaily.isNotEmpty()) tradesFromDaily else closedFromPositions
+
             val state = VeeraLakshmiUiState(
                 selectedInstanceId = selectedInstanceId,
                 instances = instancesMap,
-                activePositions = resolvedPositions,
-                dailyPnlHistory = resolvedDailyPnl,
+                activePositions = positionsList,
+                dailyPnlHistory = dailyPnlList,
                 statusInfo = statusInfo,
                 isLoading = false,
                 isLiveSync = true,
                 errorMessage = null,
-                lastSyncTimestamp = System.currentTimeMillis()
+                lastSyncTimestamp = System.currentTimeMillis(),
+                todayTrades = todayTrades
             )
             saveFnoToDisk(state)
             state
         } else {
             val loaded = loadFnoFromDisk() ?: createDefaultVeeraLakshmiState()
-            val resolvedPositions = getSeedPositionsForInstance(selectedInstanceId)
-            val resolvedDailyPnl = getSeedDailyPnlForInstance(selectedInstanceId)
             loaded.copy(
                 selectedInstanceId = selectedInstanceId,
-                activePositions = if (loaded.activePositions.isNotEmpty() && loaded.selectedInstanceId == selectedInstanceId) loaded.activePositions else resolvedPositions,
-                dailyPnlHistory = if (loaded.dailyPnlHistory.isNotEmpty()) loaded.dailyPnlHistory else resolvedDailyPnl,
                 isLoading = false,
                 isLiveSync = false,
                 errorMessage = errorMsg
@@ -2317,18 +3298,50 @@ class VaralakshmiRepository {
             while (keys.hasNext()) {
                 val key = keys.next()
                 val obj = instancesObj.optJSONObject(key) ?: continue
+                val allocated = optSafeDouble(obj, "allocated_capital", 1000000.0)
+                val unrealized = optSafeDouble(obj, "unrealized_pnl", 0.0)
+                val realized = optSafeDouble(obj, "realized_pnl", optSafeDouble(obj, "realized_pnl_today", 0.0))
+                val totalPnl = if (obj.has("total_pnl")) optSafeDouble(obj, "total_pnl", unrealized + realized) else (unrealized + realized)
+                val effectivePnl = if (totalPnl != 0.0) totalPnl else unrealized
                 val summary = FnoInstanceSummary(
                     instanceId = obj.optString("instance_id", key),
                     name = obj.optString("name", "VeeraLakshmi $key"),
-                    allocatedCapital = optSafeDouble(obj, "allocated_capital", 5000000.0),
+                    allocatedCapital = allocated,
                     marginBlocked = optSafeDouble(obj, "margin_blocked", 0.0),
-                    unrealizedPnl = optSafeDouble(obj, "unrealized_pnl", 0.0),
+                    unrealizedPnl = effectivePnl,
                     cashBuffer = optSafeDouble(obj, "cash_buffer", 0.0),
                     marginUtilizationPct = optSafeDouble(obj, "margin_utilization_pct", 0.0),
                     positionsCount = obj.optInt("positions_count", 0),
                     asOfDate = obj.optString("as_of_date", "2026-09-28")
                 )
                 result[key] = summary
+            }
+        } catch (_: Exception) {}
+        return result
+    }
+
+    fun parseFnoClosedTrades(jsonStr: String): List<FnoHistoricalTrade> {
+        val result = mutableListOf<FnoHistoricalTrade>()
+        try {
+            val root = JSONObject(jsonStr)
+            val arr = root.optJSONArray("closed_trades") ?: root.optJSONArray("trades") ?: return result
+            for (i in 0 until arr.length()) {
+                val tObj = arr.optJSONObject(i) ?: continue
+                result.add(
+                    FnoHistoricalTrade(
+                        tradeId = tObj.optString("trade_id", "trd_$i"),
+                        time = tObj.optString("exit_time", tObj.optString("time", "15:15")),
+                        symbol = tObj.optString("tradingsymbol", tObj.optString("symbol", "")),
+                        action = tObj.optString("action", if (tObj.optString("direction", "SHORT").equals("SHORT", ignoreCase = true)) "BUY" else "SELL"),
+                        instrumentType = tObj.optString("instrument_type", "OPT"),
+                        lots = tObj.optInt("lots", 1),
+                        quantity = tObj.optInt("closed_quantity", tObj.optInt("quantity", 0)),
+                        executionPrice = optSafeDouble(tObj, "exit_price", optSafeDouble(tObj, "execution_price", 0.0)),
+                        realizedPnl = optSafeDouble(tObj, "net_pnl", optSafeDouble(tObj, "realized_pnl", 0.0)),
+                        executionReason = tObj.optString("exit_reason", tObj.optString("execution_reason", "")),
+                        costs = optSafeDouble(tObj, "total_friction", optSafeDouble(tObj, "costs", 0.0))
+                    )
+                )
             }
         } catch (_: Exception) {}
         return result
@@ -2343,18 +3356,18 @@ class VaralakshmiRepository {
                 val obj = arr.optJSONObject(i) ?: continue
                 val item = FnoPositionItem(
                     positionId = obj.optString("position_id", "pos_$i"),
-                    strategyEngine = obj.optString("strategy_engine", "IndexTrendEngine"),
-                    symbol = obj.optString("symbol", "NIFTY_FUT"),
-                    instrumentType = obj.optString("instrument_type", "FUT"),
+                    strategyEngine = obj.optString("strategy_engine", "IntradayStraddleEngine"),
+                    symbol = obj.optString("symbol", obj.optString("tradingsymbol", "NIFTY_FUT")),
+                    instrumentType = obj.optString("instrument_type", "OPT"),
                     direction = obj.optString("direction", "SHORT"),
                     quantity = obj.optInt("quantity", 1),
                     lots = obj.optInt("lots", 1),
                     entryPrice = optSafeDouble(obj, "entry_price", 0.0),
                     currentPrice = optSafeDouble(obj, "current_price", 0.0),
-                    marginRequired = optSafeDouble(obj, "margin_required", 0.0),
+                    marginRequired = optSafeDouble(obj, "margin_required", optSafeDouble(obj, "margin_blocked", 0.0)),
                     stopLossPrice = optSafeDouble(obj, "stop_loss_price", 0.0),
-                    unrealizedPnl = optSafeDouble(obj, "unrealized_pnl", 0.0),
-                    expiryDate = obj.optString("expiry_date", ""),
+                    unrealizedPnl = optSafeDouble(obj, "unrealized_pnl", optSafeDouble(obj, "pnl", 0.0)),
+                    expiryDate = obj.optString("expiry_date", obj.optString("expiry", "")),
                     strikePrice = optSafeDouble(obj, "strike_price", 0.0),
                     optionType = if (obj.has("option_type") && !obj.isNull("option_type")) obj.optString("option_type") else null,
                     entryReason = obj.optString("entry_reason", obj.optString("reason", obj.optString("rationale", ""))),
@@ -2374,16 +3387,17 @@ class VaralakshmiRepository {
             val summaryMetrics = root.optJSONObject("summary_metrics")
             return FnoStatusInfo(
                 subsystem = root.optString("subsystem", "fno"),
-                status = root.optString("status", "READY"),
-                vixLevel = optSafeDouble(root, "vix_level", 8.81),
+                status = root.optString("status", root.optString("today_status", "READY")),
+                vixLevel = optSafeDouble(root, "vix_level", 0.0),
                 vixRegime = root.optString("vix_regime", "NORMAL"),
                 circuitBreakerTier = root.optString("circuit_breaker_tier", "Tier 0 (Normal)"),
-                cagrPct = if (summaryMetrics != null) optSafeDouble(summaryMetrics, "cagr_pct", 34.85) else 34.85,
-                ytdPct = if (summaryMetrics != null) optSafeDouble(summaryMetrics, "ytd_2026_pct", 27.66) else 27.66,
-                maxDrawdownPct = if (summaryMetrics != null) optSafeDouble(summaryMetrics, "max_drawdown_pct", -14.31) else -14.31,
-                sharpeRatio = if (summaryMetrics != null) optSafeDouble(summaryMetrics, "sharpe_ratio", 1.63) else 1.63,
-                winRatePct = if (summaryMetrics != null) optSafeDouble(summaryMetrics, "win_rate_pct", 64.75) else 64.75,
-                lastDate = root.optString("last_date", "2026-09-28")
+                cagrPct = if (summaryMetrics != null) optSafeDouble(summaryMetrics, "cagr_pct", 0.0) else 0.0,
+                ytdPct = if (summaryMetrics != null) optSafeDouble(summaryMetrics, "ytd_2026_pct", 0.0) else 0.0,
+                maxDrawdownPct = if (summaryMetrics != null) optSafeDouble(summaryMetrics, "max_drawdown_pct", 0.0) else 0.0,
+                sharpeRatio = if (summaryMetrics != null) optSafeDouble(summaryMetrics, "sharpe_ratio", 0.0) else 0.0,
+                winRatePct = if (summaryMetrics != null) optSafeDouble(summaryMetrics, "win_rate_pct", 0.0) else 0.0,
+                lastDate = root.optString("last_date", "2026-10-09"),
+                noTradeReason = if (root.has("no_trade_reason") && !root.isNull("no_trade_reason")) root.optString("no_trade_reason") else null
             )
         } catch (_: Exception) {
             return FnoStatusInfo()
@@ -2435,21 +3449,23 @@ class VaralakshmiRepository {
                                 quantity = tObj.optInt("quantity", 0),
                                 executionPrice = optSafeDouble(tObj, "execution_price", 0.0),
                                 realizedPnl = optSafeDouble(tObj, "realized_pnl", 0.0),
-                                executionReason = tObj.optString("execution_reason", "")
+                                executionReason = tObj.optString("execution_reason", ""),
+                                costs = optSafeDouble(tObj, "costs", 0.0)
                             )
                         )
                     }
                 }
 
                 val item = FnoDailyPnlItem(
-                    date = obj.optString("date", "2026-09-28"),
+                    date = obj.optString("date", "2026-10-09"),
                     dailyPnl = optSafeDouble(obj, "daily_pnl", 0.0),
                     dailyReturnPct = optSafeDouble(obj, "daily_return_pct", 0.0),
-                    totalEquity = optSafeDouble(obj, "total_equity", 5000000.0),
+                    totalEquity = optSafeDouble(obj, "total_equity", 1000000.0),
                     marginBlocked = optSafeDouble(obj, "margin_blocked", 0.0),
                     positionsCount = obj.optInt("positions_count", if (posList.isNotEmpty()) posList.size else 0),
                     tradeCount = obj.optInt("trade_count", if (tradeList.isNotEmpty()) tradeList.size else 0),
                     dayStatus = obj.optString("day_status", if (optSafeDouble(obj, "daily_pnl", 0.0) >= 0.0) "WIN" else "LOSS"),
+                    costs = optSafeDouble(obj, "costs", 0.0),
                     positions = posList,
                     trades = tradeList
                 )
@@ -2466,7 +3482,7 @@ class VaralakshmiRepository {
         return try {
             val text = file.readText(Charsets.UTF_8)
             val root = JSONObject(text)
-            val selectedId = root.optString("selected_instance_id", "50L")
+            val selectedId = root.optString("selected_instance_id", "10L")
             val instancesJson = root.optString("instances_json", "")
             val positionsJson = root.optString("positions_json", "")
             val dailyPnlJson = root.optString("daily_pnl_json", "")
@@ -2474,10 +3490,8 @@ class VaralakshmiRepository {
             val lastSync = root.optLong("last_sync_timestamp", 0L)
 
             val instances = if (instancesJson.isNotBlank()) parseFnoInstances(instancesJson) else emptyMap()
-            val rawPositions = if (positionsJson.isNotBlank()) parseFnoPositions(positionsJson) else emptyList()
-            val positions = if (rawPositions.isNotEmpty()) rawPositions else getSeedPositionsForInstance(selectedId)
-            val rawDailyPnl = if (dailyPnlJson.isNotBlank()) parseFnoDailyPnl(dailyPnlJson) else emptyList()
-            val dailyPnl = if (rawDailyPnl.isNotEmpty()) rawDailyPnl else getSeedDailyPnlForInstance(selectedId)
+            val positions = if (positionsJson.isNotBlank()) parseFnoPositions(positionsJson) else emptyList()
+            val dailyPnl = if (dailyPnlJson.isNotBlank()) parseFnoDailyPnl(dailyPnlJson) else emptyList()
             val status = if (statusJson.isNotBlank()) parseFnoStatus(statusJson) else FnoStatusInfo()
 
             if (instances.isNotEmpty()) {
@@ -2490,7 +3504,8 @@ class VaralakshmiRepository {
                     isLoading = false,
                     isLiveSync = false,
                     errorMessage = null,
-                    lastSyncTimestamp = lastSync
+                    lastSyncTimestamp = lastSync,
+                    todayTrades = dailyPnl.firstOrNull { it.isToday }?.trades ?: emptyList()
                 )
             } else null
         } catch (_: Exception) {
@@ -2565,6 +3580,9 @@ class VaralakshmiRepository {
             summaryMetrics.put("win_rate_pct", state.statusInfo.winRatePct)
             statusObj.put("summary_metrics", summaryMetrics)
             statusObj.put("last_date", state.statusInfo.lastDate)
+            if (state.statusInfo.noTradeReason != null) {
+                statusObj.put("no_trade_reason", state.statusInfo.noTradeReason)
+            }
             root.put("status_json", statusObj.toString())
 
             val pnlArr = JSONArray()
@@ -2578,6 +3596,7 @@ class VaralakshmiRepository {
                 obj.put("positions_count", d.positionsCount)
                 obj.put("trade_count", d.tradeCount)
                 obj.put("day_status", d.dayStatus)
+                obj.put("costs", d.costs)
 
                 val dayPosArr = JSONArray()
                 for (p in d.positions) {
@@ -2608,6 +3627,7 @@ class VaralakshmiRepository {
                     tObj.put("execution_price", t.executionPrice)
                     tObj.put("realized_pnl", t.realizedPnl)
                     tObj.put("execution_reason", t.executionReason)
+                    tObj.put("costs", t.costs)
                     dayTrdArr.put(tObj)
                 }
                 obj.put("trades", dayTrdArr)
@@ -2628,322 +3648,862 @@ class VaralakshmiRepository {
 
     fun createDefaultVeeraLakshmiState(): VeeraLakshmiUiState {
         val instances = mapOf(
-            "50L" to FnoInstanceSummary(
-                instanceId = "50L",
-                name = "VeeraLakshmi 50L (Full Quad-Engine)",
-                allocatedCapital = 5000000.0,
-                marginBlocked = 1184886.09,
-                unrealizedPnl = 50670.50,
-                cashBuffer = 3815113.91,
-                marginUtilizationPct = 23.70,
-                positionsCount = 6,
-                asOfDate = "2026-09-28"
-            ),
-            "20L" to FnoInstanceSummary(
-                instanceId = "20L",
-                name = "VeeraLakshmi 20L (Balanced Multi-Asset)",
-                allocatedCapital = 2000000.0,
-                marginBlocked = 554435.18,
-                unrealizedPnl = 29489.50,
-                cashBuffer = 1445564.82,
-                marginUtilizationPct = 27.72,
-                positionsCount = 3,
-                asOfDate = "2026-09-28"
-            ),
-            "15L" to FnoInstanceSummary(
-                instanceId = "15L",
-                name = "VeeraLakshmi 15L (Lean & Agile)",
-                allocatedCapital = 1500000.0,
-                marginBlocked = 367735.96,
-                unrealizedPnl = -2522.0,
-                cashBuffer = 1132264.04,
-                marginUtilizationPct = 24.52,
-                positionsCount = 2,
-                asOfDate = "2026-09-28"
+            "10L" to FnoInstanceSummary(
+                instanceId = "10L",
+                name = "VeeraLakshmi V3 Flagship (₹10L Paper Trading)",
+                allocatedCapital = 1000000.0,
+                marginBlocked = 0.0,
+                unrealizedPnl = 0.0,
+                cashBuffer = 1000000.0,
+                marginUtilizationPct = 0.0,
+                positionsCount = 0,
+                asOfDate = "2026-10-09"
             )
         )
 
         return VeeraLakshmiUiState(
-            selectedInstanceId = "50L",
+            selectedInstanceId = "10L",
             instances = instances,
-            activePositions = getSeedPositionsForInstance("50L"),
-            dailyPnlHistory = getSeedDailyPnlForInstance("50L"),
+            activePositions = emptyList(),
+            dailyPnlHistory = emptyList(),
             statusInfo = FnoStatusInfo(),
             isLoading = false,
             isLiveSync = false,
             errorMessage = null,
-            lastSyncTimestamp = 0L
+            lastSyncTimestamp = 0L,
+            todayTrades = emptyList()
         )
     }
 
-    fun getSeedDailyPnlForInstance(instanceId: String): List<FnoDailyPnlItem> {
-        val mult = when (instanceId) {
-            "20L" -> 0.4
-            "15L" -> 0.3
-            else -> 1.0
-        }
-        val baseCap = when (instanceId) {
-            "20L" -> 2000000.0
-            "15L" -> 1500000.0
-            else -> 5000000.0
-        }
-        val posCountMult = when (instanceId) {
-            "20L" -> 0.5
-            "15L" -> 0.35
-            else -> 1.0
-        }
+    // =========================================================================
+    // SANTHANALAKSHMI REGIME-GATED IPO COMPOUNDER REPOSITORY
+    // =========================================================================
+    private var cachedSanthanaState: SanthanaLakshmiUiState? = null
 
-        val rawData = listOf(
-            Triple("2026-09-28", 21180.0, 4),
-            Triple("2026-09-25", 34250.0, 5),
-            Triple("2026-09-24", -12400.0, 6),
-            Triple("2026-09-23", 18900.0, 3),
-            Triple("2026-09-22", 28400.0, 4),
-            Triple("2026-09-21", -8900.0, 3),
-            Triple("2026-09-18", 15600.0, 2),
-            Triple("2026-09-17", 22100.0, 5),
-            Triple("2026-09-16", 9800.0, 2),
-            Triple("2026-09-15", -15300.0, 4),
-            Triple("2026-09-14", 31200.0, 3),
-            Triple("2026-09-11", 14500.0, 2),
-            Triple("2026-09-10", -7800.0, 3),
-            Triple("2026-09-09", 11900.0, 2),
-            Triple("2026-09-08", 18800.0, 3)
-        )
-
-        var runningEquity = baseCap + (50670.50 * mult)
-        val list = mutableListOf<FnoDailyPnlItem>()
-        for (i in rawData.indices) {
-            val (date, rawPnl, trades) = rawData[i]
-            val scaledPnl = rawPnl * mult
-            val retPct = if (baseCap > 0.0) (scaledPnl / baseCap) * 100.0 else 0.0
-            val pCount = maxOf(1, Math.round((if (i < 5) 6 else if (i < 10) 4 else 3) * posCountMult).toInt())
-            val status = if (scaledPnl >= 0) "WIN" else "LOSS"
-            val blocked = baseCap * 0.24
-
-            val (dayPositions, dayTrades) = buildSeedPositionsAndTradesForDate(date, instanceId, mult)
-            list.add(
-                FnoDailyPnlItem(
-                    date = date,
-                    dailyPnl = scaledPnl,
-                    dailyReturnPct = retPct,
-                    totalEquity = runningEquity,
-                    marginBlocked = blocked,
-                    positionsCount = dayPositions.size,
-                    tradeCount = dayTrades.size,
-                    dayStatus = status,
-                    positions = dayPositions,
-                    trades = dayTrades
-                )
+    fun getCachedSanthanaState(): SanthanaLakshmiUiState {
+        val current = cachedSanthanaState
+        if (current != null) {
+            val sanitized = current.copy(
+                pastApplications = current.realPastApplications,
+                historicalTrades = current.realHistoricalTrades
             )
-            runningEquity -= scaledPnl
+            cachedSanthanaState = sanitized
+            return sanitized
         }
-        return list
+        val loaded = loadSanthanaFromDisk()
+        if (loaded != null) {
+            val sanitized = loaded.copy(
+                pastApplications = loaded.realPastApplications,
+                historicalTrades = loaded.realHistoricalTrades
+            )
+            cachedSanthanaState = sanitized
+            return sanitized
+        }
+        val defaultState = createDefaultSanthanaState()
+        cachedSanthanaState = defaultState
+        return defaultState
     }
 
-    fun buildSeedPositionsAndTradesForDate(
-        date: String,
-        instanceId: String,
-        mult: Double
-    ): Pair<List<FnoHistoricalPosition>, List<FnoHistoricalTrade>> {
-        val bankniftyShort = FnoHistoricalPosition("BANKNIFTY_FUT", "SHORT", "FUT", 1, (30 * mult).toInt().coerceAtLeast(15), 58381.10, 57591.00, 23703.00 * mult, "IndexTrendEngine")
-        val marutiShort = FnoHistoricalPosition("MARUTI_FUT", "SHORT", "FUT", 1, (60 * mult).toInt().coerceAtLeast(20), 12229.15, 12065.00, 9849.00 * mult, "StockMomentumEngine")
-        val relianceShort = FnoHistoricalPosition("RELIANCE_FUT", "SHORT", "FUT", maxOf(1, (2 * mult).toInt()), (1000 * mult).toInt().coerceAtLeast(250), 1242.80, 1226.00, 16800.00 * mult, "StockMomentumEngine")
-        val niftyShort = FnoHistoricalPosition("NIFTY_FUT", "SHORT", "FUT", 1, (65 * mult).toInt().coerceAtLeast(25), 26456.70, 26413.00, 2840.50 * mult, "IndexTrendEngine")
-        val sbinShort = FnoHistoricalPosition("SBIN_FUT", "SHORT", "FUT", 1, (750 * mult).toInt().coerceAtLeast(250), 975.85, 983.00, -5362.50 * mult, "StockMomentumEngine")
-        val tailHedgeShort = FnoHistoricalPosition("TailHedgeBetaHedge", "SHORT", "FUT", 1, (65 * mult).toInt().coerceAtLeast(25), 26456.70, 26413.00, 2840.50 * mult, "TailHedgeBetaHedge")
+    suspend fun refreshSanthana(
+        serverBaseUrl: String = getServerUrl(),
+        authToken: String = getAuthToken()
+    ): SanthanaLakshmiUiState = withContext(Dispatchers.IO) {
+        val cleanUrl = serverBaseUrl.trimEnd('/')
+        val tokenQuery = if (authToken.isNotBlank()) "&token=$authToken" else ""
 
-        // Reconstruct exact held positions from authoritative signed position ledger:
-        // On 2026-09-21 MARUTI_FUT was closed (pnl -7251.0); remained flat 2026-09-21 to 2026-09-25; re-entered 2026-09-28
-        val allPositionsForDate = when (date) {
-            "2026-09-28" -> listOf(bankniftyShort, marutiShort, relianceShort, niftyShort, sbinShort, tailHedgeShort)
-            "2026-09-25", "2026-09-24", "2026-09-23", "2026-09-22" -> listOf(bankniftyShort, relianceShort, niftyShort, sbinShort, tailHedgeShort)
-            "2026-09-21" -> listOf(relianceShort, niftyShort, sbinShort, tailHedgeShort)
-            "2026-09-18", "2026-09-17" -> listOf(marutiShort, relianceShort, niftyShort, sbinShort, tailHedgeShort)
-            else -> listOf(relianceShort, niftyShort, sbinShort, tailHedgeShort)
+        try {
+            val endpoint = "$cleanUrl/api/live-trading/positions?strategy=SANTHANALAKSHMI$tokenQuery"
+            val jsonStr = httpGet(endpoint, authToken)
+            val currentState = cachedSanthanaState ?: loadSanthanaFromDisk() ?: createDefaultSanthanaState()
+
+            var updatedAlerts = currentState.activeAlerts
+            var updatedApplications = currentState.activeApplications
+            var updatedPastApplications = currentState.pastApplications
+            if (jsonStr != null && jsonStr.isNotBlank()) {
+                val parsedAlerts = parseIpoNotificationsJson(jsonStr)
+                if (parsedAlerts.isNotEmpty()) {
+                    updatedAlerts = parsedAlerts.filterNot { it.id == "IPO-ALERT-SANTHANA-001" }
+                }
+
+                try {
+                    val root = JSONObject(jsonStr)
+                    val appsArr = root.optJSONArray("applications")
+                        ?: root.optJSONArray("active_applications")
+                        ?: root.optJSONArray("ipo_applications")
+                    if (appsArr != null && appsArr.length() > 0) {
+                        val parsedApps = mutableListOf<ActiveIpoApplication>()
+                        for (i in 0 until appsArr.length()) {
+                            val aObj = appsArr.getJSONObject(i)
+                            parsedApps.add(
+                                ActiveIpoApplication(
+                                    symbol = aObj.optString("symbol"),
+                                    companyName = aObj.optString("company_name"),
+                                    issueType = aObj.optString("issue_type", "SME"),
+                                    appliedDate = aObj.optString("applied_date"),
+                                    closingDate = aObj.optString("closing_date"),
+                                    lotSize = aObj.optInt("lot_size"),
+                                    cutOffPrice = aObj.optDouble("cut_off_price"),
+                                    totalAmount = aObj.optDouble("total_amount"),
+                                    mandateStatus = aObj.optString("mandate_status", "PENDING_UPI"),
+                                    allotmentDate = aObj.optString("allotment_date"),
+                                    listingDate = aObj.optString("listing_date"),
+                                    status = aObj.optString("status", "APPLIED"),
+                                    autoSellEnabled = aObj.optBoolean("auto_sell_enabled", true),
+                                    targetListingGainPct = aObj.optDouble("target_listing_gain_pct", 35.0),
+                                    executionChannel = aObj.optString("execution_channel", "ZERODHA_CNC"),
+                                    registrarName = aObj.optString("registrar_name", "Bigshare Services")
+                                )
+                            )
+                        }
+                        if (parsedApps.isNotEmpty()) {
+                            updatedApplications = parsedApps
+                        }
+                    }
+
+                    val pastArr = root.optJSONArray("past_applications")
+                        ?: root.optJSONArray("past_ipo_applications")
+                    if (pastArr != null && pastArr.length() > 0) {
+                        val parsedPast = mutableListOf<PastIpoApplication>()
+                        for (i in 0 until pastArr.length()) {
+                            val pObj = pastArr.getJSONObject(i)
+                            val id = pObj.optString("id", "PAST-$i")
+                            val symbol = pObj.optString("symbol").uppercase(Locale.US)
+                            if (id.startsWith("PAST-IPO-") || id in SAMPLE_PAST_IPO_IDS || symbol in SAMPLE_PAST_IPO_SYMBOLS) {
+                                continue
+                            }
+                            parsedPast.add(
+                                PastIpoApplication(
+                                    id = id,
+                                    symbol = pObj.optString("symbol"),
+                                    companyName = pObj.optString("company_name"),
+                                    issueType = pObj.optString("issue_type", "MAINBOARD"),
+                                    appliedDate = pObj.optString("applied_date"),
+                                    allotmentDate = pObj.optString("allotment_date"),
+                                    listingDate = pObj.optString("listing_date"),
+                                    lotSize = pObj.optInt("lot_size"),
+                                    cutOffPrice = pObj.optDouble("cut_off_price"),
+                                    totalAmount = pObj.optDouble("total_amount"),
+                                    allotmentStatus = pObj.optString("allotment_status", "NOT_ALLOTTED"),
+                                    refundStatus = pObj.optString("refund_status", "UNBLOCKED_TO_BANK"),
+                                    listingPrice = if (pObj.has("listing_price")) pObj.optDouble("listing_price") else null,
+                                    listingGainPct = if (pObj.has("listing_gain_pct")) pObj.optDouble("listing_gain_pct") else null,
+                                    realizedPnl = if (pObj.has("realized_pnl")) pObj.optDouble("realized_pnl") else null,
+                                    outcomeReason = pObj.optString("outcome_reason", ""),
+                                    registrarName = pObj.optString("registrar_name", "Link Intime India"),
+                                    subscriptionMultiple = if (pObj.has("subscription_multiple")) pObj.optDouble("subscription_multiple") else null
+                                )
+                            )
+                        }
+                        updatedPastApplications = parsedPast
+                    }
+                } catch (_: Exception) {}
+            }
+
+            if (cachedIpoNotifications.isNotEmpty()) {
+                val liveActive = cachedIpoNotifications.filterNot { it.id == "IPO-ALERT-SANTHANA-001" }
+                if (liveActive.isNotEmpty()) {
+                    updatedAlerts = liveActive
+                }
+            }
+
+            val allDismissedIds = (
+                cachedIpoNotifications.filter { it.isDismissed }.map { it.id } +
+                currentState.activeAlerts.filter { it.isDismissed }.map { it.id }
+            ).toSet()
+
+            val validAlerts = updatedAlerts
+                .map { if (it.id in allDismissedIds || it.symbol.uppercase() in allDismissedIds) it.copy(isDismissed = true) else it }
+                .filter { it.isDeadlineTodayOrFuture }
+
+            val updatedState = currentState.copy(
+                activeAlerts = validAlerts,
+                activeApplications = updatedApplications,
+                pastApplications = updatedPastApplications,
+                isLoading = false,
+                errorMessage = null
+            )
+            cachedSanthanaState = updatedState
+            saveSanthanaToDisk(updatedState)
+            updatedState
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            val fallback = cachedSanthanaState ?: loadSanthanaFromDisk() ?: createDefaultSanthanaState()
+            fallback.copy(isLoading = false, errorMessage = e.message)
         }
+    }
 
-        val posLimit = when (instanceId) {
-            "15L" -> 2
-            "20L" -> 3
-            else -> 6
-        }
-        val posList = allPositionsForDate.take(posLimit)
-
-        val tradesList = when (date) {
-            "2026-09-28" -> listOf(
-                FnoHistoricalTrade("TRD_28_01", "09:20", "BANKNIFTY_FUT", "SELL", "FUT", 1, (30 * mult).toInt().coerceAtLeast(15), 58381.10, 0.0, "Index breakdown trigger @ 58,500 resistance rejection"),
-                FnoHistoricalTrade("TRD_28_02", "11:15", "MARUTI_FUT", "SELL", "FUT", 1, (60 * mult).toInt().coerceAtLeast(20), 12229.15, 0.0, "Auto sector relative weakness break below 50 EMA"),
-                FnoHistoricalTrade("TRD_28_03", "13:40", "TCS_FUT", "BUY", "FUT", 1, (175 * mult).toInt().coerceAtLeast(50), 4120.00, 18400.0 * mult, "Target Hit 1:2.4 RR profit harvest"),
-                FnoHistoricalTrade("TRD_28_04", "15:10", "NIFTY_FUT", "SELL", "FUT", 1, (65 * mult).toInt().coerceAtLeast(25), 26456.70, 0.0, "Beta Neutralization Tail-risk hedge deploy")
-            )
-            "2026-09-25" -> listOf(
-                FnoHistoricalTrade("TRD_25_01", "09:35", "RELIANCE_FUT", "SELL", "FUT", maxOf(1, (2 * mult).toInt()), (1000 * mult).toInt().coerceAtLeast(250), 1242.80, 0.0, "Distribution volume expansion below support @ ₹1,245"),
-                FnoHistoricalTrade("TRD_25_02", "14:20", "INFY_FUT", "BUY", "FUT", 1, (400 * mult).toInt().coerceAtLeast(100), 1945.00, 12600.0 * mult, "Trailing Stop Target Achieved")
-            )
-            "2026-09-24" -> listOf(
-                FnoHistoricalTrade("TRD_24_01", "10:15", "SBIN_FUT", "SELL", "FUT", 1, (750 * mult).toInt().coerceAtLeast(250), 975.85, 0.0, "Rejection at ₹1,000 round level with daily bearish engulfing"),
-                FnoHistoricalTrade("TRD_24_02", "14:45", "ICICIBANK_FUT", "BUY", "FUT", 1, (700 * mult).toInt().coerceAtLeast(200), 1298.00, -8340.0 * mult, "Stop Loss triggered on midday banking recovery")
-            )
-            "2026-09-23" -> listOf(
-                FnoHistoricalTrade("TRD_23_01", "09:40", "NIFTY_FUT", "SELL", "FUT", 1, (65 * mult).toInt().coerceAtLeast(25), 26520.00, 0.0, "Hourly MACD bearish cross below zero-line"),
-                FnoHistoricalTrade("TRD_23_02", "14:10", "HDFCBANK_FUT", "BUY", "FUT", 1, (550 * mult).toInt().coerceAtLeast(150), 1715.00, 14200.0 * mult, "Trailing Profit Lock @ 1.8 ATR target")
-            )
-            "2026-09-22" -> listOf(
-                FnoHistoricalTrade("TRD_22_01", "10:05", "BANKNIFTY_FUT", "SELL", "FUT", 1, (30 * mult).toInt().coerceAtLeast(15), 58150.00, 0.0, "VWAP failure on second test"),
-                FnoHistoricalTrade("TRD_22_02", "15:15", "TATAMOTORS_FUT", "BUY", "FUT", 1, (575 * mult).toInt().coerceAtLeast(150), 985.00, 9600.0 * mult, "Trailing SL protected profitable bounce")
-            )
-            "2026-09-21" -> listOf(
-                FnoHistoricalTrade("TRD_21_01", "11:30", "MARUTI_FUT", "BUY", "FUT", 1, (60 * mult).toInt().coerceAtLeast(20), 12350.00, -7251.0 * mult, "Defensive cut on auto sector morning pullback")
-            )
-            "2026-09-18" -> listOf(
-                FnoHistoricalTrade("TRD_18_01", "09:25", "RELIANCE_FUT", "SELL", "FUT", maxOf(1, (2 * mult).toInt()), (1000 * mult).toInt().coerceAtLeast(250), 1255.00, 0.0, "Breakdown below 20-day high channel"),
-                FnoHistoricalTrade("TRD_18_02", "13:50", "NIFTY 26500 PE", "BUY", "OPT", 1, (65 * mult).toInt().coerceAtLeast(25), 185.00, 16400.0 * mult, "Volatility expansion scalp exit (+88%)")
-            )
-            "2026-09-17" -> listOf(
-                FnoHistoricalTrade("TRD_17_01", "14:50", "BANKNIFTY_FUT", "BUY", "FUT", 1, (30 * mult).toInt().coerceAtLeast(15), 58650.00, -8067.0 * mult, "Risk guard stop-loss hit on expiry surge")
-            )
-            else -> {
-                val refPos = posList.firstOrNull()
-                val sym = refPos?.symbol ?: "NIFTY_FUT"
-                val qty = refPos?.quantity ?: (65 * mult).toInt().coerceAtLeast(25)
-                val lots = refPos?.lots ?: 1
-                val px = refPos?.entryPrice ?: 26400.00
-                listOf(
-                    FnoHistoricalTrade("TRD_${date.replace("-", "")}_01", "10:15", sym, "SELL", "FUT", lots, qty, px, 0.0, "Systematic dynamic ATR trend continuation entry")
+    internal fun loadSanthanaFromDisk(): SanthanaLakshmiUiState? {
+        val dir = cacheDirectory ?: return null
+        val file = File(dir, SANTHANA_CACHE_FILE_NAME)
+        if (!file.exists() || !file.isFile) return null
+        return try {
+            val text = file.readText(Charsets.UTF_8)
+            val root = JSONObject(text)
+            val summaryObj = root.optJSONObject("summary")
+            val summary = if (summaryObj != null) {
+                SanthanaLakshmiSummary(
+                    strategyName = summaryObj.optString("strategy_name", "SanthanaLakshmi (Regime-Gated IPO Compounder)"),
+                    allocatedCapital = summaryObj.optDouble("allocated_capital", 100000.0),
+                    deployedCapital = summaryObj.optDouble("deployed_capital", 0.0),
+                    sweptCashBalance = summaryObj.optDouble("swept_cash_balance", 100000.0),
+                    sweepYieldPct = summaryObj.optDouble("sweep_yield_pct", 6.50),
+                    lifetimeCagrPct = summaryObj.optDouble("lifetime_cagr_pct", 21.55),
+                    winRatePct = summaryObj.optDouble("win_rate_pct", 82.14),
+                    avgListingGainPct = summaryObj.optDouble("avg_listing_gain_pct", 36.18),
+                    maxDrawdownPct = summaryObj.optDouble("max_drawdown_pct", -0.69),
+                    profitFactor = summaryObj.optDouble("profit_factor", 11.69),
+                    sharpeRatio = summaryObj.optDouble("sharpe_ratio", 7.63),
+                    totalOfferingsApplied = summaryObj.optInt("total_offerings_applied", 168),
+                    totalOfferingsEvaluated = summaryObj.optInt("total_offerings_evaluated", 216),
+                    currentMarketRegime = summaryObj.optString("current_market_regime", "BULLISH"),
+                    regimeDescription = summaryObj.optString("regime_description", "Nifty 50 above SMA50/SMA200, 20-day realized volatility 12.8%, market breadth positive (62% advancing)."),
+                    gatingRuleActive = summaryObj.optString("gating_rule_active", "Apply on QIB >= 1.5x or Total >= 2.0x (Regime Adaptive Exit)")
                 )
+            } else SanthanaLakshmiSummary()
+
+            val tradesArray = root.optJSONArray("trades")
+            val trades = mutableListOf<SanthanaLakshmiTradeItem>()
+            if (tradesArray != null && tradesArray.length() > 0) {
+                for (i in 0 until tradesArray.length()) {
+                    val tObj = tradesArray.optJSONObject(i) ?: continue
+                    val isReal = tObj.optBoolean("is_real_trade", tObj.optBoolean("is_real", false))
+                    val sym = tObj.optString("symbol", "").trim().uppercase(Locale.US)
+                    val tradeId = tObj.optString("trade_id", "")
+                    if (!isReal && (sym in SAMPLE_IPO_SYMBOLS || tradeId.startsWith("IPO-TRD-"))) {
+                        continue
+                    }
+                    trades.add(
+                        SanthanaLakshmiTradeItem(
+                            tradeId = tradeId.ifBlank { "IPO-$i" },
+                            symbol = sym,
+                            companyName = tObj.optString("company_name", ""),
+                            decisionDate = tObj.optString("decision_date", ""),
+                            listingDate = tObj.optString("listing_date", ""),
+                            issuePrice = tObj.optDouble("issue_price", 0.0),
+                            exitPrice = tObj.optDouble("exit_price", 0.0),
+                            netGainPct = tObj.optDouble("net_gain_pct", 0.0),
+                            netPnl = tObj.optDouble("net_pnl", 0.0),
+                            regime = tObj.optString("regime", "BULLISH"),
+                            exitReason = tObj.optString("exit_reason", "CLOSE"),
+                            qibMultiple = tObj.optDouble("qib_multiple", 0.0),
+                            appliedLots = tObj.optInt("applied_lots", 1),
+                            allottedLots = tObj.optInt("allotted_lots", 1),
+                            appliedAmount = tObj.optDouble("applied_amount", 15000.0),
+                            totalCost = tObj.optDouble("total_cost", 25.50),
+                            benchmarkRetPct = tObj.optDouble("benchmark_ret_pct", 0.0),
+                            alphaPct = tObj.optDouble("alpha_pct", 0.0),
+                            status = tObj.optString("status", "CLOSED"),
+                            isRealTrade = isReal
+                        )
+                    )
+                }
+            } else {
+                trades.addAll(createDefaultSanthanaTrades())
+            }
+
+            val appsArr = root.optJSONArray("applications")
+            val applications = mutableListOf<ActiveIpoApplication>()
+            if (appsArr != null && appsArr.length() > 0) {
+                for (i in 0 until appsArr.length()) {
+                    val aObj = appsArr.getJSONObject(i)
+                    applications.add(
+                        ActiveIpoApplication(
+                            symbol = aObj.optString("symbol"),
+                            companyName = aObj.optString("company_name"),
+                            issueType = aObj.optString("issue_type", "SME"),
+                            appliedDate = aObj.optString("applied_date"),
+                            closingDate = aObj.optString("closing_date"),
+                            lotSize = aObj.optInt("lot_size"),
+                            cutOffPrice = aObj.optDouble("cut_off_price"),
+                            totalAmount = aObj.optDouble("total_amount"),
+                            mandateStatus = aObj.optString("mandate_status", "PENDING_UPI"),
+                            allotmentDate = aObj.optString("allotment_date"),
+                            listingDate = aObj.optString("listing_date"),
+                            status = aObj.optString("status", "APPLIED"),
+                            autoSellEnabled = aObj.optBoolean("auto_sell_enabled", true),
+                            targetListingGainPct = aObj.optDouble("target_listing_gain_pct", 35.0),
+                            executionChannel = aObj.optString("execution_channel", "ZERODHA_CNC")
+                        )
+                    )
+                }
+            } else {
+                applications.addAll(createDefaultActiveApplications())
+            }
+
+            val pastAppsArr = root.optJSONArray("past_applications")
+            val pastApps = mutableListOf<PastIpoApplication>()
+            if (pastAppsArr != null && pastAppsArr.length() > 0) {
+                for (i in 0 until pastAppsArr.length()) {
+                    val pObj = pastAppsArr.getJSONObject(i)
+                    val id = pObj.optString("id", "PAST-$i")
+                    val symbol = pObj.optString("symbol").uppercase(Locale.US)
+                    if (id.startsWith("PAST-IPO-") || id in SAMPLE_PAST_IPO_IDS || symbol in SAMPLE_PAST_IPO_SYMBOLS) {
+                        continue
+                    }
+                    pastApps.add(
+                        PastIpoApplication(
+                            id = id,
+                            symbol = pObj.optString("symbol"),
+                            companyName = pObj.optString("company_name"),
+                            issueType = pObj.optString("issue_type", "MAINBOARD"),
+                            appliedDate = pObj.optString("applied_date"),
+                            allotmentDate = pObj.optString("allotment_date"),
+                            listingDate = pObj.optString("listing_date"),
+                            lotSize = pObj.optInt("lot_size"),
+                            cutOffPrice = pObj.optDouble("cut_off_price"),
+                            totalAmount = pObj.optDouble("total_amount"),
+                            allotmentStatus = pObj.optString("allotment_status", "NOT_ALLOTTED"),
+                            refundStatus = pObj.optString("refund_status", "UNBLOCKED_TO_BANK"),
+                            listingPrice = if (pObj.has("listing_price")) pObj.optDouble("listing_price") else null,
+                            listingGainPct = if (pObj.has("listing_gain_pct")) pObj.optDouble("listing_gain_pct") else null,
+                            realizedPnl = if (pObj.has("realized_pnl")) pObj.optDouble("realized_pnl") else null,
+                            outcomeReason = pObj.optString("outcome_reason", ""),
+                            registrarName = pObj.optString("registrar_name", "Link Intime India"),
+                            subscriptionMultiple = if (pObj.has("subscription_multiple")) pObj.optDouble("subscription_multiple") else null
+                        )
+                    )
+                }
+            } else {
+                pastApps.addAll(createDefaultPastApplications())
+            }
+
+            val alertsJson = root.optString("alerts_json", "")
+            val alerts = if (alertsJson.isNotBlank()) parseIpoNotificationsJson(alertsJson) else emptyList()
+
+            SanthanaLakshmiUiState(
+                summary = summary,
+                activeAlerts = alerts.filterNot { it.id == "IPO-ALERT-SANTHANA-001" }.filter { it.isDeadlineTodayOrFuture },
+                activeApplications = applications,
+                pastApplications = pastApps,
+                historicalTrades = trades,
+                isLoading = false,
+                errorMessage = null
+            )
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    internal fun saveSanthanaToDisk(state: SanthanaLakshmiUiState) {
+        val dir = cacheDirectory ?: return
+        try {
+            val root = JSONObject()
+            val sum = state.summary
+            val sumObj = JSONObject()
+            sumObj.put("strategy_name", sum.strategyName)
+            sumObj.put("allocated_capital", sum.allocatedCapital)
+            sumObj.put("deployed_capital", sum.deployedCapital)
+            sumObj.put("swept_cash_balance", sum.sweptCashBalance)
+            sumObj.put("sweep_yield_pct", sum.sweepYieldPct)
+            sumObj.put("lifetime_cagr_pct", sum.lifetimeCagrPct)
+            sumObj.put("win_rate_pct", sum.winRatePct)
+            sumObj.put("avg_listing_gain_pct", sum.avgListingGainPct)
+            sumObj.put("max_drawdown_pct", sum.maxDrawdownPct)
+            sumObj.put("profit_factor", sum.profitFactor)
+            sumObj.put("sharpe_ratio", sum.sharpeRatio)
+            sumObj.put("total_offerings_applied", sum.totalOfferingsApplied)
+            sumObj.put("total_offerings_evaluated", sum.totalOfferingsEvaluated)
+            sumObj.put("current_market_regime", sum.currentMarketRegime)
+            sumObj.put("regime_description", sum.regimeDescription)
+            sumObj.put("gating_rule_active", sum.gatingRuleActive)
+            root.put("summary", sumObj)
+
+            val appsArr = JSONArray()
+            for (app in state.activeApplications) {
+                val aObj = JSONObject()
+                aObj.put("symbol", app.symbol)
+                aObj.put("company_name", app.companyName)
+                aObj.put("issue_type", app.issueType)
+                aObj.put("applied_date", app.appliedDate)
+                aObj.put("closing_date", app.closingDate)
+                aObj.put("lot_size", app.lotSize)
+                aObj.put("cut_off_price", app.cutOffPrice)
+                aObj.put("total_amount", app.totalAmount)
+                aObj.put("mandate_status", app.mandateStatus)
+                aObj.put("allotment_date", app.allotmentDate)
+                aObj.put("listing_date", app.listingDate)
+                aObj.put("status", app.status)
+                aObj.put("auto_sell_enabled", app.autoSellEnabled)
+                aObj.put("target_listing_gain_pct", app.targetListingGainPct)
+                aObj.put("execution_channel", app.executionChannel)
+                aObj.put("registrar_name", app.registrarName)
+                appsArr.put(aObj)
+            }
+            root.put("applications", appsArr)
+
+            val pastAppsArr = JSONArray()
+            for (p in state.pastApplications) {
+                val pObj = JSONObject()
+                pObj.put("id", p.id)
+                pObj.put("symbol", p.symbol)
+                pObj.put("company_name", p.companyName)
+                pObj.put("issue_type", p.issueType)
+                pObj.put("applied_date", p.appliedDate)
+                pObj.put("allotment_date", p.allotmentDate)
+                pObj.put("listing_date", p.listingDate)
+                pObj.put("lot_size", p.lotSize)
+                pObj.put("cut_off_price", p.cutOffPrice)
+                pObj.put("total_amount", p.totalAmount)
+                pObj.put("allotment_status", p.allotmentStatus)
+                pObj.put("refund_status", p.refundStatus)
+                p.listingPrice?.let { pObj.put("listing_price", it) }
+                p.listingGainPct?.let { pObj.put("listing_gain_pct", it) }
+                p.realizedPnl?.let { pObj.put("realized_pnl", it) }
+                pObj.put("outcome_reason", p.outcomeReason)
+                pObj.put("registrar_name", p.registrarName)
+                p.subscriptionMultiple?.let { pObj.put("subscription_multiple", it) }
+                pastAppsArr.put(pObj)
+            }
+            root.put("past_applications", pastAppsArr)
+
+            val tradesArr = JSONArray()
+            for (t in state.historicalTrades) {
+                val tObj = JSONObject()
+                tObj.put("trade_id", t.tradeId)
+                tObj.put("symbol", t.symbol)
+                tObj.put("company_name", t.companyName)
+                tObj.put("decision_date", t.decisionDate)
+                tObj.put("listing_date", t.listingDate)
+                tObj.put("issue_price", t.issuePrice)
+                tObj.put("exit_price", t.exitPrice)
+                tObj.put("net_gain_pct", t.netGainPct)
+                tObj.put("net_pnl", t.netPnl)
+                tObj.put("regime", t.regime)
+                tObj.put("exit_reason", t.exitReason)
+                tObj.put("qib_multiple", t.qibMultiple)
+                tObj.put("applied_lots", t.appliedLots)
+                tObj.put("allotted_lots", t.allottedLots)
+                tObj.put("applied_amount", t.appliedAmount)
+                tObj.put("total_cost", t.totalCost)
+                tObj.put("benchmark_ret_pct", t.benchmarkRetPct)
+                tObj.put("alpha_pct", t.alphaPct)
+                tObj.put("status", t.status)
+                tradesArr.put(tObj)
+            }
+            root.put("trades", tradesArr)
+
+            val file = File(dir, SANTHANA_CACHE_FILE_NAME)
+            file.writeText(root.toString(), Charsets.UTF_8)
+        } catch (_: Exception) {}
+    }
+
+    fun createDefaultSanthanaState(): SanthanaLakshmiUiState {
+        return SanthanaLakshmiUiState(
+            summary = SanthanaLakshmiSummary(),
+            activeAlerts = emptyList(),
+            activeApplications = createDefaultActiveApplications(),
+            pastApplications = createDefaultPastApplications(),
+            historicalTrades = createDefaultSanthanaTrades(),
+            selectedFilter = "ALL",
+            selectedTradeDetail = null,
+            isLoading = false,
+            errorMessage = null
+        )
+    }
+
+    fun createDefaultActiveApplications(): List<ActiveIpoApplication> {
+        return listOf(
+            ActiveIpoApplication(
+                symbol = "ACMERAIL",
+                companyName = "Acme India Industries SME",
+                issueType = "SME",
+                appliedDate = "2026-10-06",
+                closingDate = "2026-10-06",
+                lotSize = 600,
+                cutOffPrice = 186.00,
+                totalAmount = 111600.00,
+                mandateStatus = "APPROVED",
+                allotmentDate = "2026-10-07",
+                listingDate = "2026-10-09",
+                status = "APPLIED",
+                autoSellEnabled = true,
+                targetListingGainPct = 35.0,
+                executionChannel = "ZERODHA_CNC",
+                registrarName = "Bigshare Services"
+            ),
+            ActiveIpoApplication(
+                symbol = "RKFAL",
+                companyName = "R.K. Fashion Accessories SME",
+                issueType = "SME",
+                appliedDate = "2026-10-06",
+                closingDate = "2026-10-07",
+                lotSize = 1600,
+                cutOffPrice = 82.00,
+                totalAmount = 131200.00,
+                mandateStatus = "APPROVED",
+                allotmentDate = "2026-10-08",
+                listingDate = "2026-10-10",
+                status = "APPLIED",
+                autoSellEnabled = true,
+                targetListingGainPct = 35.0,
+                executionChannel = "ZERODHA_CNC",
+                registrarName = "Bigshare Services"
+            ),
+            ActiveIpoApplication(
+                symbol = "PARASYNTEX",
+                companyName = "Paramount Syntex SME",
+                issueType = "SME",
+                appliedDate = "2026-10-06",
+                closingDate = "2026-10-08",
+                lotSize = 1000,
+                cutOffPrice = 127.00,
+                totalAmount = 127000.00,
+                mandateStatus = "APPROVED",
+                allotmentDate = "2026-10-09",
+                listingDate = "2026-10-13",
+                status = "APPLIED",
+                autoSellEnabled = true,
+                targetListingGainPct = 35.0,
+                executionChannel = "ZERODHA_CNC",
+                registrarName = "Link Intime India"
+            ),
+            ActiveIpoApplication(
+                symbol = "TNA",
+                companyName = "TNA Solutions SME",
+                issueType = "SME",
+                appliedDate = "2026-10-06",
+                closingDate = "2026-10-08",
+                lotSize = 2000,
+                cutOffPrice = 70.00,
+                totalAmount = 140000.00,
+                mandateStatus = "APPROVED",
+                allotmentDate = "2026-10-09",
+                listingDate = "2026-10-13",
+                status = "APPLIED",
+                autoSellEnabled = true,
+                targetListingGainPct = 35.0,
+                executionChannel = "ZERODHA_CNC",
+                registrarName = "Bigshare Services"
+            )
+        )
+    }
+
+    fun createDefaultPastApplications(): List<PastIpoApplication> {
+        return emptyList()
+    }
+
+    fun createSamplePastApplications(): List<PastIpoApplication> {
+        return listOf(
+            PastIpoApplication(
+                id = "PAST-IPO-001",
+                symbol = "NTPCGREEN",
+                companyName = "NTPC Green Energy Ltd",
+                issueType = "MAINBOARD",
+                appliedDate = "2026-09-18",
+                allotmentDate = "2026-09-22",
+                listingDate = "2026-09-24",
+                lotSize = 138,
+                cutOffPrice = 108.00,
+                totalAmount = 14904.00,
+                allotmentStatus = "NOT_ALLOTTED",
+                refundStatus = "UNBLOCKED_TO_BANK",
+                listingPrice = 112.50,
+                listingGainPct = 4.17,
+                realizedPnl = 0.00,
+                outcomeReason = "Retail quota 15.8x oversubscribed. Not selected in registrar lottery. UPI mandate revoked automatically and full ₹14,904.00 unblocked to bank.",
+                registrarName = "KFin Technologies",
+                subscriptionMultiple = 15.8
+            ),
+            PastIpoApplication(
+                id = "PAST-IPO-002",
+                symbol = "SWIGGY",
+                companyName = "Swiggy Limited",
+                issueType = "MAINBOARD",
+                appliedDate = "2026-11-06",
+                allotmentDate = "2026-11-08",
+                listingDate = "2026-11-13",
+                lotSize = 38,
+                cutOffPrice = 390.00,
+                totalAmount = 14820.00,
+                allotmentStatus = "ALLOTTED",
+                refundStatus = "DEBITED",
+                listingPrice = 456.00,
+                listingGainPct = 16.92,
+                realizedPnl = 2139.38,
+                outcomeReason = "1 Lot (38 shares) successfully allotted. Deposited into Zerodha demat and auto-sold at 10:00 AM CNC listing exit (+16.92% net profit).",
+                registrarName = "Link Intime India",
+                subscriptionMultiple = 6.02
+            ),
+            PastIpoApplication(
+                id = "PAST-IPO-003",
+                symbol = "WAAREEENER",
+                companyName = "Waaree Energies Ltd",
+                issueType = "MAINBOARD",
+                appliedDate = "2026-10-21",
+                allotmentDate = "2026-10-23",
+                listingDate = "2026-10-28",
+                lotSize = 9,
+                cutOffPrice = 1503.00,
+                totalAmount = 13527.00,
+                allotmentStatus = "ALLOTTED",
+                refundStatus = "DEBITED",
+                listingPrice = 2341.00,
+                listingGainPct = 55.76,
+                realizedPnl = 8070.00,
+                outcomeReason = "1 Lot (9 shares) successfully allotted. Deposited into Zerodha demat and auto-sold at 10:00 AM CNC listing exit (+55.76% net profit).",
+                registrarName = "Link Intime India",
+                subscriptionMultiple = 208.63
+            ),
+            PastIpoApplication(
+                id = "PAST-IPO-004",
+                symbol = "BAJAJHFL",
+                companyName = "Bajaj Housing Finance Ltd",
+                issueType = "MAINBOARD",
+                appliedDate = "2026-09-09",
+                allotmentDate = "2026-09-12",
+                listingDate = "2026-09-16",
+                lotSize = 204,
+                cutOffPrice = 70.00,
+                totalAmount = 14280.00,
+                allotmentStatus = "ALLOTTED",
+                refundStatus = "DEBITED",
+                listingPrice = 165.00,
+                listingGainPct = 135.71,
+                realizedPnl = 19380.00,
+                outcomeReason = "1 Lot (204 shares) successfully allotted. Multibagger listing surge (+135.71%) captured on listing day CNC exit.",
+                registrarName = "KFin Technologies",
+                subscriptionMultiple = 67.43
+            ),
+            PastIpoApplication(
+                id = "PAST-IPO-005",
+                symbol = "KRNHEAT",
+                companyName = "KRN Heat Exchanger and Refrigeration",
+                issueType = "MAINBOARD",
+                appliedDate = "2026-09-25",
+                allotmentDate = "2026-09-28",
+                listingDate = "2026-10-01",
+                lotSize = 65,
+                cutOffPrice = 220.00,
+                totalAmount = 14300.00,
+                allotmentStatus = "NOT_ALLOTTED",
+                refundStatus = "UNBLOCKED_TO_BANK",
+                listingPrice = 478.00,
+                listingGainPct = 117.27,
+                realizedPnl = 0.00,
+                outcomeReason = "Retail quota heavily oversubscribed (96.7x). Not selected in lottery. Mandate revoked and ₹14,300.00 unblocked to bank (0 loss).",
+                registrarName = "Bigshare Services",
+                subscriptionMultiple = 96.7
+            ),
+            PastIpoApplication(
+                id = "PAST-IPO-006",
+                symbol = "PREMIEREN",
+                companyName = "Premier Energies Ltd",
+                issueType = "MAINBOARD",
+                appliedDate = "2026-08-27",
+                allotmentDate = "2026-08-30",
+                listingDate = "2026-09-03",
+                lotSize = 33,
+                cutOffPrice = 450.00,
+                totalAmount = 14850.00,
+                allotmentStatus = "NOT_ALLOTTED",
+                refundStatus = "UNBLOCKED_TO_BANK",
+                listingPrice = 991.00,
+                listingGainPct = 120.22,
+                realizedPnl = 0.00,
+                outcomeReason = "Retail quota 74.3x oversubscribed. Not selected in lottery. Mandate revoked and ₹14,850.00 unblocked to bank (0 loss).",
+                registrarName = "KFin Technologies",
+                subscriptionMultiple = 74.3
+            )
+        )
+    }
+
+    fun updateIpoMandateStatus(symbol: String, newStatus: String = "APPROVED"): SanthanaLakshmiUiState {
+        val current = cachedSanthanaState ?: loadSanthanaFromDisk() ?: createDefaultSanthanaState()
+        val updatedApplications = current.activeApplications.map { app ->
+            if (app.symbol.equals(symbol, ignoreCase = true)) {
+                app.copy(mandateStatus = newStatus)
+            } else {
+                app
             }
         }
-
-        val tradeLimit = when (instanceId) {
-            "15L" -> minOf(1, tradesList.size)
-            "20L" -> minOf(2, tradesList.size)
-            else -> tradesList.size
-        }
-        return Pair(posList, tradesList.take(tradeLimit))
+        val newState = current.copy(activeApplications = updatedApplications)
+        cachedSanthanaState = newState
+        saveSanthanaToDisk(newState)
+        return newState
     }
 
-    fun getSeedPositionsForInstance(instanceId: String): List<FnoPositionItem> {
-        val niftyShort = FnoPositionItem(
-            positionId = "IndexTrendEngine_NIFTY_FUT",
-            strategyEngine = "IndexTrendEngine",
-            symbol = "NIFTY_FUT",
-            instrumentType = "FUT",
-            direction = "SHORT",
-            quantity = 65,
-            lots = 1,
-            entryPrice = 26456.70,
-            currentPrice = 26413.00,
-            marginRequired = 257952.83,
-            stopLossPrice = 26800.00,
-            unrealizedPnl = 2840.50,
-            expiryDate = "2026-10-29",
-            entryReason = "Systematic index trend breakdown trigger. NIFTY crossed below dynamic 20-day ATR trailing volatility band with negative breadth (advance/decline ratio 0.42) and hourly MACD bearish divergence; short initiated with trailing risk guard.",
-            targetPrice = 25700.00,
-            signalTrigger = "ATR Channel Breakdown + Negative Breadth (< 0.45)",
-            riskReward = "1 : 2.2 RR"
-        )
-        val sbinShort = FnoPositionItem(
-            positionId = "StockMomentumEngine_SBIN_FUT",
-            strategyEngine = "StockMomentumEngine",
-            symbol = "SBIN_FUT",
-            instrumentType = "FUT",
-            direction = "SHORT",
-            quantity = 750,
-            lots = 1,
-            entryPrice = 975.85,
-            currentPrice = 983.00,
-            marginRequired = 109783.13,
-            stopLossPrice = 1005.00,
-            unrealizedPnl = -5362.50,
-            expiryDate = "2026-10-29",
-            entryReason = "PSU banking trend exhaustion. Short executed on failure to hold psychological ₹1,000 round number after bearish engulfing candle on the daily timeframe; disciplined stop-loss placed at ₹1,005.",
-            targetPrice = 910.00,
-            signalTrigger = "Psychological ₹1,000 Rejection + Bearish Engulfing",
-            riskReward = "1 : 2.3 RR"
-        )
-        val marutiShort = FnoPositionItem(
-            positionId = "StockMomentumEngine_MARUTI_FUT",
-            strategyEngine = "StockMomentumEngine",
-            symbol = "MARUTI_FUT",
-            instrumentType = "FUT",
-            direction = "SHORT",
-            quantity = 60,
-            lots = 1,
-            entryPrice = 12229.15,
-            currentPrice = 12065.00,
-            marginRequired = 110062.35,
-            stopLossPrice = 12500.00,
-            unrealizedPnl = 9849.00,
-            expiryDate = "2026-10-29",
-            entryReason = "Rotational alpha decay. Auto sector relative weakness triggered quant short as price broke below 50-day EMA with negative cross-sectional rank (< 15th percentile).",
-            targetPrice = 11630.00,
-            signalTrigger = "Relative Weakness Rank < 15th Pct + 50 EMA Breakdown",
-            riskReward = "1 : 2.2 RR"
-        )
-        val relianceShort = FnoPositionItem(
-            positionId = "StockMomentumEngine_RELIANCE_FUT",
-            strategyEngine = "StockMomentumEngine",
-            symbol = "RELIANCE_FUT",
-            instrumentType = "FUT",
-            direction = "SHORT",
-            quantity = 1000,
-            lots = 2,
-            entryPrice = 1242.80,
-            currentPrice = 1226.00,
-            marginRequired = 186420.00,
-            stopLossPrice = 1270.00,
-            unrealizedPnl = 16800.00,
-            expiryDate = "2026-10-29",
-            entryReason = "Heavyweight breakdown momentum short. Reliance broke below ₹1,245 multi-week consolidation support with elevated distribution volume; high beta drag on NIFTY index weight.",
-            targetPrice = 1180.00,
-            signalTrigger = "Horizontal Support Breakdown @ ₹1,245 on High Volume",
-            riskReward = "1 : 2.3 RR"
-        )
-        val bankNiftyShort = FnoPositionItem(
-            positionId = "IndexTrendEngine_BANKNIFTY_FUT",
-            strategyEngine = "IndexTrendEngine",
-            symbol = "BANKNIFTY_FUT",
-            instrumentType = "FUT",
-            direction = "SHORT",
-            quantity = 30,
-            lots = 1,
-            entryPrice = 58381.10,
-            currentPrice = 57591.00,
-            marginRequired = 262714.95,
-            stopLossPrice = 58900.00,
-            unrealizedPnl = 23703.00,
-            expiryDate = "2026-10-29",
-            entryReason = "Bank index momentum breakdown. Rejection at 58,500 key resistance zone followed by intraday breakdown below VWAP with rising hourly ADX (> 28) confirming aggressive institutional selling.",
-            targetPrice = 56800.00,
-            signalTrigger = "Resistance Rejection @ 58,500 + Hourly ADX > 28",
-            riskReward = "1 : 3.0 RR"
-        )
-        val tailHedgeShort = FnoPositionItem(
-            positionId = "TailHedgeBetaHedge_NIFTY_FUT",
-            strategyEngine = "TailHedgeBetaHedge",
-            symbol = "NIFTY_FUT",
-            instrumentType = "FUT",
-            direction = "SHORT",
-            quantity = 65,
-            lots = 1,
-            entryPrice = 26456.70,
-            currentPrice = 26413.00,
-            marginRequired = 257952.83,
-            stopLossPrice = 26800.00,
-            unrealizedPnl = 2840.50,
-            expiryDate = "2026-10-29",
-            entryReason = "Portfolio tail-risk beta hedge. Systematic short hedge deployed to neutralize residual portfolio beta across all equity and derivative holdings during low-VIX complacency regime, protecting against sudden macro volatility spikes.",
-            targetPrice = 25700.00,
-            signalTrigger = "Beta Neutralization Filter (Low VIX Event Guard)",
-            riskReward = "1 : 2.2 RR"
-        )
-
-        return when (instanceId) {
-            "15L" -> listOf(niftyShort, sbinShort)
-            "20L" -> listOf(niftyShort, marutiShort, relianceShort)
-            else -> listOf(niftyShort, bankNiftyShort, marutiShort, relianceShort, sbinShort, tailHedgeShort)
+    fun updateIpoAllotmentStatus(symbol: String, newStatus: String): SanthanaLakshmiUiState {
+        val current = cachedSanthanaState ?: loadSanthanaFromDisk() ?: createDefaultSanthanaState()
+        val updatedApplications = current.activeApplications.map { app ->
+            if (app.symbol.equals(symbol, ignoreCase = true)) {
+                app.copy(status = newStatus)
+            } else {
+                app
+            }
         }
+        val newState = current.copy(activeApplications = updatedApplications)
+        cachedSanthanaState = newState
+        saveSanthanaToDisk(newState)
+        return newState
+    }
+
+    fun createDefaultSanthanaTrades(): List<SanthanaLakshmiTradeItem> {
+        return emptyList()
+    }
+
+    fun createSampleSanthanaTrades(): List<SanthanaLakshmiTradeItem> {
+        return listOf(
+            SanthanaLakshmiTradeItem(
+                tradeId = "IPO-TRD-215",
+                symbol = "SWIGGY",
+                companyName = "Swiggy Limited",
+                decisionDate = "2024-11-08",
+                listingDate = "2024-11-13",
+                issuePrice = 390.00,
+                exitPrice = 456.00,
+                netGainPct = 16.92,
+                netPnl = 2139.38,
+                regime = "BULLISH",
+                exitReason = "CLOSE",
+                qibMultiple = 6.02,
+                appliedLots = 1,
+                allottedLots = 1,
+                appliedAmount = 14820.00,
+                totalCost = 28.62,
+                benchmarkRetPct = -1.90,
+                alphaPct = 18.82
+            ),
+            SanthanaLakshmiTradeItem(
+                tradeId = "IPO-TRD-209",
+                symbol = "WAAREEENER",
+                companyName = "Waaree Energies Ltd",
+                decisionDate = "2024-10-23",
+                listingDate = "2024-10-28",
+                issuePrice = 1503.00,
+                exitPrice = 2341.00,
+                netGainPct = 55.76,
+                netPnl = 807.01,
+                regime = "BULLISH",
+                exitReason = "STOP_LOSS",
+                qibMultiple = 208.63,
+                appliedLots = 1,
+                allottedLots = 1,
+                appliedAmount = 13527.00,
+                totalCost = 24.18,
+                benchmarkRetPct = -0.65,
+                alphaPct = 56.41
+            ),
+            SanthanaLakshmiTradeItem(
+                tradeId = "IPO-TRD-206",
+                symbol = "KRN",
+                companyName = "KRN Heat Exchanger and Refrigeration",
+                decisionDate = "2024-09-27",
+                listingDate = "2024-10-03",
+                issuePrice = 220.00,
+                exitPrice = 478.00,
+                netGainPct = 117.27,
+                netPnl = 157.70,
+                regime = "BULLISH",
+                exitReason = "CLOSE",
+                qibMultiple = 253.90,
+                appliedLots = 1,
+                allottedLots = 1,
+                appliedAmount = 14300.00,
+                totalCost = 22.10,
+                benchmarkRetPct = -2.12,
+                alphaPct = 119.39
+            ),
+            SanthanaLakshmiTradeItem(
+                tradeId = "IPO-TRD-204",
+                symbol = "NORTHARC",
+                companyName = "Northern Arc Capital Ltd",
+                decisionDate = "2024-09-19",
+                listingDate = "2024-09-24",
+                issuePrice = 349.00,
+                exitPrice = 430.00,
+                netGainPct = 23.21,
+                netPnl = 141.26,
+                regime = "BULLISH",
+                exitReason = "STOP_LOSS",
+                qibMultiple = 42.48,
+                appliedLots = 1,
+                allottedLots = 1,
+                appliedAmount = 14658.00,
+                totalCost = 23.44,
+                benchmarkRetPct = 0.25,
+                alphaPct = 22.96
+            ),
+            SanthanaLakshmiTradeItem(
+                tradeId = "IPO-TRD-203",
+                symbol = "ARKADE",
+                companyName = "Arkade Developers Ltd",
+                decisionDate = "2024-09-19",
+                listingDate = "2024-09-24",
+                issuePrice = 128.00,
+                exitPrice = 175.90,
+                netGainPct = 37.42,
+                netPnl = 86.72,
+                regime = "BULLISH",
+                exitReason = "STOP_LOSS",
+                qibMultiple = 51.33,
+                appliedLots = 1,
+                allottedLots = 1,
+                appliedAmount = 14080.00,
+                totalCost = 22.80,
+                benchmarkRetPct = 0.25,
+                alphaPct = 37.17
+            ),
+            SanthanaLakshmiTradeItem(
+                tradeId = "IPO-TRD-202",
+                symbol = "WESTERN",
+                companyName = "Western Carriers India Ltd",
+                decisionDate = "2024-09-19",
+                listingDate = "2024-09-24",
+                issuePrice = 172.00,
+                exitPrice = 168.00,
+                netGainPct = -2.33,
+                netPnl = -23.90,
+                regime = "NEUTRAL",
+                exitReason = "REGIME_DEFENSE_OPEN",
+                qibMultiple = 21.83,
+                appliedLots = 1,
+                allottedLots = 1,
+                appliedAmount = 14964.00,
+                totalCost = 21.50,
+                benchmarkRetPct = 0.25,
+                alphaPct = -2.58
+            ),
+            SanthanaLakshmiTradeItem(
+                tradeId = "IPO-TRD-198",
+                symbol = "BAJAJHFL",
+                companyName = "Bajaj Housing Finance Ltd",
+                decisionDate = "2024-09-11",
+                listingDate = "2024-09-16",
+                issuePrice = 70.00,
+                exitPrice = 165.00,
+                netGainPct = 135.71,
+                netPnl = 20328.00,
+                regime = "BULLISH",
+                exitReason = "CLOSE",
+                qibMultiple = 222.16,
+                appliedLots = 1,
+                allottedLots = 1,
+                appliedAmount = 14980.00,
+                totalCost = 22.00,
+                benchmarkRetPct = 0.35,
+                alphaPct = 135.36
+            ),
+            SanthanaLakshmiTradeItem(
+                tradeId = "IPO-TRD-140",
+                symbol = "TATATECH",
+                companyName = "Tata Technologies Ltd",
+                decisionDate = "2023-11-24",
+                listingDate = "2023-11-30",
+                issuePrice = 500.00,
+                exitPrice = 1200.00,
+                netGainPct = 140.00,
+                netPnl = 20974.50,
+                regime = "BULLISH",
+                exitReason = "CLOSE",
+                qibMultiple = 203.41,
+                appliedLots = 1,
+                allottedLots = 1,
+                appliedAmount = 15000.00,
+                totalCost = 25.50,
+                benchmarkRetPct = 1.05,
+                alphaPct = 138.95
+            )
+        )
     }
 }
 

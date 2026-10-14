@@ -1,3 +1,4 @@
 <resources>
-    <string name="app_name">Varalakshmi Portfolio</string>
+    <string name="app_name">Vara</string>
+    <string name="widget_description">Live dynamic today profit and percentage gain for Vara Equity</string>
 </resources>
