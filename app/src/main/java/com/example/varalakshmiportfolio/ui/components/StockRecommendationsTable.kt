@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.automirrored.filled.ShowChart
 import androidx.compose.material.icons.filled.AutoGraph
 import androidx.compose.material.icons.filled.History
@@ -15,6 +16,7 @@ import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -45,6 +47,26 @@ fun StockRecommendationsTable(
                 .fillMaxWidth()
                 .padding(16.dp)
         ) {
+            val avgTodayGainPct = if (recommendations.isNotEmpty()) {
+                val sum = recommendations.sumOf { it.todayChangePct }
+                sum / recommendations.size
+            } else 0.0
+
+            val isAvgPos = avgTodayGainPct > 0
+            val isAvgNeg = avgTodayGainPct < 0
+            val avgColor = when {
+                isAvgPos -> ProfitGreen
+                isAvgNeg -> LossRed
+                else -> TextSecondary
+            }
+            val avgBg = when {
+                isAvgPos -> ProfitGreenBg
+                isAvgNeg -> LossRedBg
+                else -> DarkCard
+            }
+            val avgSign = if (isAvgPos) "+" else ""
+            val avgTodayStr = String.format(Locale.US, "%s%.2f%%", avgSign, avgTodayGainPct)
+
             // Section Header
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -52,7 +74,8 @@ fun StockRecommendationsTable(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f, fill = false)
                 ) {
                     Icon(
                         imageVector = Icons.Filled.AutoGraph,
@@ -64,31 +87,90 @@ fun StockRecommendationsTable(
                     Text(
                         text = "TOP 5 STOCK RECOMMENDATIONS",
                         color = TextPrimary,
-                        fontSize = 12.sp,
+                        fontSize = 11.5.sp,
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 0.2.sp,
-                        maxLines = 1
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
 
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = DarkCard,
-                    border = BorderStroke(1.dp, DarkCardBorder)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = avgBg,
+                        border = BorderStroke(1.dp, avgColor.copy(alpha = 0.4f))
+                    ) {
+                        Text(
+                            text = "Avg Today: $avgTodayStr",
+                            color = avgColor,
+                            fontSize = 10.5.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = DarkCard,
+                        border = BorderStroke(1.dp, DarkCardBorder)
+                    ) {
+                        Text(
+                            text = "${recommendations.size} Alpha",
+                            color = GoldAccent,
+                            fontSize = 10.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Prominent Avg Gain/Loss Today Banner at the top
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(10.dp),
+                color = avgBg,
+                border = BorderStroke(1.dp, avgColor.copy(alpha = 0.35f))
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 7.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = if (isAvgPos) "📈" else if (isAvgNeg) "📉" else "📊",
+                            fontSize = 12.sp
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "TODAY'S AVG GAIN / LOSS",
+                            fontSize = 9.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextMuted,
+                            letterSpacing = 0.5.sp
+                        )
+                    }
                     Text(
-                        text = "${recommendations.size} Alpha",
-                        color = GoldAccent,
-                        fontSize = 10.5.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        text = avgTodayStr,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = avgColor
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
-            // Table Header Bar: # | TICKER | PRICE | SCORE | CHART
+            // Table Header Bar: # | TICKER | PRICE / TODAY % | SCORE | CHART
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(10.dp),
@@ -114,16 +196,16 @@ fun StockRecommendationsTable(
                         color = TextMuted,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
-                        modifier = Modifier.weight(1.70f),
+                        modifier = Modifier.weight(1.50f),
                         maxLines = 1,
                         softWrap = false
                     )
                     Text(
-                        text = "PRICE",
+                        text = "PRICE / TODAY %",
                         color = TextMuted,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
-                        modifier = Modifier.weight(1.35f),
+                        modifier = Modifier.weight(1.55f),
                         maxLines = 1,
                         softWrap = false
                     )
@@ -294,17 +376,38 @@ private fun RecommendationRow(
             }
         }
 
-        // 2. TICKER
-        Column(modifier = Modifier.weight(1.70f)) {
-            Text(
-                text = item.symbol,
-                color = TextPrimary,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.ExtraBold,
-                maxLines = 1,
-                softWrap = false,
-                overflow = TextOverflow.Ellipsis
-            )
+        // 2. TICKER (Click opens Google Finance)
+        val context = androidx.compose.ui.platform.LocalContext.current
+        Column(
+            modifier = Modifier
+                .weight(1.50f)
+                .clip(RoundedCornerShape(6.dp))
+                .clickable {
+                    com.example.varalakshmiportfolio.ui.util.StockLinkHelper.openGoogleFinance(
+                        context = context,
+                        symbol = item.symbol
+                    )
+                }
+                .padding(vertical = 2.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = item.symbol,
+                    color = TextPrimary,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.width(3.dp))
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                    contentDescription = "View on Google Finance",
+                    tint = AccentIndigoLight.copy(alpha = 0.7f),
+                    modifier = Modifier.size(10.dp)
+                )
+            }
             val subText = if (item.targetPrice > 0.0) {
                 "Tgt: ₹" + String.format(Locale.US, "%,.0f", item.targetPrice)
             } else "Momentum"
@@ -318,8 +421,18 @@ private fun RecommendationRow(
             )
         }
 
-        // 3. PRICE
-        Column(modifier = Modifier.weight(1.35f)) {
+        // 3. PRICE / TODAY %
+        val isTodayPositive = item.todayChangePct > 0
+        val isTodayNegative = item.todayChangePct < 0
+        val todayColor = when {
+            isTodayPositive -> ProfitGreen
+            isTodayNegative -> LossRed
+            else -> TextSecondary
+        }
+        val todaySign = if (isTodayPositive) "+" else ""
+        val todayStr = String.format(Locale.US, "%s%.2f%% Today", todaySign, item.todayChangePct)
+
+        Column(modifier = Modifier.weight(1.55f)) {
             Text(
                 text = item.formattedPrice,
                 color = TextPrimary,
@@ -329,12 +442,11 @@ private fun RecommendationRow(
                 softWrap = false,
                 overflow = TextOverflow.Ellipsis
             )
-            val retStr = (if (isPositiveReturn) "+" else "") + String.format(Locale.US, "%.1f%% 2M", item.return2mPct)
             Text(
-                text = retStr,
-                color = returnColor,
-                fontSize = 9.sp,
-                fontWeight = FontWeight.SemiBold,
+                text = todayStr,
+                color = todayColor,
+                fontSize = 9.5.sp,
+                fontWeight = FontWeight.ExtraBold,
                 maxLines = 1,
                 softWrap = false,
                 overflow = TextOverflow.Ellipsis
