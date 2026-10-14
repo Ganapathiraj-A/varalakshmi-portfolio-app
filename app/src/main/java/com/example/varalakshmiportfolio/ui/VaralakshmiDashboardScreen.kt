@@ -398,7 +398,9 @@ fun VaralakshmiDashboardScreen(
                             onRefresh = { viewModel.refreshSanthana() },
                             onConfirmMandate = { viewModel.confirmIpoMandate(it) },
                             onDismissAlert = { viewModel.dismissIpoNotification(it) },
-                            onUpdateAllotmentStatus = { symbol, status -> viewModel.updateIpoAllotmentStatus(symbol, status) }
+                            onUpdateAllotmentStatus = { symbol, status -> viewModel.updateIpoAllotmentStatus(symbol, status) },
+                            pastRecommendations = uiState.recommendationHistory,
+                            recommendationSummary = uiState.recommendationHistorySummary
                         )
                         Spacer(modifier = Modifier.height(24.dp))
                     }
@@ -978,7 +980,7 @@ fun VaralakshmiDashboardScreen(
                     )
 
                     Text(
-                        text = "App Updates & Releases (Current: v2.1.0)",
+                        text = "App Updates & Releases (Current: v2.2.0)",
                         color = TextPrimary,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold

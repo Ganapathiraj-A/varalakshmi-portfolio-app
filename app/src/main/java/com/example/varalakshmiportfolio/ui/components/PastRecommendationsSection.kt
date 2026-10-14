@@ -40,7 +40,9 @@ import java.util.Locale
 fun PastRecommendationsSection(
     history: List<HistoricalRecommendationItem>,
     summary: RecommendationHistorySummary,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    title: String = "PAST RECOMMENDATIONS",
+    subtitle: String = "Past 3 Months Track Record • Tap ticker for Google Finance"
 ) {
     var isExpanded by remember { mutableStateOf(true) }
     var selectedFilter by remember { mutableStateOf("ALL") }
@@ -92,7 +94,7 @@ fun PastRecommendationsSection(
                     Spacer(modifier = Modifier.width(8.dp))
                     Column {
                         Text(
-                            text = "PAST RECOMMENDATIONS",
+                            text = title,
                             color = TextPrimary,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
@@ -101,7 +103,7 @@ fun PastRecommendationsSection(
                             overflow = TextOverflow.Ellipsis
                         )
                         Text(
-                            text = "Past 3 Months Track Record • Tap ticker for Google Finance",
+                            text = subtitle,
                             color = TextMuted,
                             fontSize = 9.5.sp,
                             maxLines = 1,
