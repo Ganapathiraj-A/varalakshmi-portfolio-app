@@ -156,6 +156,9 @@ class VaraMarketService : Service() {
                 totalNav = totalNav,
                 isMarketOpen = isMarketOpen
             )
+
+            // Push dynamic updates to FloatingScreenerService overlay if active
+            FloatingScreenerService.updateData(cachedSummary, cachedPositions)
         } catch (_: Exception) {}
     }
 

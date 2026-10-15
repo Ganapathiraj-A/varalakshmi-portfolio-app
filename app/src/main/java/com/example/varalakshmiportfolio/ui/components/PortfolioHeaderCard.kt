@@ -1,5 +1,7 @@
 package com.example.varalakshmiportfolio.ui.components
 
+import android.content.Context
+import android.content.SharedPreferences
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -28,7 +30,12 @@ import androidx.compose.ui.unit.sp
 import com.example.varalakshmiportfolio.model.PortfolioSummary
 import com.example.varalakshmiportfolio.notification.BadgeDisplayMode
 import com.example.varalakshmiportfolio.notification.VaraBadgeManager
+import com.example.varalakshmiportfolio.service.FloatingScreenerManager
+import com.example.varalakshmiportfolio.service.FloatingScreenerService
 import com.example.varalakshmiportfolio.service.VaraMarketService
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.varalakshmiportfolio.theme.*
 import java.util.Locale
 
@@ -562,6 +569,174 @@ fun PortfolioHeaderCard(
                         )
                     }
                 }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Always-On Floating Live Screener Control
+            var isScreenerEnabled by remember { mutableStateOf(FloatingScreenerManager.isScreenerEnabled(context)) }
+            var hasOverlayPermission by remember { mutableStateOf(FloatingScreenerManager.canDrawOverlays(context)) }
+            var showOverlayPermissionDialog by remember { mutableStateOf(false) }
+
+            val lifecycleOwner = LocalLifecycleOwner.current
+            DisposableEffect(lifecycleOwner, context) {
+                val observer = LifecycleEventObserver { _, event ->
+                    if (event == Lifecycle.Event.ON_RESUME) {
+                        hasOverlayPermission = FloatingScreenerManager.canDrawOverlays(context)
+                        val enabled = FloatingScreenerManager.isScreenerEnabled(context)
+                        isScreenerEnabled = enabled
+                        if (enabled && hasOverlayPermission) {
+                            FloatingScreenerService.startService(context)
+                        }
+                    }
+                }
+                lifecycleOwner.lifecycle.addObserver(observer)
+
+                val prefs = context.getSharedPreferences(FloatingScreenerManager.PREFS_NAME, Context.MODE_PRIVATE)
+                val prefListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+                    if (key == FloatingScreenerManager.KEY_SCREENER_ENABLED) {
+                        isScreenerEnabled = FloatingScreenerManager.isScreenerEnabled(prefs)
+                        hasOverlayPermission = FloatingScreenerManager.canDrawOverlays(context)
+                    }
+                }
+                prefs.registerOnSharedPreferenceChangeListener(prefListener)
+
+                onDispose {
+                    lifecycleOwner.lifecycle.removeObserver(observer)
+                    prefs.unregisterOnSharedPreferenceChangeListener(prefListener)
+                }
+            }
+
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp)),
+                shape = RoundedCornerShape(10.dp),
+                color = DarkCard,
+                border = androidx.compose.foundation.BorderStroke(
+                    1.dp,
+                    if (isScreenerEnabled && hasOverlayPermission) AccentIndigo.copy(alpha = 0.6f) else DarkCardBorder
+                )
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp, vertical = 7.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "📺 LIVE SCREENER",
+                            fontSize = 9.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextMuted,
+                            letterSpacing = 0.5.sp
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = if (isScreenerEnabled && hasOverlayPermission) ProfitGreenBg else DarkCardBorder.copy(alpha = 0.5f)
+                        ) {
+                            Text(
+                                text = if (isScreenerEnabled && hasOverlayPermission) "OVERLAY ON" else "OFF",
+                                fontSize = 8.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = if (isScreenerEnabled && hasOverlayPermission) ProfitGreen else TextMuted,
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Floating marquee overlay",
+                            fontSize = 9.sp,
+                            color = TextSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    Switch(
+                        checked = isScreenerEnabled && hasOverlayPermission,
+                        onCheckedChange = { checked ->
+                            if (checked) {
+                                FloatingScreenerManager.setScreenerEnabled(context, true)
+                                isScreenerEnabled = true
+                                if (FloatingScreenerManager.canDrawOverlays(context)) {
+                                    hasOverlayPermission = true
+                                    FloatingScreenerService.startService(context)
+                                } else {
+                                    hasOverlayPermission = false
+                                    showOverlayPermissionDialog = true
+                                }
+                            } else {
+                                FloatingScreenerManager.setScreenerEnabled(context, false)
+                                isScreenerEnabled = false
+                                FloatingScreenerService.stopService(context)
+                            }
+                        },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = AccentIndigo,
+                            uncheckedThumbColor = TextMuted,
+                            uncheckedTrackColor = DarkCard
+                        )
+                    )
+                }
+            }
+
+            if (showOverlayPermissionDialog) {
+                AlertDialog(
+                    onDismissRequest = {
+                        showOverlayPermissionDialog = false
+                        if (!FloatingScreenerManager.canDrawOverlays(context)) {
+                            FloatingScreenerManager.setScreenerEnabled(context, false)
+                            isScreenerEnabled = false
+                        }
+                    },
+                    title = {
+                        Text(
+                            text = "Overlay Permission Required",
+                            color = TextPrimary,
+                            fontWeight = FontWeight.Bold
+                        )
+                    },
+                    text = {
+                        val miuiHint = if (FloatingScreenerManager.isMiui()) {
+                            "\n\nNote for Xiaomi / HyperOS / MIUI: Also ensure 'Display pop-up windows while running in background' is enabled in App Permissions."
+                        } else ""
+                        Text(
+                            text = "To display the always-on floating live stock screener above other apps, Varalakshmi Portfolio requires the 'Display over other apps' system permission.\n\nTap 'Grant Permission' to open Settings and enable it.$miuiHint",
+                            color = TextSecondary,
+                            fontSize = 12.5.sp
+                        )
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                showOverlayPermissionDialog = false
+                                try {
+                                    context.startActivity(FloatingScreenerManager.createOverlayPermissionIntent(context))
+                                } catch (_: Throwable) {}
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = AccentIndigo)
+                        ) {
+                            Text("Grant Permission", color = Color.White)
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = {
+                            showOverlayPermissionDialog = false
+                            FloatingScreenerManager.setScreenerEnabled(context, false)
+                            isScreenerEnabled = false
+                        }) {
+                            Text("Cancel", color = TextMuted)
+                        }
+                    }
+                )
             }
 
             Spacer(modifier = Modifier.height(10.dp))

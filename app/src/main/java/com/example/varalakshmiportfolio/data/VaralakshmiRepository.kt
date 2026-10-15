@@ -3301,6 +3301,7 @@ class VaralakshmiRepository {
         if (sUrl.isBlank()) {
             sUrl = DEFAULT_SERVER_URL
         }
+        val effectiveAuthToken = if (!authToken.isNullOrBlank()) authToken else cachedAuthToken
         var instancesMap: Map<String, FnoInstanceSummary> = emptyMap()
         var positionsList: List<FnoPositionItem> = emptyList()
         var dailyPnlList: List<FnoDailyPnlItem> = emptyList()
@@ -3315,10 +3316,10 @@ class VaralakshmiRepository {
         val fetchEndpoints: suspend (String) -> Boolean = { url ->
             try {
                 coroutineScope {
-                    val instancesDeferred = async { httpGet("$url/api/fno/instances", authToken) }
-                    val positionsDeferred = async { httpGet("$url/api/fno/positions?instance=$selectedInstanceId", authToken) }
-                    val statusDeferred = async { httpGet("$url/api/fno/status", authToken) }
-                    val dailyPnlDeferred = async { httpGet("$url/api/fno/daily-pnl?instance=$selectedInstanceId", authToken) }
+                    val instancesDeferred = async { httpGet("$url/api/fno/instances", effectiveAuthToken) }
+                    val positionsDeferred = async { httpGet("$url/api/fno/positions?instance=$selectedInstanceId", effectiveAuthToken) }
+                    val statusDeferred = async { httpGet("$url/api/fno/status", effectiveAuthToken) }
+                    val dailyPnlDeferred = async { httpGet("$url/api/fno/daily-pnl?instance=$selectedInstanceId", effectiveAuthToken) }
 
                     val instJ = instancesDeferred.await()
                     val posJ = positionsDeferred.await()
@@ -3485,22 +3486,32 @@ class VaralakshmiRepository {
             val arr = root.optJSONArray("positions") ?: return result
             for (i in 0 until arr.length()) {
                 val obj = arr.optJSONObject(i) ?: continue
+                val rawQuantity = obj.optInt("quantity", 1)
+                val safeQuantity = kotlin.math.abs(rawQuantity).let { if (it == 0) 1 else it }
+
+                val strikeVal = if (obj.has("strike_price")) optSafeDouble(obj, "strike_price", 0.0)
+                else optSafeDouble(obj, "strike", 0.0)
+
+                val optType = if (obj.has("option_type") && !obj.isNull("option_type")) obj.optString("option_type")
+                else if (obj.has("instrument_type") && !obj.isNull("instrument_type")) obj.optString("instrument_type")
+                else null
+
                 val item = FnoPositionItem(
                     positionId = obj.optString("position_id", "pos_$i"),
-                    strategyEngine = obj.optString("strategy_engine", "IntradayStraddleEngine"),
+                    strategyEngine = obj.optString("strategy_engine", obj.optString("strategy", "IntradayStraddleEngine")),
                     symbol = obj.optString("symbol", obj.optString("tradingsymbol", "NIFTY_FUT")),
-                    instrumentType = obj.optString("instrument_type", "OPT"),
+                    instrumentType = obj.optString("instrument_type", if (optType != null) "OPT" else "FUT"),
                     direction = obj.optString("direction", "SHORT"),
-                    quantity = obj.optInt("quantity", 1),
+                    quantity = safeQuantity,
                     lots = obj.optInt("lots", 1),
                     entryPrice = optSafeDouble(obj, "entry_price", 0.0),
                     currentPrice = optSafeDouble(obj, "current_price", 0.0),
                     marginRequired = optSafeDouble(obj, "margin_required", optSafeDouble(obj, "margin_blocked", 0.0)),
-                    stopLossPrice = optSafeDouble(obj, "stop_loss_price", 0.0),
+                    stopLossPrice = optSafeDouble(obj, "stop_loss_price", optSafeDouble(obj, "stop_loss", 0.0)),
                     unrealizedPnl = optSafeDouble(obj, "unrealized_pnl", optSafeDouble(obj, "pnl", 0.0)),
                     expiryDate = obj.optString("expiry_date", obj.optString("expiry", "")),
-                    strikePrice = optSafeDouble(obj, "strike_price", 0.0),
-                    optionType = if (obj.has("option_type") && !obj.isNull("option_type")) obj.optString("option_type") else null,
+                    strikePrice = strikeVal,
+                    optionType = optType,
                     entryReason = obj.optString("entry_reason", obj.optString("reason", obj.optString("rationale", ""))),
                     targetPrice = optSafeDouble(obj, "target_price", 0.0),
                     signalTrigger = obj.optString("signal_trigger", obj.optString("trigger", "")),
@@ -3548,17 +3559,29 @@ class VaralakshmiRepository {
                 if (posArr != null) {
                     for (p in 0 until posArr.length()) {
                         val pObj = posArr.optJSONObject(p) ?: continue
+                        val rawQty = pObj.optInt("quantity", 0)
+                        val safeQty = kotlin.math.abs(rawQty)
+                        val sym = pObj.optString("tradingsymbol", pObj.optString("symbol", ""))
+                        val closePr = if (pObj.has("close_price")) optSafeDouble(pObj, "close_price", 0.0)
+                        else if (pObj.has("current_price")) optSafeDouble(pObj, "current_price", 0.0)
+                        else optSafeDouble(pObj, "exit_price", 0.0)
+                        val dayP = if (pObj.has("day_pnl")) optSafeDouble(pObj, "day_pnl", 0.0)
+                        else if (pObj.has("unrealized_net_pnl")) optSafeDouble(pObj, "unrealized_net_pnl", 0.0)
+                        else if (pObj.has("unrealized_gross_pnl")) optSafeDouble(pObj, "unrealized_gross_pnl", 0.0)
+                        else optSafeDouble(pObj, "net_pnl", optSafeDouble(pObj, "pnl", 0.0))
+                        val strat = pObj.optString("strategy_engine", pObj.optString("strategy", "IndexTrendEngine"))
+
                         posList.add(
                             FnoHistoricalPosition(
-                                symbol = pObj.optString("symbol", ""),
+                                symbol = sym,
                                 direction = pObj.optString("direction", "SHORT"),
                                 instrumentType = pObj.optString("instrument_type", "FUT"),
                                 lots = pObj.optInt("lots", 1),
-                                quantity = pObj.optInt("quantity", 0),
+                                quantity = safeQty,
                                 entryPrice = optSafeDouble(pObj, "entry_price", 0.0),
-                                closePrice = optSafeDouble(pObj, "close_price", 0.0),
-                                dayPnl = optSafeDouble(pObj, "day_pnl", 0.0),
-                                strategyEngine = pObj.optString("strategy_engine", "IndexTrendEngine")
+                                closePrice = closePr,
+                                dayPnl = dayP,
+                                strategyEngine = strat
                             )
                         )
                     }

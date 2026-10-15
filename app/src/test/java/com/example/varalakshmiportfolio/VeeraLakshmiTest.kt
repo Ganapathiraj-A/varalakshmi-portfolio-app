@@ -1287,4 +1287,133 @@ class VeeraLakshmiTest {
         assertEquals("NIFTY26O1922700PE", loaded.todayTrades[0].symbol)
         assertEquals("NIFTY26O1922700CE", loaded.todayTrades[1].symbol)
     }
+
+    @Test
+    fun testParseFnoPositionsWithLiveBackendPayloadAndNegativeShortQuantity() {
+        // Simulates real live payload from /api/fno/positions?instance=10L
+        val jsonPayload = """
+            {
+              "instance_id": "10L",
+              "name": "VeeraLakshmi V3 Flagship (₹10L Paper Trading)",
+              "as_of_date": "2026-10-15",
+              "allocated_capital": 1000000.0,
+              "margin_blocked": 76500.0,
+              "unrealized_pnl": 3474.25,
+              "cash_buffer": 923500.0,
+              "margin_utilization_pct": 7.65,
+              "positions": [
+                {
+                  "position_id": "POS_NIFTY26O1922950PE_20261015_2",
+                  "symbol": "NIFTY26O1922950PE",
+                  "tradingsymbol": "NIFTY26O1922950PE",
+                  "instrument_token": 12072962,
+                  "instrument_type": "PE",
+                  "strike": 22950.0,
+                  "expiry": "2026-10-19",
+                  "side": "SELL",
+                  "direction": "SHORT",
+                  "quantity": -65,
+                  "entry_price": 142.0,
+                  "current_price": 88.55,
+                  "stop_loss_price": 177.5,
+                  "stop_loss": 177.5,
+                  "margin_required": 76500.0,
+                  "status": "ACTIVE",
+                  "strategy": "VeeraLakshmi_V2_Straddle",
+                  "pnl": 0.0,
+                  "unrealized_pnl": 3474.25
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val positions = repository.parseFnoPositions(jsonPayload)
+        assertEquals(1, positions.size)
+        val position = positions[0]
+
+        assertEquals("POS_NIFTY26O1922950PE_20261015_2", position.positionId)
+        assertEquals("VeeraLakshmi_V2_Straddle", position.strategyEngine)
+        assertEquals("NIFTY26O1922950PE", position.symbol)
+        assertEquals("PE", position.instrumentType)
+        assertEquals("PE", position.optionType)
+        assertEquals("SHORT", position.direction)
+        assertEquals(65, position.quantity)
+        assertEquals(142.0, position.entryPrice, 0.01)
+        assertEquals(88.55, position.currentPrice, 0.01)
+        assertEquals(177.5, position.stopLossPrice, 0.01)
+        assertEquals(22950.0, position.strikePrice, 0.01)
+        assertEquals(3474.25, position.unrealizedPnl, 0.01)
+        assertTrue("Capital at risk must be strictly positive", position.capitalAtRisk > 0.0)
+        assertEquals(2307.50, position.capitalAtRisk, 0.01)
+        assertTrue(position.isProfit)
+    }
+
+    @Test
+    fun testCapitalAtRiskNeverNegativeEvenWithExplicitNegativeQuantity() {
+        val position = FnoPositionItem(
+            positionId = "test_neg_qty",
+            symbol = "NIFTY26O1922950PE",
+            quantity = -65,
+            entryPrice = 142.0,
+            stopLossPrice = 177.5
+        )
+
+        assertTrue("Capital at risk must be positive even if quantity is negative", position.capitalAtRisk > 0.0)
+        assertEquals(2307.50, position.capitalAtRisk, 0.01)
+        assertFalse("Formatted capital at risk should not contain minus", position.formattedCapitalAtRisk.contains("-"))
+    }
+
+    @Test
+    fun testParseFnoDailyPnlWithNestedHistoricalPositionsFromLiveBackend() {
+        val jsonPayload = """
+            {
+              "instance_id": "10L",
+              "daily_pnl": [
+                {
+                  "date": "2026-10-15",
+                  "daily_pnl": 1843.94,
+                  "daily_return_pct": 0.18,
+                  "total_equity": 1001843.94,
+                  "margin_blocked": 76500.0,
+                  "positions_count": 1,
+                  "trade_count": 1,
+                  "day_status": "WIN",
+                  "positions": [
+                    {
+                      "tradingsymbol": "NIFTY26O1922950PE",
+                      "symbol": "NIFTY",
+                      "direction": "SHORT",
+                      "instrument_type": "PE",
+                      "lots": 1,
+                      "quantity": -65,
+                      "entry_price": 142.0,
+                      "current_price": 88.55,
+                      "unrealized_net_pnl": 3437.77,
+                      "strategy": "VeeraLakshmi_V2_Straddle"
+                    }
+                  ],
+                  "trades": []
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val records = repository.parseFnoDailyPnl(jsonPayload)
+        assertEquals(1, records.size)
+        val day = records[0]
+        assertEquals("2026-10-15", day.date)
+        assertEquals(1, day.positions.size)
+
+        val pos = day.positions[0]
+        assertEquals("NIFTY26O1922950PE", pos.symbol)
+        assertEquals("SHORT", pos.direction)
+        assertEquals(65, pos.quantity)
+        assertEquals(142.0, pos.entryPrice, 0.01)
+        assertEquals(88.55, pos.closePrice, 0.01)
+        assertEquals(3437.77, pos.dayPnl, 0.01)
+        assertEquals("VeeraLakshmi_V2_Straddle", pos.strategyEngine)
+        assertTrue(pos.isProfit)
+        assertEquals("₹88.55", pos.formattedClosePrice)
+        assertTrue(pos.formattedDayPnl.startsWith("+₹3,437.77"))
+    }
 }

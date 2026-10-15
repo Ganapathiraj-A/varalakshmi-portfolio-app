@@ -269,3 +269,60 @@ Add a dedicated composable table (`DailyReturnsTable`) to `VaralakshmiDashboardS
 - [ ] `VaralakshmiRepository` provides realistic daily return records in the offline fallback state.
 - [ ] All existing app unit tests pass cleanly via `./gradlew testDebugUnitTest`.
 - [ ] New unit tests verifying daily returns state and formatting pass cleanly.
+
+## 2026-10-15T08:44:01Z
+
+This is a single self-contained fix; keep it small and focused.
+
+Implement an always-on floating horizontal live stock screener overlay in the Varalakshmi Portfolio Android application that renders above other apps at ~1/4 above screen bottom, displaying today's total portfolio P&L and a continuous auto-scrolling marquee of individual stock % changes, with vertical dragging support, tap-to-open app navigation, and an in-app Settings toggle with overlay permission management.
+
+Working directory: /home/ganapathiraj/Code/Stock Research/Unified UI/app
+Integrity mode: development
+
+## Requirements
+
+### R1. Floating System Overlay Service (`FloatingScreenerService`)
+- Android foreground `Service` using `WindowManager` with `WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY`.
+- Layout positioned horizontally across the device screen, default positioned at approximately 1/4 (25%) above the bottom of the screen.
+- Supports vertical drag gestures so the user can easily reposition the screener up or down to avoid obstructing keyboard, navigation bars, or other app controls.
+- Content elements:
+  1. **Portfolio Summary Badge (Left/Fixed)**: Today's total P&L in ₹ and % (e.g. `+₹2,965.67 (+2.1%)` in green, or negative in red) with compact styling.
+  2. **Continuous Auto-Scrolling Marquee (Right/Flex)**: Smoothly animated horizontal ticker loop showcasing all active stocks with ticker symbols and their today's `%` change (e.g. `PCJEWELLER +4.2%  •  CUPID -1.1%  •  TATAMOTORS +0.8%`).
+- Tap-to-open interaction: Tapping anywhere on the overlay launches `MainActivity` to bring the portfolio app directly to the foreground.
+- Compact translucent OLED-dark styling (`#E60D1117` background, subtle rounded border) ensuring visibility without completely blocking underlying content.
+
+### R2. In-App Settings / Dashboard Toggle & Permission Handling
+- Add a dedicated "Always-On Live Screener" card/toggle switch in the app (in `VaralakshmiDashboardScreen` or Settings).
+- Handle `Settings.canDrawOverlays(context)` checks:
+  - If overlay permission is NOT granted when user toggles ON: show an explanatory dialog or snackbar and open the system `Settings.ACTION_MANAGE_OVERLAY_PERMISSION` intent.
+  - When granted, start `FloatingScreenerService`.
+  - When toggled OFF, stop `FloatingScreenerService` and remove overlay from `WindowManager`.
+- Persist user toggle preference in `SharedPreferences` / repository state so the user's preference is remembered across app sessions.
+- Declare `android.permission.SYSTEM_ALERT_WINDOW` and `android.permission.FOREGROUND_SERVICE` (and `FOREGROUND_SERVICE_SPECIAL_USE` / `SYSTEM_EXEMPTED` as required for Android 14+) in `AndroidManifest.xml`.
+
+### R3. Dynamic Data Updates & Battery-Efficient Lifecycle
+- Observe live portfolio changes: when repository updates positions and summary, broadcast or push updated numbers to the floating view so it always reflects live market updates.
+- Stop ticker animation and timer when screen is off (`ACTION_SCREEN_OFF`) to conserve battery.
+
+### R4. Build Verification & Unit Testing
+- Unit tests verifying:
+  - Permission check and intent generation logic.
+  - Floating screener state preferences persistence.
+  - Ticker text generation and formatting from portfolio position items.
+- Programmatic verification: `./gradlew testDebugUnitTest` completes with 0 errors.
+- Assemble release: `./gradlew assembleRelease` completes with 0 errors.
+
+## Acceptance Criteria
+
+### Functionality & Overlay UX
+- [ ] Floating live screener renders horizontally above other apps at ~1/4 height above the screen bottom.
+- [ ] Screener displays today's total portfolio P&L (₹ and %) and continuous auto-scrolling individual stock % changes.
+- [ ] User can drag the floating screener vertically to reposition it anywhere on screen.
+- [ ] Tapping the floating screener immediately brings `MainActivity` to the foreground.
+- [ ] In-app toggle enables or disables the screener, directing user to Android overlay settings if permission is not yet granted.
+- [ ] Preference is saved and restored across app restarts.
+
+### Stability & Build
+- [ ] `./gradlew testDebugUnitTest` passes with exit code 0.
+- [ ] `./gradlew assembleRelease` passes with exit code 0 and produces `varalakshmi-portfolio.apk`.
+

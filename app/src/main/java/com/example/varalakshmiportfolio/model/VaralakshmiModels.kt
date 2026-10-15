@@ -924,7 +924,7 @@ data class FnoPositionItem(
 
     val capitalAtRisk: Double
         get() = if (entryPrice > 0.0 && stopLossPrice > 0.0) {
-            kotlin.math.abs(entryPrice - stopLossPrice) * quantity
+            kotlin.math.abs(entryPrice - stopLossPrice) * kotlin.math.abs(quantity)
         } else 0.0
 
     val formattedCapitalAtRisk: String

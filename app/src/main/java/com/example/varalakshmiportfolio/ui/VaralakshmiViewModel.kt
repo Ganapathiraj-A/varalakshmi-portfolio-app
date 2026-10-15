@@ -15,6 +15,7 @@ import com.example.varalakshmiportfolio.model.IpoActionNotification
 import com.example.varalakshmiportfolio.model.VeeraLakshmiUiState
 import com.example.varalakshmiportfolio.model.SanthanaLakshmiUiState
 import com.example.varalakshmiportfolio.model.SanthanaLakshmiTradeItem
+import com.example.varalakshmiportfolio.service.FloatingScreenerService
 import com.example.varalakshmiportfolio.util.MarketHours
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -282,6 +283,9 @@ class VaralakshmiViewModel(
                     }
                 }
             }
+            try {
+                FloatingScreenerService.updateData(syncResult.summary, syncResult.positions)
+            } catch (_: Throwable) {}
         }
     }
 

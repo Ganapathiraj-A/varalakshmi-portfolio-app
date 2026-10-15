@@ -35,6 +35,12 @@ class MainActivity : ComponentActivity() {
         com.example.varalakshmiportfolio.notification.VaraBadgeManager.createNotificationChannel(this)
         com.example.varalakshmiportfolio.service.VaraMarketService.startService(this)
 
+        if (com.example.varalakshmiportfolio.service.FloatingScreenerManager.isScreenerEnabled(this) &&
+            com.example.varalakshmiportfolio.service.FloatingScreenerManager.canDrawOverlays(this)
+        ) {
+            com.example.varalakshmiportfolio.service.FloatingScreenerService.startService(this)
+        }
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(
                     this,
@@ -61,5 +67,10 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         com.example.varalakshmiportfolio.service.VaraMarketService.updateNow(this)
+        if (com.example.varalakshmiportfolio.service.FloatingScreenerManager.isScreenerEnabled(this) &&
+            com.example.varalakshmiportfolio.service.FloatingScreenerManager.canDrawOverlays(this)
+        ) {
+            com.example.varalakshmiportfolio.service.FloatingScreenerService.startService(this)
+        }
     }
 }
