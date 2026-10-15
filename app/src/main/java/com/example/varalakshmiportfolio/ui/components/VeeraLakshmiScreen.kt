@@ -2143,12 +2143,13 @@ private fun HistoricalTradeSubCard(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.weight(1f, fill = false)
                 ) {
+                    val timeLabel = if (trade.date.isNotBlank() && !trade.isToday) "${trade.date} ${trade.time}" else trade.time
                     Surface(
                         shape = RoundedCornerShape(3.dp),
                         color = AccentIndigoBg
                     ) {
                         Text(
-                            text = trade.time,
+                            text = timeLabel,
                             fontSize = 8.sp,
                             fontWeight = FontWeight.Bold,
                             color = AccentIndigoLight,
@@ -2246,8 +2247,9 @@ private fun FnoTodayTradesSection(
                         )
                     }
                     Spacer(modifier = Modifier.width(8.dp))
+                    val isToday = trades.isNotEmpty() && trades.any { it.isToday }
                     Text(
-                        text = "TODAY'S EXECUTED TRADES",
+                        text = if (isToday) "TODAY'S EXECUTED TRADES" else "LATEST SESSION EXECUTED TRADES",
                         fontSize = 11.5.sp,
                         fontWeight = FontWeight.Bold,
                         color = TextPrimary
@@ -2276,7 +2278,7 @@ private fun FnoTodayTradesSection(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "No trades executed today.",
+                        text = "No trades executed in the latest session.",
                         fontSize = 11.sp,
                         color = TextMuted
                     )

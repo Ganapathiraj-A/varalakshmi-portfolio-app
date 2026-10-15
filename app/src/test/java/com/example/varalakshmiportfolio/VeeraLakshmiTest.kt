@@ -1111,4 +1111,180 @@ class VeeraLakshmiTest {
         assertEquals(1000444.60, inst10L.totalNav, 0.01)
         assertEquals(0.04446, inst10L.returnOnCapitalPct, 0.001)
     }
+
+    @Test
+    fun testParseFnoClosedTradesLiveServerSchema() {
+        val jsonPayload = """
+            {
+              "instance_id": "10L",
+              "as_of_date": "2026-10-14",
+              "closed_trades": [
+                {
+                  "trade_id": "TRD_20261014_0001",
+                  "tradingsymbol": "NIFTY26O1922700PE",
+                  "direction": "SHORT",
+                  "closed_quantity": 65,
+                  "exit_price": 195.55,
+                  "net_pnl": -2965.67,
+                  "exit_reason": "STOP_LOSS",
+                  "total_friction": 66.67,
+                  "exit_timestamp": "2026-10-14T13:03:04.878941+05:30"
+                },
+                {
+                  "trade_id": "TRD_20261014_0002",
+                  "tradingsymbol": "NIFTY26O1922700CE",
+                  "direction": "SHORT",
+                  "closed_quantity": 65,
+                  "exit_price": 97.30,
+                  "net_pnl": 3410.27,
+                  "exit_reason": "SQUARE_OFF",
+                  "total_friction": 63.98,
+                  "exit_timestamp": "2026-10-14T15:15:05.045107+05:30"
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val trades = repository.parseFnoClosedTrades(jsonPayload)
+        assertEquals(2, trades.size)
+
+        val t1 = trades[0]
+        assertEquals("TRD_20261014_0001", t1.tradeId)
+        assertEquals("NIFTY26O1922700PE", t1.symbol)
+        assertEquals("BUY", t1.action)
+        assertEquals("OPT", t1.instrumentType)
+        assertEquals(65, t1.quantity)
+        assertEquals(195.55, t1.executionPrice, 0.01)
+        assertEquals(-2965.67, t1.realizedPnl, 0.01)
+        assertEquals("STOP_LOSS", t1.executionReason)
+        assertEquals(66.67, t1.costs, 0.01)
+        assertEquals("13:03", t1.time)
+        assertEquals("2026-10-14", t1.date)
+
+        val t2 = trades[1]
+        assertEquals("TRD_20261014_0002", t2.tradeId)
+        assertEquals("NIFTY26O1922700CE", t2.symbol)
+        assertEquals(3410.27, t2.realizedPnl, 0.01)
+        assertEquals("15:15", t2.time)
+        assertEquals("2026-10-14", t2.date)
+
+        val netSum = trades.sumOf { it.realizedPnl }
+        assertEquals(444.60, netSum, 0.01)
+    }
+
+    @Test
+    fun testParseFnoDailyPnlLiveServerTrades() {
+        val jsonPayload = """
+            {
+              "instance_id": "10L",
+              "records": [
+                {
+                  "date": "2026-10-14",
+                  "daily_pnl": 444.60,
+                  "daily_return_pct": 0.044,
+                  "total_equity": 1000444.60,
+                  "trade_count": 2,
+                  "day_status": "WIN",
+                  "trades": [
+                    {
+                      "trade_id": "TRD_20261014_0001",
+                      "tradingsymbol": "NIFTY26O1922700PE",
+                      "direction": "SHORT",
+                      "closed_quantity": 65,
+                      "exit_price": 195.55,
+                      "net_pnl": -2965.67,
+                      "exit_reason": "STOP_LOSS",
+                      "total_friction": 66.67,
+                      "exit_timestamp": "2026-10-14T13:03:04.878941+05:30"
+                    },
+                    {
+                      "trade_id": "TRD_20261014_0002",
+                      "tradingsymbol": "NIFTY26O1922700CE",
+                      "direction": "SHORT",
+                      "closed_quantity": 65,
+                      "exit_price": 97.30,
+                      "net_pnl": 3410.27,
+                      "exit_reason": "SQUARE_OFF",
+                      "total_friction": 63.98,
+                      "exit_timestamp": "2026-10-14T15:15:05.045107+05:30"
+                    }
+                  ]
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val records = repository.parseFnoDailyPnl(jsonPayload)
+        assertEquals(1, records.size)
+        val rec = records[0]
+        assertEquals("2026-10-14", rec.date)
+        assertEquals(2, rec.trades.size)
+        assertEquals("NIFTY26O1922700PE", rec.trades[0].symbol)
+        assertEquals(65, rec.trades[0].quantity)
+        assertEquals(-2965.67, rec.trades[0].realizedPnl, 0.01)
+        assertEquals(3410.27, rec.trades[1].realizedPnl, 0.01)
+    }
+
+    @Test
+    fun testLoadFnoFromDiskPreservesLatestTradesAcrossDays() {
+        val trd1 = FnoHistoricalTrade(
+            tradeId = "TRD_1",
+            time = "13:03",
+            symbol = "NIFTY26O1922700PE",
+            action = "BUY",
+            instrumentType = "OPT",
+            quantity = 65,
+            executionPrice = 195.55,
+            realizedPnl = -2965.67,
+            executionReason = "STOP_LOSS",
+            costs = 66.67,
+            date = "2026-10-14"
+        )
+        val trd2 = FnoHistoricalTrade(
+            tradeId = "TRD_2",
+            time = "15:15",
+            symbol = "NIFTY26O1922700CE",
+            action = "BUY",
+            instrumentType = "OPT",
+            quantity = 65,
+            executionPrice = 97.30,
+            realizedPnl = 3410.27,
+            executionReason = "SQUARE_OFF",
+            costs = 63.98,
+            date = "2026-10-14"
+        )
+
+        val dayPnl = FnoDailyPnlItem(
+            date = "2026-10-14",
+            dailyPnl = 444.60,
+            dailyReturnPct = 0.044,
+            totalEquity = 1000444.60,
+            tradeCount = 2,
+            trades = listOf(trd1, trd2)
+        )
+
+        val stateToSave = com.example.varalakshmiportfolio.model.VeeraLakshmiUiState(
+            selectedInstanceId = "10L",
+            instances = mapOf("10L" to FnoInstanceSummary(
+                instanceId = "10L",
+                name = "VeeraLakshmi V3",
+                allocatedCapital = 1000000.0,
+                marginBlocked = 0.0,
+                unrealizedPnl = 444.60,
+                cashBuffer = 1000444.60,
+                marginUtilizationPct = 0.0,
+                positionsCount = 0,
+                asOfDate = "2026-10-14"
+            )),
+            dailyPnlHistory = listOf(dayPnl),
+            todayTrades = listOf(trd1, trd2)
+        )
+
+        repository.saveFnoToDisk(stateToSave)
+        val loaded = repository.loadFnoFromDisk()
+        assertNotNull(loaded)
+        assertEquals(2, loaded!!.todayTrades.size)
+        assertEquals("NIFTY26O1922700PE", loaded.todayTrades[0].symbol)
+        assertEquals("NIFTY26O1922700CE", loaded.todayTrades[1].symbol)
+    }
 }

@@ -1868,10 +1868,10 @@ class VaralakshmiRepository {
                         } else 0.0
 
                         val effectivePrevClose = if (prevClose > 0.0) prevClose else entryPrice
-                        val isBoughtToday = isPositionBoughtToday(entryDate)
-                        val refPrice = calculateReferencePrice(entryDate, entryPrice, effectivePrevClose)
+                        val isBoughtToday = if (obj.has("is_bought_today")) obj.optBoolean("is_bought_today") else isPositionBoughtToday(entryDate)
+                        val refPrice = if (isBoughtToday && entryPrice > 0.0) entryPrice else calculateReferencePrice(entryDate, entryPrice, effectivePrevClose)
 
-                        val todayChg = if (refPrice > 0.0) {
+                        val todayChg = if (refPrice > 0.0 && kotlin.math.abs(currentPrice - refPrice) > 0.0001) {
                             roundPaise(currentPrice - refPrice)
                         } else if (obj.has("today_price_change") && !obj.isNull("today_price_change")) {
                             roundPaise(obj.optDouble("today_price_change", 0.0))
@@ -1879,7 +1879,7 @@ class VaralakshmiRepository {
                             0.0
                         }
 
-                        val todayChgPct = if (refPrice > 0.0) {
+                        val todayChgPct = if (refPrice > 0.0 && kotlin.math.abs(currentPrice - refPrice) > 0.0001) {
                             roundPaise(((currentPrice - refPrice) / refPrice) * 100.0)
                         } else if (obj.has("today_price_change_pct") && !obj.isNull("today_price_change_pct")) {
                             roundPaise(obj.optDouble("today_price_change_pct", 0.0))
@@ -1887,7 +1887,7 @@ class VaralakshmiRepository {
                             0.0
                         }
 
-                        val todayValChg = if (obj.has("today_value_change") && !obj.isNull("today_value_change")) {
+                        val todayValChg = if (obj.has("today_value_change") && !obj.isNull("today_value_change") && kotlin.math.abs(obj.optDouble("today_value_change", 0.0)) > 0.0001) {
                             roundPaise(obj.optDouble("today_value_change", 0.0))
                         } else {
                             roundPaise(quantity * todayChg)
@@ -2231,17 +2231,17 @@ class VaralakshmiRepository {
                     cagrPct = computedCagr,
                     inceptionDate = inceptDate
                 )
+                if (fetchedOtherPositions != null) {
+                    cachedOtherPositions.clear()
+                    cachedOtherPositions.addAll(fetchedOtherPositions)
+                }
+
                 saveToDisk()
 
                 val heldSymbols = cachedPositions.map { it.symbol.trim().uppercase(Locale.US) }.toSet()
                 val cleanRecommendations = cachedRecommendations
                     .filterNot { it.symbol.trim().uppercase(Locale.US) in heldSymbols }
                     .mapIndexed { idx, item -> item.copy(rank = idx + 1) }
-
-                if (fetchedOtherPositions != null) {
-                    cachedOtherPositions.clear()
-                    cachedOtherPositions.addAll(fetchedOtherPositions)
-                }
 
                 SyncResult.Success(
                     summary = cachedSummary,
@@ -2791,6 +2791,35 @@ class VaralakshmiRepository {
             }
             root.put("ipo_notifications", ipoArray)
 
+            val otherArray = JSONArray()
+            val otherPositionsSnapshot = synchronized(lock) { cachedOtherPositions.toList() }
+            for (p in otherPositionsSnapshot) {
+                val pObj = JSONObject().apply {
+                    put("positionId", p.positionId)
+                    put("symbol", p.symbol)
+                    put("quantity", p.quantity)
+                    put("entryPrice", p.entryPrice)
+                    put("currentPrice", p.currentPrice)
+                    put("marketValue", p.marketValue)
+                    put("unrealizedPnl", p.unrealizedPnl)
+                    put("unrealizedPnlPct", p.unrealizedPnlPct)
+                    put("peakPrice", p.peakPrice)
+                    put("entryDate", p.entryDate)
+                    put("status", p.status)
+                    put("previousClose", p.previousClose)
+                    put("referencePrice", p.referencePrice)
+                    put("isBoughtToday", p.isBoughtToday)
+                    put("todayPriceChange", p.todayPriceChange)
+                    put("todayPriceChangePct", p.todayPriceChangePct)
+                    put("todayValueChange", p.todayValueChange)
+                    put("isProfitTargetEnabled", p.isProfitTargetEnabled)
+                    put("isStrategy", p.isStrategy)
+                    put("category", p.category)
+                }
+                otherArray.put(pObj)
+            }
+            root.put("other_positions", otherArray)
+
             val targetFile = File(dir, CACHE_FILE_NAME)
             val tempFile = File(dir, "$CACHE_FILE_NAME.tmp")
             tempFile.writeText(root.toString(2), Charsets.UTF_8)
@@ -3022,7 +3051,11 @@ class VaralakshmiRepository {
 
             if (root.has("serverUrl") && !root.isNull("serverUrl")) {
                 val url = root.optString("serverUrl", "").trim()
-                if (url.isNotBlank()) cachedServerUrl = url
+                if (url.isNotBlank() && !url.contains("10.0.2.2") && !url.contains("localhost") && !url.contains("127.0.0.1")) {
+                    cachedServerUrl = url
+                } else {
+                    cachedServerUrl = DEFAULT_SERVER_URL
+                }
             }
             if (root.has("authToken") && !root.isNull("authToken")) {
                 val token = root.optString("authToken", "").trim()
@@ -3116,6 +3149,61 @@ class VaralakshmiRepository {
                     cachedDailyReturns.addAll(createDefaultDailyReturns())
                 }
             }
+
+            val cachedOthersArray = root.optJSONArray("other_positions") ?: root.optJSONArray("zerodha_positions")
+            if (cachedOthersArray != null) {
+                val parsedOthersList = mutableListOf<PositionItem>()
+                for (i in 0 until cachedOthersArray.length()) {
+                    val p = cachedOthersArray.optJSONObject(i) ?: continue
+                    val symbol = p.optString("symbol", "").trim().uppercase(Locale.US)
+                    if (symbol.isEmpty()) continue
+                    val quantity = p.optInt("quantity", 0)
+                    val entryPrice = optSafeDouble(p, "entryPrice", optSafeDouble(p, "entry_price", 0.0))
+                    val currentPrice = optSafeDouble(p, "currentPrice", optSafeDouble(p, "current_price", 0.0))
+                    val entryDate = p.optString("entryDate", p.optString("entry_date", ""))
+                    val prevClose = optSafeDouble(p, "previousClose", optSafeDouble(p, "previous_close", optSafeDouble(p, "prev_close", 0.0)))
+                    val effectivePrevClose = if (prevClose > 0.0) prevClose else entryPrice
+                    val isBoughtToday = if (p.has("isBoughtToday")) p.optBoolean("isBoughtToday") else (if (p.has("is_bought_today")) p.optBoolean("is_bought_today") else isPositionBoughtToday(entryDate))
+                    val refPrice = if (isBoughtToday && entryPrice > 0.0) entryPrice else if (p.has("referencePrice")) optSafeDouble(p, "referencePrice", calculateReferencePrice(entryDate, entryPrice, effectivePrevClose)) else calculateReferencePrice(entryDate, entryPrice, effectivePrevClose)
+                    val todayChg = if (p.has("todayPriceChange")) optSafeDouble(p, "todayPriceChange", 0.0) else (if (refPrice > 0.0 && kotlin.math.abs(currentPrice - refPrice) > 0.0001) roundPaise(currentPrice - refPrice) else 0.0)
+                    val todayChgPct = if (p.has("todayPriceChangePct")) optSafeDouble(p, "todayPriceChangePct", 0.0) else (if (refPrice > 0.0 && kotlin.math.abs(currentPrice - refPrice) > 0.0001) roundPaise(((currentPrice - refPrice) / refPrice) * 100.0) else 0.0)
+                    val todayValChg = if (p.has("todayValueChange")) optSafeDouble(p, "todayValueChange", 0.0) else roundPaise(quantity * todayChg)
+                    val marketValue = optSafeDouble(p, "marketValue", optSafeDouble(p, "market_value", roundPaise(quantity * currentPrice)))
+                    val unrealizedPnl = optSafeDouble(p, "unrealizedPnl", optSafeDouble(p, "unrealized_pnl", roundPaise(marketValue - (quantity * entryPrice))))
+                    val unrealizedPnlPct = optSafeDouble(p, "unrealizedPnlPct", optSafeDouble(p, "unrealized_pnl_pct", if (entryPrice > 0.0) roundPaise(((currentPrice - entryPrice) / entryPrice) * 100.0) else 0.0))
+                    val peakPrice = optSafeDouble(p, "peakPrice", optSafeDouble(p, "peak_price", currentPrice))
+
+                    parsedOthersList.add(
+                        PositionItem(
+                            positionId = p.optString("positionId", p.optString("position_id", "ZERODHA_$symbol")),
+                            symbol = symbol,
+                            quantity = quantity,
+                            entryPrice = entryPrice,
+                            currentPrice = currentPrice,
+                            marketValue = marketValue,
+                            unrealizedPnl = unrealizedPnl,
+                            unrealizedPnlPct = unrealizedPnlPct,
+                            peakPrice = peakPrice,
+                            entryDate = entryDate,
+                            status = p.optString("status", "OPEN"),
+                            previousClose = effectivePrevClose,
+                            referencePrice = refPrice,
+                            isBoughtToday = isBoughtToday,
+                            todayPriceChange = todayChg,
+                            todayPriceChangePct = todayChgPct,
+                            todayValueChange = todayValChg,
+                            isProfitTargetEnabled = false,
+                            isStrategy = false,
+                            category = p.optString("category", "ZERODHA")
+                        )
+                    )
+                }
+                if (parsedOthersList.isNotEmpty()) {
+                    cachedOtherPositions.clear()
+                    cachedOtherPositions.addAll(parsedOthersList)
+                }
+            }
+
             isLoadedFromDisk = true
             true
         } catch (e: Exception) {
@@ -3209,7 +3297,10 @@ class VaralakshmiRepository {
         selectedInstanceId: String = "10L",
         authToken: String? = null
     ): VeeraLakshmiUiState = withContext(Dispatchers.IO) {
-        val sUrl = serverUrl.trim().trimEnd('/')
+        var sUrl = serverUrl.trim().trimEnd('/')
+        if (sUrl.isBlank()) {
+            sUrl = DEFAULT_SERVER_URL
+        }
         var instancesMap: Map<String, FnoInstanceSummary> = emptyMap()
         var positionsList: List<FnoPositionItem> = emptyList()
         var dailyPnlList: List<FnoDailyPnlItem> = emptyList()
@@ -3221,32 +3312,50 @@ class VaralakshmiRepository {
         var statusJson: String? = null
         var dailyPnlJson: String? = null
 
+        val fetchEndpoints: suspend (String) -> Boolean = { url ->
+            try {
+                coroutineScope {
+                    val instancesDeferred = async { httpGet("$url/api/fno/instances", authToken) }
+                    val positionsDeferred = async { httpGet("$url/api/fno/positions?instance=$selectedInstanceId", authToken) }
+                    val statusDeferred = async { httpGet("$url/api/fno/status", authToken) }
+                    val dailyPnlDeferred = async { httpGet("$url/api/fno/daily-pnl?instance=$selectedInstanceId", authToken) }
+
+                    val instJ = instancesDeferred.await()
+                    val posJ = positionsDeferred.await()
+                    val statJ = statusDeferred.await()
+                    val dailyJ = dailyPnlDeferred.await()
+
+                    var ok = false
+                    if (!instJ.isNullOrBlank()) {
+                        instancesMap = parseFnoInstances(instJ)
+                        instancesJson = instJ
+                        ok = true
+                    }
+                    if (!posJ.isNullOrBlank()) {
+                        positionsList = parseFnoPositions(posJ)
+                        positionsJson = posJ
+                        ok = true
+                    }
+                    if (!statJ.isNullOrBlank()) {
+                        statusInfo = parseFnoStatus(statJ)
+                        statusJson = statJ
+                    }
+                    if (!dailyJ.isNullOrBlank()) {
+                        dailyPnlList = parseFnoDailyPnl(dailyJ)
+                        dailyPnlJson = dailyJ
+                    }
+                    ok
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                false
+            }
+        }
+
         try {
-            coroutineScope {
-                val instancesDeferred = async { httpGet("$sUrl/api/fno/instances", authToken) }
-                val positionsDeferred = async { httpGet("$sUrl/api/fno/positions?instance=$selectedInstanceId", authToken) }
-                val statusDeferred = async { httpGet("$sUrl/api/fno/status", authToken) }
-                val dailyPnlDeferred = async { httpGet("$sUrl/api/fno/daily-pnl?instance=$selectedInstanceId", authToken) }
-
-                instancesJson = instancesDeferred.await()
-                positionsJson = positionsDeferred.await()
-                statusJson = statusDeferred.await()
-                dailyPnlJson = dailyPnlDeferred.await()
-
-                if (!instancesJson.isNullOrBlank()) {
-                    instancesMap = parseFnoInstances(instancesJson!!)
-                    isLive = true
-                }
-                if (!positionsJson.isNullOrBlank()) {
-                    positionsList = parseFnoPositions(positionsJson!!)
-                    isLive = true
-                }
-                if (!statusJson.isNullOrBlank()) {
-                    statusInfo = parseFnoStatus(statusJson!!)
-                }
-                if (!dailyPnlJson.isNullOrBlank()) {
-                    dailyPnlList = parseFnoDailyPnl(dailyPnlJson!!)
-                }
+            isLive = fetchEndpoints(sUrl)
+            if (!isLive && sUrl.contains("10.0.2.2")) {
+                isLive = fetchEndpoints(DEFAULT_SERVER_URL)
             }
         } catch (e: Exception) {
             if (e is CancellationException) throw e
@@ -3256,8 +3365,12 @@ class VaralakshmiRepository {
         val newState = if (isLive && instancesMap.isNotEmpty()) {
             val posJson = positionsJson
             val closedFromPositions = if (!posJson.isNullOrBlank()) parseFnoClosedTrades(posJson) else emptyList()
-            val tradesFromDaily = dailyPnlList.firstOrNull { it.isToday }?.trades ?: emptyList()
-            val todayTrades = if (tradesFromDaily.isNotEmpty()) tradesFromDaily else closedFromPositions
+            val tradesFromDaily = dailyPnlList.firstOrNull { it.isToday }?.trades?.takeIf { it.isNotEmpty() }
+            val latestDailyTrades = dailyPnlList.filter { it.trades.isNotEmpty() }.maxByOrNull { it.date }?.trades
+            val todayTrades = tradesFromDaily
+                ?: closedFromPositions.takeIf { it.isNotEmpty() }
+                ?: latestDailyTrades
+                ?: emptyList()
 
             val state = VeeraLakshmiUiState(
                 selectedInstanceId = selectedInstanceId,
@@ -3275,11 +3388,20 @@ class VaralakshmiRepository {
             state
         } else {
             val loaded = loadFnoFromDisk() ?: createDefaultVeeraLakshmiState()
+            val tradesFromDaily = loaded.dailyPnlHistory.firstOrNull { it.isToday }?.trades?.takeIf { it.isNotEmpty() }
+            val latestDailyTrades = loaded.dailyPnlHistory.filter { it.trades.isNotEmpty() }.maxByOrNull { it.date }?.trades
+            val fallbackTrades = when {
+                loaded.todayTrades.isNotEmpty() -> loaded.todayTrades
+                tradesFromDaily != null -> tradesFromDaily
+                latestDailyTrades != null -> latestDailyTrades
+                else -> emptyList()
+            }
             loaded.copy(
                 selectedInstanceId = selectedInstanceId,
                 isLoading = false,
                 isLiveSync = false,
-                errorMessage = errorMsg
+                errorMessage = errorMsg,
+                todayTrades = fallbackTrades
             )
         }
 
@@ -3327,19 +3449,28 @@ class VaralakshmiRepository {
             val arr = root.optJSONArray("closed_trades") ?: root.optJSONArray("trades") ?: return result
             for (i in 0 until arr.length()) {
                 val tObj = arr.optJSONObject(i) ?: continue
+                val exitTimestamp = tObj.optString("exit_timestamp", "")
+                val exitDate = tObj.optString("exit_date", if (exitTimestamp.length >= 10) exitTimestamp.substring(0, 10) else root.optString("as_of_date", ""))
+                val exitTime = if (exitTimestamp.length >= 16) exitTimestamp.substring(11, 16) else tObj.optString("exit_time", tObj.optString("time", "15:15"))
+                val symbol = tObj.optString("tradingsymbol", tObj.optString("symbol", ""))
+                val direction = tObj.optString("direction", "SHORT")
+                val action = if (tObj.has("action")) tObj.optString("action") else (if (direction.equals("SHORT", ignoreCase = true)) "BUY" else "SELL")
+                val instType = tObj.optString("instrument_type", if (symbol.endsWith("PE") || symbol.endsWith("CE")) "OPT" else "FUT")
+
                 result.add(
                     FnoHistoricalTrade(
                         tradeId = tObj.optString("trade_id", "trd_$i"),
-                        time = tObj.optString("exit_time", tObj.optString("time", "15:15")),
-                        symbol = tObj.optString("tradingsymbol", tObj.optString("symbol", "")),
-                        action = tObj.optString("action", if (tObj.optString("direction", "SHORT").equals("SHORT", ignoreCase = true)) "BUY" else "SELL"),
-                        instrumentType = tObj.optString("instrument_type", "OPT"),
+                        time = exitTime,
+                        symbol = symbol,
+                        action = action,
+                        instrumentType = instType,
                         lots = tObj.optInt("lots", 1),
-                        quantity = tObj.optInt("closed_quantity", tObj.optInt("quantity", 0)),
+                        quantity = if (tObj.has("closed_quantity")) tObj.optInt("closed_quantity") else tObj.optInt("quantity", 0),
                         executionPrice = optSafeDouble(tObj, "exit_price", optSafeDouble(tObj, "execution_price", 0.0)),
                         realizedPnl = optSafeDouble(tObj, "net_pnl", optSafeDouble(tObj, "realized_pnl", 0.0)),
                         executionReason = tObj.optString("exit_reason", tObj.optString("execution_reason", "")),
-                        costs = optSafeDouble(tObj, "total_friction", optSafeDouble(tObj, "costs", 0.0))
+                        costs = optSafeDouble(tObj, "total_friction", optSafeDouble(tObj, "costs", 0.0)),
+                        date = exitDate
                     )
                 )
             }
@@ -3435,22 +3566,32 @@ class VaralakshmiRepository {
 
                 val tradeList = mutableListOf<FnoHistoricalTrade>()
                 val tradeArr = obj.optJSONArray("trades")
+                val dayDate = obj.optString("date", "2026-10-09")
                 if (tradeArr != null) {
                     for (t in 0 until tradeArr.length()) {
                         val tObj = tradeArr.optJSONObject(t) ?: continue
+                        val exitTimestamp = tObj.optString("exit_timestamp", "")
+                        val exitDate = tObj.optString("exit_date", if (exitTimestamp.length >= 10) exitTimestamp.substring(0, 10) else dayDate)
+                        val exitTime = if (exitTimestamp.length >= 16) exitTimestamp.substring(11, 16) else tObj.optString("exit_time", tObj.optString("time", "15:15"))
+                        val symbol = tObj.optString("tradingsymbol", tObj.optString("symbol", ""))
+                        val direction = tObj.optString("direction", "SHORT")
+                        val action = if (tObj.has("action")) tObj.optString("action") else (if (direction.equals("SHORT", ignoreCase = true)) "BUY" else "SELL")
+                        val instType = tObj.optString("instrument_type", if (symbol.endsWith("PE") || symbol.endsWith("CE")) "OPT" else "FUT")
+
                         tradeList.add(
                             FnoHistoricalTrade(
-                                tradeId = tObj.optString("trade_id", ""),
-                                time = tObj.optString("time", "09:30"),
-                                symbol = tObj.optString("symbol", ""),
-                                action = tObj.optString("action", "SELL"),
-                                instrumentType = tObj.optString("instrument_type", "FUT"),
+                                tradeId = tObj.optString("trade_id", "trd_$t"),
+                                time = exitTime,
+                                symbol = symbol,
+                                action = action,
+                                instrumentType = instType,
                                 lots = tObj.optInt("lots", 1),
-                                quantity = tObj.optInt("quantity", 0),
-                                executionPrice = optSafeDouble(tObj, "execution_price", 0.0),
-                                realizedPnl = optSafeDouble(tObj, "realized_pnl", 0.0),
-                                executionReason = tObj.optString("execution_reason", ""),
-                                costs = optSafeDouble(tObj, "costs", 0.0)
+                                quantity = if (tObj.has("closed_quantity")) tObj.optInt("closed_quantity") else tObj.optInt("quantity", 0),
+                                executionPrice = optSafeDouble(tObj, "exit_price", optSafeDouble(tObj, "execution_price", 0.0)),
+                                realizedPnl = optSafeDouble(tObj, "net_pnl", optSafeDouble(tObj, "realized_pnl", 0.0)),
+                                executionReason = tObj.optString("exit_reason", tObj.optString("execution_reason", "")),
+                                costs = optSafeDouble(tObj, "total_friction", optSafeDouble(tObj, "costs", 0.0)),
+                                date = exitDate
                             )
                         )
                     }
@@ -3495,6 +3636,15 @@ class VaralakshmiRepository {
             val status = if (statusJson.isNotBlank()) parseFnoStatus(statusJson) else FnoStatusInfo()
 
             if (instances.isNotEmpty()) {
+                val todayTradesJson = root.optString("today_trades_json", "")
+                val savedTodayTrades = if (todayTradesJson.isNotBlank()) parseFnoClosedTrades(todayTradesJson) else emptyList()
+                val tradesFromDaily = dailyPnl.firstOrNull { it.isToday }?.trades?.takeIf { it.isNotEmpty() }
+                val latestDailyTrades = dailyPnl.filter { it.trades.isNotEmpty() }.maxByOrNull { it.date }?.trades
+                val todayTrades = savedTodayTrades.takeIf { it.isNotEmpty() }
+                    ?: tradesFromDaily
+                    ?: latestDailyTrades
+                    ?: emptyList()
+
                 VeeraLakshmiUiState(
                     selectedInstanceId = selectedId,
                     instances = instances,
@@ -3505,7 +3655,7 @@ class VaralakshmiRepository {
                     isLiveSync = false,
                     errorMessage = null,
                     lastSyncTimestamp = lastSync,
-                    todayTrades = dailyPnl.firstOrNull { it.isToday }?.trades ?: emptyList()
+                    todayTrades = todayTrades
                 )
             } else null
         } catch (_: Exception) {
@@ -3637,6 +3787,33 @@ class VaralakshmiRepository {
             val pnlRoot = JSONObject()
             pnlRoot.put("records", pnlArr)
             root.put("daily_pnl_json", pnlRoot.toString())
+
+            val todayTrdArr = JSONArray()
+            for (t in state.todayTrades) {
+                val tObj = JSONObject()
+                tObj.put("trade_id", t.tradeId)
+                tObj.put("time", t.time)
+                tObj.put("tradingsymbol", t.symbol)
+                tObj.put("symbol", t.symbol)
+                tObj.put("action", t.action)
+                tObj.put("instrument_type", t.instrumentType)
+                tObj.put("lots", t.lots)
+                tObj.put("closed_quantity", t.quantity)
+                tObj.put("quantity", t.quantity)
+                tObj.put("exit_price", t.executionPrice)
+                tObj.put("execution_price", t.executionPrice)
+                tObj.put("net_pnl", t.realizedPnl)
+                tObj.put("realized_pnl", t.realizedPnl)
+                tObj.put("exit_reason", t.executionReason)
+                tObj.put("execution_reason", t.executionReason)
+                tObj.put("total_friction", t.costs)
+                tObj.put("costs", t.costs)
+                tObj.put("exit_date", t.date)
+                todayTrdArr.put(tObj)
+            }
+            val todayTrdRoot = JSONObject()
+            todayTrdRoot.put("closed_trades", todayTrdArr)
+            root.put("today_trades_json", todayTrdRoot.toString())
 
             val tmpFile = File(dir, "$FNO_CACHE_FILE_NAME.tmp")
             val targetFile = File(dir, FNO_CACHE_FILE_NAME)

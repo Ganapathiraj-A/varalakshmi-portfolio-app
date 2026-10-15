@@ -2489,6 +2489,79 @@ class VaralakshmiPortfolioTest {
         assertFalse(nonStratPos.isStrategy)
         assertEquals("ZERODHA", nonStratPos.category)
     }
+
+    @Test
+    fun testOtherPositionsPcJewellerT1AndCachePersistence() {
+        val repository = VaralakshmiRepository()
+        val others = repository.getCachedOtherPositions()
+        val pcj = others.find { it.symbol == "PCJEWELLER" }
+        assertNotNull("PCJEWELLER must be present in other positions", pcj)
+        assertEquals(7000, pcj!!.quantity)
+        assertEquals(14.32, pcj.entryPrice, 0.001)
+        assertEquals(14.47, pcj.currentPrice, 0.001)
+        assertEquals(101290.00, pcj.marketValue, 0.01)
+        assertEquals(1050.00, pcj.unrealizedPnl, 0.01)
+        assertEquals(1.05, pcj.unrealizedPnlPct, 0.01)
+        assertEquals(0.15, pcj.todayPriceChange, 0.001)
+        assertEquals(1.05, pcj.todayPriceChangePct, 0.01)
+        assertEquals(1050.00, pcj.todayValueChange, 0.01)
+        assertFalse(pcj.isStrategy)
+        assertEquals("ZERODHA", pcj.category)
+
+        // Test JSON caching round-trip
+        val jsonPayload = org.json.JSONObject().apply {
+            put("summary", org.json.JSONObject().apply {
+                put("strategyId", "TEST")
+                put("strategyName", "Test")
+                put("formula", "Test")
+                put("status", "ACTIVE")
+                put("totalNav", 100000.0)
+                put("allocatedCapital", 100000.0)
+                put("deployedCapital", 50000.0)
+                put("availableCapital", 50000.0)
+                put("reservedCapital", 0.0)
+                put("realizedPnl", 0.0)
+                put("unrealizedPnl", 1050.0)
+                put("totalPnl", 1050.0)
+                put("totalPnlPct", 1.05)
+                put("todayPnl", 1050.0)
+                put("todayPnlPct", 1.05)
+                put("activeSlots", 1)
+                put("maxSlots", 3)
+                put("lastUpdated", "2026-10-15")
+                put("cagrPct", 25.0)
+                put("inceptionDate", "2026-09-17")
+            })
+            val othersArr = org.json.JSONArray().apply {
+                put(org.json.JSONObject().apply {
+                    put("positionId", "ZERODHA_HOLDING_PCJEWELLER")
+                    put("symbol", "PCJEWELLER")
+                    put("quantity", 7000)
+                    put("entry_price", 14.32)
+                    put("current_price", 14.47)
+                    put("previous_close", 14.32)
+                    put("market_value", 101290.0)
+                    put("unrealized_pnl", 1050.0)
+                    put("unrealized_pnl_pct", 1.05)
+                    put("today_price_change", 0.15)
+                    put("today_price_change_pct", 1.05)
+                    put("today_value_change", 1050.0)
+                    put("is_bought_today", true)
+                    put("category", "ZERODHA")
+                })
+            }
+            put("other_positions", othersArr)
+        }.toString()
+
+        val parsed = repository.applyCachedJsonState(jsonPayload)
+        assertTrue(parsed)
+        val reloadedOthers = repository.getCachedOtherPositions()
+        val reloadedPcj = reloadedOthers.find { it.symbol == "PCJEWELLER" }
+        assertNotNull(reloadedPcj)
+        assertEquals(7000, reloadedPcj!!.quantity)
+        assertEquals(1050.00, reloadedPcj.todayValueChange, 0.01)
+        assertEquals(1.05, reloadedPcj.todayPriceChangePct, 0.01)
+    }
 }
 
 

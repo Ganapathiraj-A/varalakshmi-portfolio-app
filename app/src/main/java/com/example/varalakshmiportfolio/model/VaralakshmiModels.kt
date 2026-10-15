@@ -1,5 +1,7 @@
 package com.example.varalakshmiportfolio.model
 
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 import kotlin.math.pow
 
@@ -992,7 +994,8 @@ data class FnoHistoricalTrade(
     val executionPrice: Double = 0.0,
     val realizedPnl: Double = 0.0,
     val costs: Double = 0.0,
-    val executionReason: String = ""
+    val executionReason: String = "",
+    val date: String = ""
 ) {
     val isProfit: Boolean get() = realizedPnl >= 0.0
     val isSell: Boolean get() = action.contains("SELL", ignoreCase = true)
@@ -1001,6 +1004,13 @@ data class FnoHistoricalTrade(
         val sign = if (realizedPnl >= 0.0) "+" else "-"
         return String.format(Locale.US, "%s₹%,.2f", sign, kotlin.math.abs(realizedPnl))
     }
+    val isToday: Boolean
+        get() {
+            val todayStr = try {
+                SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+            } catch (_: Exception) { "" }
+            return date.isNotBlank() && date == todayStr
+        }
 }
 
 /**

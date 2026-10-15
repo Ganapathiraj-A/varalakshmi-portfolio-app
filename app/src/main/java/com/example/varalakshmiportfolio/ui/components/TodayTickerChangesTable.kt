@@ -33,7 +33,21 @@ fun TodayTickerChangesTable(
     summaryTodayPnl: Double? = null
 ) {
     val allPositions = remember(positions, otherPositions) {
-        positions + otherPositions
+        val seen = mutableSetOf<String>()
+        val combined = mutableListOf<PositionItem>()
+        for (p in positions) {
+            val key = p.symbol.trim().uppercase(Locale.US)
+            if (key.isNotEmpty() && seen.add(key)) {
+                combined.add(p)
+            }
+        }
+        for (p in otherPositions) {
+            val key = p.symbol.trim().uppercase(Locale.US)
+            if (key.isNotEmpty() && seen.add(key)) {
+                combined.add(p)
+            }
+        }
+        combined
     }
 
     Card(
