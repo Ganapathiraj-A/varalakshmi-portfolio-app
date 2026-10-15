@@ -152,7 +152,7 @@ fun TodayTickerChangesTable(
                         softWrap = false
                     )
                     Text(
-                        text = "TODAY VALUE (₹)",
+                        text = "DAY & TOT P&L",
                         color = TextMuted,
                         fontSize = 10.5.sp,
                         fontWeight = FontWeight.Bold,
@@ -331,6 +331,86 @@ fun TodayTickerChangesTable(
                             }
                         }
                     }
+
+                    // 3. Total Account Overall Profit / Loss (All Positions Combined)
+                    val totalAccountUnrealizedPnl = java.math.BigDecimal.valueOf(allPositions.sumOf { it.unrealizedPnl })
+                        .setScale(2, java.math.RoundingMode.HALF_EVEN).toDouble()
+                    val totalAccountInvested = java.math.BigDecimal.valueOf(allPositions.sumOf { it.quantity * it.entryPrice })
+                        .setScale(2, java.math.RoundingMode.HALF_EVEN).toDouble()
+                    val totalAccountPnlPct = if (totalAccountInvested > 0.0) {
+                        java.math.BigDecimal.valueOf((totalAccountUnrealizedPnl / totalAccountInvested) * 100.0)
+                            .setScale(2, java.math.RoundingMode.HALF_EVEN).toDouble()
+                    } else 0.0
+
+                    val isAcctPnlPos = totalAccountUnrealizedPnl > 0
+                    val isAcctPnlNeg = totalAccountUnrealizedPnl < 0
+                    val acctPnlColor = when {
+                        isAcctPnlPos -> ProfitGreen
+                        isAcctPnlNeg -> LossRed
+                        else -> TextSecondary
+                    }
+                    val acctPnlBg = when {
+                        isAcctPnlPos -> ProfitGreenBg
+                        isAcctPnlNeg -> LossRedBg
+                        else -> DarkCard
+                    }
+                    val acctPnlStr = when {
+                        isAcctPnlPos -> "+₹" + String.format(Locale.US, "%,.2f", totalAccountUnrealizedPnl)
+                        isAcctPnlNeg -> "-₹" + String.format(Locale.US, "%,.2f", kotlin.math.abs(totalAccountUnrealizedPnl))
+                        else -> "₹0.00"
+                    }
+                    val acctPnlPctStr = when {
+                        isAcctPnlPos || isAcctPnlNeg -> String.format(Locale.US, "(%+.2f%%)", totalAccountPnlPct)
+                        else -> "(0.00%)"
+                    }
+
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        color = acctPnlBg,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, acctPnlColor.copy(alpha = 0.5f))
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    text = "TOTAL ACCOUNT PROFIT / LOSS",
+                                    color = TextMuted,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 0.5.sp
+                                )
+                                Text(
+                                    text = "Invested: ₹" + String.format(Locale.US, "%,.2f", totalAccountInvested) +
+                                           " • Current: ₹" + String.format(Locale.US, "%,.2f", allPositions.sumOf { it.marketValue }),
+                                    color = TextSecondary,
+                                    fontSize = 10.sp
+                                )
+                            }
+
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text(
+                                    text = acctPnlStr,
+                                    color = acctPnlColor,
+                                    fontSize = 13.5.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    textAlign = TextAlign.End
+                                )
+                                Text(
+                                    text = acctPnlPctStr,
+                                    color = acctPnlColor,
+                                    fontSize = 10.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    textAlign = TextAlign.End
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -377,6 +457,28 @@ private fun TodayTickerRow(
         isValPositive -> "+₹" + String.format(Locale.US, "%,.2f", position.todayValueChange)
         isValNegative -> "-₹" + String.format(Locale.US, "%,.2f", kotlin.math.abs(position.todayValueChange))
         else -> "₹0.00"
+    }
+
+    val isTotalPositive = position.unrealizedPnl > 0
+    val isTotalNegative = position.unrealizedPnl < 0
+    val totalPnlColor = when {
+        isTotalPositive -> ProfitGreen
+        isTotalNegative -> LossRed
+        else -> TextSecondary
+    }
+    val totalPnlBg = when {
+        isTotalPositive -> ProfitGreenBg
+        isTotalNegative -> LossRedBg
+        else -> DarkCard
+    }
+    val totalPnlStr = when {
+        isTotalPositive -> "+₹" + String.format(Locale.US, "%,.2f", position.unrealizedPnl)
+        isTotalNegative -> "-₹" + String.format(Locale.US, "%,.2f", kotlin.math.abs(position.unrealizedPnl))
+        else -> "₹0.00"
+    }
+    val totalPnlPctStr = when {
+        isTotalPositive || isTotalNegative -> String.format(Locale.US, "(%+.2f%%)", position.unrealizedPnlPct)
+        else -> "(0.00%)"
     }
 
     Column(
@@ -507,7 +609,7 @@ private fun TodayTickerRow(
                 }
             }
 
-            // 4. TODAY VALUE (₹) Column (Quantity × Today's Price Change)
+            // 4. DAY & TOTAL P&L Column
             Column(
                 modifier = Modifier.weight(1.20f),
                 horizontalAlignment = Alignment.End
@@ -523,12 +625,14 @@ private fun TodayTickerRow(
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = "Day P&L",
-                    color = TextMuted,
-                    fontSize = 9.5.sp,
+                    text = "$totalPnlStr $totalPnlPctStr",
+                    color = totalPnlColor,
+                    fontSize = 8.5.sp,
+                    fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.End,
                     maxLines = 1,
-                    softWrap = false
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
         }
@@ -597,6 +701,60 @@ private fun TodayTickerRow(
                         label = "Total Market Value",
                         value = "₹" + String.format(Locale.US, "%,.2f", position.marketValue)
                     )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Dedicated Total Profit / Loss Section
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(8.dp),
+                    color = totalPnlBg,
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        totalPnlColor.copy(alpha = 0.5f)
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 10.dp, vertical = 9.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = "TOTAL PROFIT / LOSS",
+                                color = TextMuted,
+                                fontSize = 9.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 0.5.sp
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "Avg Buy: ₹" + String.format(Locale.US, "%.2f", position.entryPrice) +
+                                       " • Invested: ₹" + String.format(Locale.US, "%,.2f", position.quantity * position.entryPrice),
+                                color = TextSecondary,
+                                fontSize = 10.sp
+                            )
+                        }
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(
+                                text = totalPnlStr,
+                                color = totalPnlColor,
+                                fontSize = 13.5.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                textAlign = TextAlign.End
+                            )
+                            Text(
+                                text = totalPnlPctStr,
+                                color = totalPnlColor,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                textAlign = TextAlign.End
+                            )
+                        }
+                    }
                 }
             }
         }
