@@ -20,6 +20,10 @@ val AccentIndigo = Color(0xFF6366F1)
 val AccentIndigoLight = Color(0xFF818CF8)
 val AccentIndigoBg = Color(0x1F6366F1)
 
+val AccentBlue = Color(0xFF58A6FF)
+val AccentBlueLight = Color(0xFF79C0FF)
+val AccentBlueBg = Color(0x1F58A6FF)
+
 val GoldAccent = Color(0xFFF59E0B)
 val GoldAccentBg = Color(0x1FF59E0B)
 

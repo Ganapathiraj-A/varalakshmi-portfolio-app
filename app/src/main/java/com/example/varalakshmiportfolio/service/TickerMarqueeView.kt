@@ -83,7 +83,14 @@ class TickerMarqueeView @JvmOverloads constructor(
     }
 
     fun setPositions(positions: List<PositionItem>) {
-        val tickerItems = FloatingScreenerManager.parseTickerStockItems(positions)
+        setTickerItems(FloatingScreenerManager.parseTickerStockItems(positions))
+    }
+
+    fun setArjunStocks(stocks: List<com.example.varalakshmiportfolio.model.ArjunStockItem>) {
+        setTickerItems(FloatingScreenerManager.parseArjunTickerStockItems(stocks))
+    }
+
+    fun setTickerItems(tickerItems: List<TickerStockItem>) {
         val items = mutableListOf<RenderItem>()
         val bulletStr = "  •  "
         val spaceStr = " "

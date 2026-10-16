@@ -29,7 +29,11 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import com.example.varalakshmiportfolio.MainActivity
 import com.example.varalakshmiportfolio.R
+import com.example.varalakshmiportfolio.data.ArjunStockRepository
 import com.example.varalakshmiportfolio.data.VaralakshmiRepository
+import com.example.varalakshmiportfolio.model.ArjunPortfolioSummary
+import com.example.varalakshmiportfolio.model.ArjunStockItem
+import com.example.varalakshmiportfolio.model.ArjunStrategySummary
 import com.example.varalakshmiportfolio.model.PortfolioSummary
 import com.example.varalakshmiportfolio.model.PositionItem
 import com.example.varalakshmiportfolio.util.MarketHours
@@ -61,7 +65,18 @@ class FloatingScreenerService : Service() {
     private var summaryBadgeContainer: LinearLayout? = null
     private var summaryIndicatorView: TextView? = null
     private var summaryTextView: TextView? = null
+    private var modeToggleButton: LinearLayout? = null
+    private var modeToggleTextView: TextView? = null
     private var tickerMarqueeView: TickerMarqueeView? = null
+
+    private var cachedVaraSummary: PortfolioSummary = PortfolioSummary()
+    private var cachedVaraPositions: List<PositionItem> = emptyList()
+    private var cachedArjunSummary: ArjunPortfolioSummary = ArjunPortfolioSummary()
+    private var cachedArjunStrategySummary: ArjunStrategySummary = ArjunStrategySummary()
+    private var cachedArjunStocks: List<ArjunStockItem> = emptyList()
+
+    private var isDisplayingArjun: Boolean = false
+    private var alternateCycleJob: Job? = null
 
     private var isScreenOn = true
     private var isDragging = false
@@ -77,11 +92,13 @@ class FloatingScreenerService : Service() {
                     isScreenOn = false
                     tickerMarqueeView?.stopMarquee()
                     stopPeriodicDataPolling()
+                    stopAlternatingCycle()
                 }
                 Intent.ACTION_SCREEN_ON, Intent.ACTION_USER_PRESENT -> {
                     isScreenOn = true
                     tickerMarqueeView?.startMarquee()
                     startPeriodicDataPolling()
+                    startAlternatingCycle()
                     scope.launch { refreshDataFromRepository() }
                 }
             }
@@ -142,6 +159,7 @@ class FloatingScreenerService : Service() {
 
         // Start background polling loop for live telemetry
         startPeriodicDataPolling()
+        startAlternatingCycle()
 
         return START_STICKY
     }
@@ -286,6 +304,45 @@ class FloatingScreenerService : Service() {
             elevation = 6f * density
         }
 
+        // 2.5 Toggle Button (Far Left: Toggles between VARA and ARJUN)
+        val toggleBtn = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(dpToPx(7), dpToPx(3), dpToPx(7), dpToPx(3))
+            val btnParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                marginStart = dpToPx(6)
+            }
+            layoutParams = btnParams
+            background = GradientDrawable().apply {
+                setColor(0x3321262D)
+                cornerRadius = 8f * density
+                setStroke(dpToPx(1), 0x5558A6FF)
+            }
+            isClickable = true
+            isFocusable = true
+            contentDescription = "Switch between Vara and Arjun portfolio modes"
+            setOnClickListener {
+                isDisplayingArjun = !isDisplayingArjun
+                renderCurrentMode()
+                startAlternatingCycle()
+            }
+        }
+        modeToggleButton = toggleBtn
+
+        val toggleText = TextView(this).apply {
+            textSize = 10.5f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(0xFF58A6FF.toInt())
+            maxLines = 1
+            text = "📈 VARA"
+        }
+        modeToggleTextView = toggleText
+        toggleBtn.addView(toggleText)
+        horizontalBar.addView(toggleBtn)
+
         // 3. Portfolio Summary Badge (Left / Fixed)
         val summaryBadge = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -295,7 +352,7 @@ class FloatingScreenerService : Service() {
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply {
-                marginStart = dpToPx(6)
+                marginStart = dpToPx(4)
             }
             layoutParams = badgeParams
             background = GradientDrawable().apply {
@@ -446,9 +503,25 @@ class FloatingScreenerService : Service() {
 
                     val wasVerticalDrag = isDragging || deltaY > touchSlop
                     if (!wasVerticalDrag && totalDist < touchSlop * 2.5f && duration < 800L) {
-                        // Tap to open portfolio application (tolerant to natural mobile thumb roll)
-                        root.performClick()
-                        launchMainActivity()
+                        val toggleView = modeToggleButton
+                        val isToggleClick = if (toggleView != null && toggleView.isShown) {
+                            val loc = IntArray(2)
+                            toggleView.getLocationOnScreen(loc)
+                            val pad = dpToPx(6)
+                            val left = loc[0] - pad
+                            val right = loc[0] + toggleView.width + pad
+                            val top = loc[1] - pad
+                            val bottom = loc[1] + toggleView.height + pad
+                            finalRawX >= left && finalRawX <= right && finalRawY >= top && finalRawY <= bottom
+                        } else false
+
+                        if (isToggleClick) {
+                            toggleView?.performClick()
+                        } else {
+                            // Tap to open portfolio application (tolerant to natural mobile thumb roll)
+                            root.performClick()
+                            launchMainActivity()
+                        }
                     } else if (wasVerticalDrag) {
                         // Persist user's preferred Y coordinate
                         FloatingScreenerManager.saveLastOverlayY(this@FloatingScreenerService, params.y)
@@ -516,35 +589,74 @@ class FloatingScreenerService : Service() {
         }
     }
 
+    private fun startAlternatingCycle() {
+        alternateCycleJob?.cancel()
+        alternateCycleJob = scope.launch(Dispatchers.Main) {
+            while (isActive) {
+                delay(8_000L) // Alternate between Vara and Arjun every 8 seconds
+                if (isScreenOn && cachedArjunStocks.isNotEmpty()) {
+                    isDisplayingArjun = !isDisplayingArjun
+                    renderCurrentMode()
+                }
+            }
+        }
+    }
+
+    private fun stopAlternatingCycle() {
+        alternateCycleJob?.cancel()
+        alternateCycleJob = null
+    }
+
     private suspend fun refreshDataFromRepository() {
         withContext(Dispatchers.IO) {
             try {
                 val repo = VaralakshmiRepository()
                 val summary = repo.getCachedSummary()
                 val positions = repo.getCachedPositions()
+
+                val arjunRepo = ArjunStockRepository()
+                val arjunItems = arjunRepo.getRecommendations()
+                val arjunSummary = arjunRepo.calculateSummary(arjunItems)
+                val arjunStratSummary = arjunRepo.calculateStrategySummary(arjunItems)
+
                 withContext(Dispatchers.Main) {
-                    updateOverlayData(summary, positions)
+                    cachedVaraSummary = summary
+                    cachedVaraPositions = positions
+                    cachedArjunSummary = arjunSummary
+                    cachedArjunStrategySummary = arjunStratSummary
+                    cachedArjunStocks = arjunItems
+
+                    renderCurrentMode()
                 }
             } catch (_: Throwable) {}
         }
     }
 
-    fun updateOverlayData(summary: PortfolioSummary, positions: List<PositionItem>) {
-        if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) {
-            android.os.Handler(android.os.Looper.getMainLooper()).post {
-                updateOverlayData(summary, positions)
-            }
-            return
+    private fun renderCurrentMode() {
+        if (isDisplayingArjun && cachedArjunStocks.isNotEmpty()) {
+            renderArjunOverlay()
+        } else {
+            renderVaraOverlay()
+        }
+    }
+
+    private fun renderVaraOverlay() {
+        modeToggleTextView?.text = "📈 VARA"
+        modeToggleTextView?.setTextColor(0xFF58A6FF.toInt())
+        modeToggleButton?.background = GradientDrawable().apply {
+            setColor(0x3321262D)
+            cornerRadius = 8f * resources.displayMetrics.density
+            setStroke(dpToPx(1), 0x5558A6FF)
         }
 
-        val todayPnl = if (positions.isNotEmpty()) {
-            positions.sumOf { it.todayValueChange }
+        val todayPnl = if (cachedVaraPositions.isNotEmpty()) {
+            cachedVaraPositions.sumOf { it.todayValueChange }
         } else {
-            summary.todayPnl
+            cachedVaraSummary.todayPnl
         }
-        val totalNav = summary.totalNav
+        val totalNav = cachedVaraSummary.totalNav
         val prevNav = totalNav - todayPnl
-        val todayPnlPct = if (prevNav > 0.0) (todayPnl / prevNav) * 100.0 else summary.todayPnlPct
+        val todayPnlPct = if (prevNav > 0.0) (todayPnl / prevNav) * 100.0 else cachedVaraSummary.todayPnlPct
 
         val isPositive = FloatingScreenerManager.isPnlPositive(todayPnl)
         val isNegative = FloatingScreenerManager.isPnlNegative(todayPnl)
@@ -558,17 +670,83 @@ class FloatingScreenerService : Service() {
         }
         summaryTextView?.setTextColor(color)
 
-        summaryIndicatorView?.text = when {
-            isPositive -> "🟢 "
-            isNegative -> "🔴 "
-            else -> "⚪ "
-        }
+        // Differentiate Vara with 📈 icon
+        summaryIndicatorView?.text = "📈 "
         summaryIndicatorView?.setTextColor(color)
 
-        // Accessibility TalkBack announcement with live values
         overlayContainer?.contentDescription = "Varalakshmi Live Screener: $badgeText. Tap to open portfolio app."
+        tickerMarqueeView?.setPositions(cachedVaraPositions)
+    }
 
-        tickerMarqueeView?.setPositions(positions)
+    private fun renderArjunOverlay() {
+        modeToggleTextView?.text = "🏹 ARJUN"
+        modeToggleTextView?.setTextColor(0xFFFFD166.toInt())
+        modeToggleButton?.background = GradientDrawable().apply {
+            setColor(0x3321262D)
+            cornerRadius = 8f * resources.displayMetrics.density
+            setStroke(dpToPx(1), 0x66FFD166)
+        }
+
+        val todayPnl = if (cachedArjunStrategySummary.occupiedSlotsCount > 0) {
+            cachedArjunStrategySummary.totalPnl
+        } else {
+            cachedArjunSummary.totalPnl
+        }
+        val todayPnlPct = if (cachedArjunStrategySummary.occupiedSlotsCount > 0) {
+            cachedArjunStrategySummary.totalStrategyReturnPct
+        } else {
+            cachedArjunSummary.totalPnlPct
+        }
+
+        val isPositive = FloatingScreenerManager.isPnlPositive(todayPnl)
+        val isNegative = FloatingScreenerManager.isPnlNegative(todayPnl)
+
+        val badgeText = FloatingScreenerManager.formatSummaryBadgeText(todayPnl, todayPnlPct)
+        summaryTextView?.text = badgeText
+        val color = when {
+            isPositive -> 0xFF3FB950.toInt()
+            isNegative -> 0xFFF85149.toInt()
+            else -> 0xFFC9D1D9.toInt()
+        }
+        summaryTextView?.setTextColor(color)
+
+        // Differentiate Arjun with 🏹 icon
+        summaryIndicatorView?.text = "🏹 "
+        summaryIndicatorView?.setTextColor(color)
+
+        overlayContainer?.contentDescription = "Arjun Stocks Screener: $badgeText. Tap to open portfolio app."
+        tickerMarqueeView?.setArjunStocks(cachedArjunStocks)
+    }
+
+    fun updateOverlayData(summary: PortfolioSummary, positions: List<PositionItem>) {
+        if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) {
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                updateOverlayData(summary, positions)
+            }
+            return
+        }
+
+        cachedVaraSummary = summary
+        cachedVaraPositions = positions
+        renderCurrentMode()
+    }
+
+    fun updateArjunOverlayData(
+        arjunSummary: ArjunPortfolioSummary,
+        arjunStratSummary: ArjunStrategySummary,
+        arjunStocks: List<ArjunStockItem>
+    ) {
+        if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) {
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                updateArjunOverlayData(arjunSummary, arjunStratSummary, arjunStocks)
+            }
+            return
+        }
+
+        cachedArjunSummary = arjunSummary
+        cachedArjunStrategySummary = arjunStratSummary
+        cachedArjunStocks = arjunStocks
+        renderCurrentMode()
     }
 
     private fun startPeriodicDataPolling() {
@@ -650,6 +828,8 @@ class FloatingScreenerService : Service() {
         summaryBadgeContainer = null
         summaryIndicatorView = null
         summaryTextView = null
+        modeToggleButton = null
+        modeToggleTextView = null
         tickerMarqueeView = null
         windowLayoutParams = null
         windowManager = null

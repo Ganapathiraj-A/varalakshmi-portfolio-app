@@ -60,6 +60,7 @@ import com.example.varalakshmiportfolio.model.ArjunStockItem
 import com.example.varalakshmiportfolio.model.ArjunStocksUiState
 import com.example.varalakshmiportfolio.model.ArjunTradeStatus
 import com.example.varalakshmiportfolio.theme.*
+import com.example.varalakshmiportfolio.ui.util.StockLinkHelper
 import java.util.Locale
 
 @Composable
@@ -1704,13 +1705,26 @@ fun ArjunStrategySlotMatrixCard(
             HorizontalDivider(color = DarkCardBorder.copy(alpha = 0.5f), thickness = 0.8.dp)
 
             // 10-Slot Grid Layout (2 rows of 5 slots)
-            Text(
-                text = "SLOT ALLOCATION MATRIX (10 SLOTS)",
-                fontSize = 8.5.sp,
-                fontWeight = FontWeight.Bold,
-                color = TextSecondary,
-                letterSpacing = 0.5.sp
-            )
+            val context = LocalContext.current
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "SLOT ALLOCATION MATRIX (10 SLOTS)",
+                    fontSize = 8.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextSecondary,
+                    letterSpacing = 0.5.sp
+                )
+                Text(
+                    text = "Tap slot for Google Finance ↗",
+                    fontSize = 7.5.sp,
+                    color = AccentBlue,
+                    fontWeight = FontWeight.Medium
+                )
+            }
 
             // Row 1: Slots 1 to 5
             Row(
@@ -1723,7 +1737,12 @@ fun ArjunStrategySlotMatrixCard(
                         slotIndex = i,
                         slot = slot,
                         modifier = Modifier.weight(1f),
-                        onClick = { slot?.stock?.let { onSelectStock(it.symbol) } }
+                        onClick = {
+                            slot?.stock?.let { s ->
+                                onSelectStock(s.symbol)
+                                StockLinkHelper.openGoogleFinance(context, s.symbol)
+                            }
+                        }
                     )
                 }
             }
@@ -1739,7 +1758,12 @@ fun ArjunStrategySlotMatrixCard(
                         slotIndex = i,
                         slot = slot,
                         modifier = Modifier.weight(1f),
-                        onClick = { slot?.stock?.let { onSelectStock(it.symbol) } }
+                        onClick = {
+                            slot?.stock?.let { s ->
+                                onSelectStock(s.symbol)
+                                StockLinkHelper.openGoogleFinance(context, s.symbol)
+                            }
+                        }
                     )
                 }
             }
@@ -1770,7 +1794,7 @@ private fun ArjunSlotPill(
     ) {
         Column(
             modifier = Modifier
-                .padding(vertical = 6.dp, horizontal = 3.dp),
+                .padding(vertical = 5.dp, horizontal = 2.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
@@ -1780,21 +1804,30 @@ private fun ArjunSlotPill(
                 fontWeight = FontWeight.Bold,
                 color = if (isOccupied) ProfitGreen else TextMuted
             )
-            Spacer(modifier = Modifier.height(2.dp))
+            Spacer(modifier = Modifier.height(1.dp))
             if (isOccupied && stock != null) {
                 Text(
                     text = stock.symbol,
-                    fontSize = 8.5.sp,
+                    fontSize = 8.sp,
                     fontWeight = FontWeight.ExtraBold,
                     color = TextPrimary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
+                    text = stock.formattedEntryPrice,
+                    fontSize = 6.5.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFFC9D1D9),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
                     text = stock.formattedPnlPct,
-                    fontSize = 7.sp,
+                    fontSize = 6.8.sp,
                     fontWeight = FontWeight.Bold,
-                    color = if (stock.isProfit) ProfitGreen else LossRed
+                    color = if (stock.isProfit) ProfitGreen else LossRed,
+                    maxLines = 1
                 )
             } else {
                 Text(

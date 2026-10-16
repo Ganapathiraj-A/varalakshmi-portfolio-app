@@ -272,4 +272,35 @@ object FloatingScreenerManager {
             )
         }
     }
+
+    /**
+     * Parses Arjun recommendation stock items into structured ticker items for custom rendering.
+     */
+    fun parseArjunTickerStockItems(stocks: List<com.example.varalakshmiportfolio.model.ArjunStockItem>): List<TickerStockItem> {
+        val activeStocks = stocks.filter { !it.isClosed }
+        val targetList = if (activeStocks.isNotEmpty()) activeStocks else stocks
+        if (targetList.isEmpty()) {
+            return listOf(
+                TickerStockItem(
+                    symbol = "ARJUN",
+                    changePct = 0.0,
+                    formattedText = "ARJUN 5L STRATEGY READY",
+                    isPositive = true,
+                    isNegative = false
+                )
+            )
+        }
+        return targetList.filter { it.symbol.isNotBlank() }.map {
+            val trimmedSymbol = it.symbol.trim()
+            val safePct = if (it.todayChangePct.isNaN() || it.todayChangePct.isInfinite()) 0.0 else it.todayChangePct
+            val roundedPct = if (kotlin.math.abs(safePct) < 0.05) 0.0 else safePct
+            TickerStockItem(
+                symbol = trimmedSymbol,
+                changePct = roundedPct,
+                formattedText = formatPositionTickerItem(trimmedSymbol, roundedPct),
+                isPositive = roundedPct > 0.0,
+                isNegative = roundedPct < 0.0
+            )
+        }
+    }
 }

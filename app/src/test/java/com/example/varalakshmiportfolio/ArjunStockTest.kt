@@ -389,9 +389,9 @@ class ArjunStockTest {
     @Test
     fun testStrategyTenSlotCapacityLimit() {
         val repo = ArjunStockRepository()
-        // Seeds occupy slots 1, 2, 3.
-        // Add 7 more and approve them into slots 4, 5, 6, 7, 8, 9, 10.
-        for (i in 4..10) {
+        // Seeds occupy slots 1 and 2 (SKYGOLD and LALITHAA).
+        // Add 8 more and approve them into slots 3, 4, 5, 6, 7, 8, 9, 10.
+        for (i in 3..10) {
             val s = ArjunStockItem(
                 id = "stock-$i",
                 symbol = "SYM$i",
@@ -609,6 +609,25 @@ class ArjunStockTest {
         vm.dismissAutoExecutionEvent("evt-123")
         advanceUntilIdle()
         assertFalse(vm.arjunStocksState.value.autoExecutionEvents.any { it.id == "evt-123" })
+    }
+
+    @Test
+    fun testOnlyZerodhaBoughtStocksInStrategySlots() {
+        val repo = ArjunStockRepository()
+        val items = repo.getRecommendations()
+        val strategyItems = items.filter { it.isStrategySlotOccupied }
+
+        // Only SKYGOLD and LALITHAA (bought in Zerodha) should be occupied
+        assertEquals(2, strategyItems.size)
+        assertTrue(strategyItems.any { it.symbol == "SKYGOLD" })
+        assertTrue(strategyItems.any { it.symbol == "LALITHAA" })
+        assertFalse(strategyItems.any { it.symbol == "ORIENTHOT" })
+
+        // Check Google Finance URL generation
+        val skygoldUrl = com.example.varalakshmiportfolio.ui.util.StockLinkHelper.buildGoogleFinanceUrl("SKYGOLD")
+        assertEquals("https://www.google.com/finance/quote/SKYGOLD%3ANSE", skygoldUrl)
+        val lalithaUrl = com.example.varalakshmiportfolio.ui.util.StockLinkHelper.buildGoogleFinanceUrl("LALITHAA")
+        assertEquals("https://www.google.com/finance/quote/LALITHAA%3ANSE", lalithaUrl)
     }
 }
 

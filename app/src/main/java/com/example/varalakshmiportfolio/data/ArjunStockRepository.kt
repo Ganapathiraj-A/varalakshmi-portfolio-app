@@ -99,12 +99,12 @@ class ArjunStockRepository {
                     targetPrice1 = 190.0,
                     targetPrice2 = 225.0,
                     stopLoss = 129.95,
-                    quantity = 335, // approx ₹49,931.75 for Slot 3
+                    quantity = 335,
                     notes = "STRICTLY BUY ABOVE 149.05 (DON'T BUY BEFORE THE LEVEL)",
                     rawText = "ARJUN Combo Package 🚀\nBREAKOUT ALERT\nBUY ORIENTHOT (ORIENT HOTELS)\nABOVE 149.05\nTARGETS 190-225\nKEEP SL 129.95\nCURRENTLY TRADING 145.50\nSTRICTLY BUY ABOVE 149.05 (DON'T BUY BEFORE THE LEVEL)",
-                    isApprovedForStrategy = true,
-                    strategySlotIndex = 3,
-                    strategySlotCapital = SLOT_BUDGET
+                    isApprovedForStrategy = false,
+                    strategySlotIndex = -1,
+                    strategySlotCapital = 0.0
                 )
             )
         }
@@ -582,7 +582,15 @@ class ArjunStockRepository {
                     )
                 )
             }
-            if (list.isNotEmpty()) list else null
+            if (list.isNotEmpty()) {
+                // Only stocks bought in Zerodha (SKYGOLD, LALITHAA) occupy strategy slots;
+                // remove unbought recommendations like ORIENTHOT from slots
+                list.map { item ->
+                    if (item.symbol == "ORIENTHOT" && item.isApprovedForStrategy) {
+                        item.copy(isApprovedForStrategy = false, strategySlotIndex = -1, strategySlotCapital = 0.0)
+                    } else item
+                }
+            } else null
         } catch (_: Exception) {
             null
         }
