@@ -31,7 +31,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         VaralakshmiRepository.initialize(filesDir)
-        IpoNotificationManager.createNotificationChannel(this)
+        IpoNotificationManager.cancelAllAlerts(this)
         com.example.varalakshmiportfolio.notification.VaraBadgeManager.createNotificationChannel(this)
         com.example.varalakshmiportfolio.service.VaraMarketService.startService(this)
 

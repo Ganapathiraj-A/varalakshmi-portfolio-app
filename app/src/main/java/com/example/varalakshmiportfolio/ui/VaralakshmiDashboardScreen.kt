@@ -59,7 +59,6 @@ import com.example.varalakshmiportfolio.service.FloatingScreenerManager
 import com.example.varalakshmiportfolio.service.FloatingScreenerService
 import com.example.varalakshmiportfolio.theme.*
 import com.example.varalakshmiportfolio.ui.components.HoldingsTable
-import com.example.varalakshmiportfolio.ui.components.IpoActionBanner
 import com.example.varalakshmiportfolio.ui.components.PortfolioHeaderCard
 import com.example.varalakshmiportfolio.ui.components.TodayTickerChangesTable
 import androidx.compose.foundation.clickable
@@ -74,9 +73,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import com.example.varalakshmiportfolio.ui.components.VeeraLakshmiScreen
-import com.example.varalakshmiportfolio.ui.components.SanthanaLakshmiScreen
 import com.example.varalakshmiportfolio.ui.components.ArjunStocksScreen
-import com.example.varalakshmiportfolio.model.formatSanthanaLakshmiForClipboard
 import com.example.varalakshmiportfolio.model.formatArjunStocksForClipboard
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -93,13 +90,11 @@ fun VaralakshmiDashboardScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val veeraLakshmiState by viewModel.veeraLakshmiState.collectAsStateWithLifecycle()
-    val santhanaLakshmiState by viewModel.santhanaLakshmiState.collectAsStateWithLifecycle()
     val arjunStocksState by viewModel.arjunStocksState.collectAsStateWithLifecycle()
-    val pagerState = rememberPagerState(initialPage = 1) { 4 }
+    val pagerState = rememberPagerState(initialPage = 0) { 3 }
     val coroutineScope = rememberCoroutineScope()
     val scrollState = rememberScrollState()
     val fnoScrollState = rememberScrollState()
-    val santhanaScrollState = rememberScrollState()
     val arjunScrollState = rememberScrollState()
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -131,15 +126,8 @@ fun VaralakshmiDashboardScreen(
     val clipboardManager = LocalClipboardManager.current
     var isTopCopied by remember { mutableStateOf(false) }
 
-    LaunchedEffect(uiState.ipoNotifications) {
-        val activeHighUrgency = uiState.ipoNotifications.filter { !it.isDismissed && it.urgency == "HIGH" }
-        if (activeHighUrgency.isEmpty()) {
-            IpoNotificationManager.cancelAllAlerts(context)
-        } else {
-            for (alert in activeHighUrgency) {
-                IpoNotificationManager.postIpoAlert(context, alert)
-            }
-        }
+    LaunchedEffect(Unit) {
+        IpoNotificationManager.cancelAllAlerts(context)
     }
 
     LaunchedEffect(uiState.snackbarMessage) {
@@ -161,9 +149,8 @@ fun VaralakshmiDashboardScreen(
                         Column {
                             Text(
                                 text = when (pagerState.currentPage) {
-                                    0 -> "SanthanaLakshmi IPO"
-                                    2 -> "VeeraLakshmi F&O"
-                                    3 -> "Arjun Stocks"
+                                    1 -> "VeeraLakshmi F&O"
+                                    2 -> "Arjun Stocks"
                                     else -> "Vara"
                                 },
                                 style = MaterialTheme.typography.titleLarge,
@@ -172,9 +159,8 @@ fun VaralakshmiDashboardScreen(
                             )
                             Text(
                                 text = when (pagerState.currentPage) {
-                                    0 -> "Regime-Gated IPO Application & Dynamic Listing Exit"
-                                    2 -> "Multi-Asset Derivatives Paper Trading"
-                                    3 -> "Broker Recommendations & Live P&L Tracker"
+                                    1 -> "Multi-Asset Derivatives Paper Trading"
+                                    2 -> "Broker Recommendations & Live P&L Tracker"
                                     else -> "Live Dual-Strategy Alpha Compounder"
                                 },
                                 style = MaterialTheme.typography.bodySmall,
@@ -186,15 +172,7 @@ fun VaralakshmiDashboardScreen(
                         IconButton(
                             onClick = {
                                 val textToCopy = when (pagerState.currentPage) {
-                                    0 -> {
-                                        formatSanthanaLakshmiForClipboard(
-                                            summary = santhanaLakshmiState.summary,
-                                            trades = santhanaLakshmiState.historicalTrades,
-                                            activeAlerts = santhanaLakshmiState.activeAlerts,
-                                            applications = santhanaLakshmiState.activeApplications
-                                        )
-                                    }
-                                    2 -> {
+                                    1 -> {
                                         val dailyPnlList = veeraLakshmiState.dailyPnlHistory
                                         val totalDays = dailyPnlList.size
                                         val winDays = dailyPnlList.count { it.isProfit }
@@ -214,7 +192,7 @@ fun VaralakshmiDashboardScreen(
                                             bestDay = bestDay
                                         )
                                     }
-                                    3 -> {
+                                    2 -> {
                                         formatArjunStocksForClipboard(
                                             summary = arjunStocksState.summary,
                                             stocks = arjunStocksState.recommendations
@@ -246,9 +224,9 @@ fun VaralakshmiDashboardScreen(
                         }
                         IconButton(
                             onClick = { viewModel.refresh() },
-                            enabled = !uiState.isRefreshing && !veeraLakshmiState.isLoading && !santhanaLakshmiState.isLoading
+                            enabled = !uiState.isRefreshing && !veeraLakshmiState.isLoading
                         ) {
-                            AnimatedRefreshIcon(isRefreshing = uiState.isRefreshing || veeraLakshmiState.isLoading || santhanaLakshmiState.isLoading)
+                            AnimatedRefreshIcon(isRefreshing = uiState.isRefreshing || veeraLakshmiState.isLoading)
                         }
                         IconButton(onClick = { viewModel.openSettings() }) {
                             Icon(
@@ -281,41 +259,6 @@ fun VaralakshmiDashboardScreen(
                         selected = pagerState.currentPage == 0,
                         onClick = { coroutineScope.launch { pagerState.animateScrollToPage(0) } },
                         text = {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.Center,
-                                modifier = Modifier.padding(vertical = 4.dp)
-                            ) {
-                                Text(
-                                    text = "🌸 Santhana",
-                                    fontWeight = if (pagerState.currentPage == 0) FontWeight.Bold else FontWeight.Medium,
-                                    fontSize = 11.5.sp,
-                                    color = if (pagerState.currentPage == 0) TextPrimary else TextSecondary,
-                                    maxLines = 1,
-                                    softWrap = false
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Surface(
-                                    shape = RoundedCornerShape(3.dp),
-                                    color = ProfitGreenBg
-                                ) {
-                                    Text(
-                                        text = "+21.5%",
-                                        fontSize = 8.5.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = ProfitGreen,
-                                        maxLines = 1,
-                                        softWrap = false,
-                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                                    )
-                                }
-                            }
-                        }
-                    )
-                    Tab(
-                        selected = pagerState.currentPage == 1,
-                        onClick = { coroutineScope.launch { pagerState.animateScrollToPage(1) } },
-                        text = {
                             val todayPnl = uiState.summary.todayPnl
                             val absPnl = kotlin.math.abs(todayPnl)
                             val badgeText = when {
@@ -330,9 +273,9 @@ fun VaralakshmiDashboardScreen(
                             ) {
                                 Text(
                                     text = "📈 Vara",
-                                    fontWeight = if (pagerState.currentPage == 1) FontWeight.Bold else FontWeight.Medium,
+                                    fontWeight = if (pagerState.currentPage == 0) FontWeight.Bold else FontWeight.Medium,
                                     fontSize = 11.5.sp,
-                                    color = if (pagerState.currentPage == 1) TextPrimary else TextSecondary,
+                                    color = if (pagerState.currentPage == 0) TextPrimary else TextSecondary,
                                     maxLines = 1,
                                     softWrap = false
                                 )
@@ -355,8 +298,8 @@ fun VaralakshmiDashboardScreen(
                         }
                     )
                     Tab(
-                        selected = pagerState.currentPage == 2,
-                        onClick = { coroutineScope.launch { pagerState.animateScrollToPage(2) } },
+                        selected = pagerState.currentPage == 1,
+                        onClick = { coroutineScope.launch { pagerState.animateScrollToPage(1) } },
                         text = {
                             val fnoPnl = veeraLakshmiState.currentInstance.unrealizedPnl
                             val absPnl = kotlin.math.abs(fnoPnl)
@@ -372,9 +315,9 @@ fun VaralakshmiDashboardScreen(
                             ) {
                                 Text(
                                     text = "⚡ Veera",
-                                    fontWeight = if (pagerState.currentPage == 2) FontWeight.Bold else FontWeight.Medium,
+                                    fontWeight = if (pagerState.currentPage == 1) FontWeight.Bold else FontWeight.Medium,
                                     fontSize = 11.5.sp,
-                                    color = if (pagerState.currentPage == 2) TextPrimary else TextSecondary,
+                                    color = if (pagerState.currentPage == 1) TextPrimary else TextSecondary,
                                     maxLines = 1,
                                     softWrap = false
                                 )
@@ -397,8 +340,8 @@ fun VaralakshmiDashboardScreen(
                         }
                     )
                     Tab(
-                        selected = pagerState.currentPage == 3,
-                        onClick = { coroutineScope.launch { pagerState.animateScrollToPage(3) } },
+                        selected = pagerState.currentPage == 2,
+                        onClick = { coroutineScope.launch { pagerState.animateScrollToPage(2) } },
                         text = {
                             val arjunPnl = arjunStocksState.summary.totalPnl
                             val absPnl = kotlin.math.abs(arjunPnl)
@@ -414,9 +357,9 @@ fun VaralakshmiDashboardScreen(
                             ) {
                                 Text(
                                     text = "🏹 Arjun",
-                                    fontWeight = if (pagerState.currentPage == 3) FontWeight.Bold else FontWeight.Medium,
+                                    fontWeight = if (pagerState.currentPage == 2) FontWeight.Bold else FontWeight.Medium,
                                     fontSize = 11.5.sp,
-                                    color = if (pagerState.currentPage == 3) TextPrimary else TextSecondary,
+                                    color = if (pagerState.currentPage == 2) TextPrimary else TextSecondary,
                                     maxLines = 1,
                                     softWrap = false
                                 )
@@ -450,28 +393,6 @@ fun VaralakshmiDashboardScreen(
         ) { page ->
             when (page) {
                 0 -> {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .verticalScroll(santhanaScrollState)
-                            .padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        SanthanaLakshmiScreen(
-                            state = santhanaLakshmiState,
-                            onSelectFilter = { viewModel.selectSanthanaFilter(it) },
-                            onSelectTradeDetail = { viewModel.selectSanthanaTradeDetail(it) },
-                            onRefresh = { viewModel.refreshSanthana() },
-                            onConfirmMandate = { viewModel.confirmIpoMandate(it) },
-                            onDismissAlert = { viewModel.dismissIpoNotification(it) },
-                            onUpdateAllotmentStatus = { symbol, status -> viewModel.updateIpoAllotmentStatus(symbol, status) },
-                            pastRecommendations = uiState.recommendationHistory,
-                            recommendationSummary = uiState.recommendationHistorySummary
-                        )
-                        Spacer(modifier = Modifier.height(24.dp))
-                    }
-                }
-                1 -> {
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
@@ -722,15 +643,6 @@ fun VaralakshmiDashboardScreen(
                 }
             }
 
-            // IPO Action Alerts Banner (Santhana Lakshmi)
-            val appliedSymbols = remember(santhanaLakshmiState.activeApplications) {
-                santhanaLakshmiState.activeApplications.map { it.symbol.uppercase().trim() }.toSet()
-            }
-            IpoActionBanner(
-                notifications = uiState.ipoNotifications,
-                onDismiss = { viewModel.dismissIpoNotification(it) },
-                appliedSymbols = appliedSymbols
-            )
 
             // 1. Individual Tickers Table (Symbol, % up/down, Value, Target Toggle)
             HoldingsTable(
@@ -782,7 +694,7 @@ fun VaralakshmiDashboardScreen(
             Spacer(modifier = Modifier.height(24.dp))
                     }
                 }
-                2 -> {
+                1 -> {
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
@@ -798,7 +710,7 @@ fun VaralakshmiDashboardScreen(
                         Spacer(modifier = Modifier.height(24.dp))
                     }
                 }
-                3 -> {
+                2 -> {
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
