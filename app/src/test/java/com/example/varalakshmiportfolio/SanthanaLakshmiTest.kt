@@ -387,7 +387,7 @@ class SanthanaLakshmiTest {
                             "id":"IPO-FUTURE-CORP",
                             "symbol":"FUTURECORP",
                             "action_type":"APPLY_NOW",
-                            "deadline":"15-10-2026",
+                            "deadline":"28-10-2026",
                             "qib":55.0
                         }
                     ]

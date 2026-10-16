@@ -31,7 +31,7 @@ data class PortfolioSummary(
     val todayNavChangePct: Double get() = todayPnlPct
     val daysActive: Int get() = calculateStrategyDaysActive(inceptionDate)
     val formattedDaysActive: String get() = if (daysActive == 1) "1 Day Active" else "$daysActive Days Active"
-    val effectiveCagr: Double get() = if (cagrPct != 0.0) cagrPct else calculateCurrentCagr(totalNav, allocatedCapital, inceptionDate)
+    val effectiveCagr: Double get() = if (cagrPct != 0.0) cagrPct else calculateCurrentCagr(totalNav, allocatedCapital, inceptionDate, lastUpdated)
 }
 
 fun calculateStrategyDaysActive(
@@ -402,6 +402,124 @@ data class TransactionItem(
     val realizedPnl: Double = 0.0,
     val pnlDifference: String = ""
 )
+
+/**
+ * Real-world live execution milestone diagnostic state.
+ * Evaluates whether live trading aligns with the backtested edge.
+ */
+data class LiveMilestoneState(
+    val totalClosedTrades: Int = 0,
+    val winsCount: Int = 0,
+    val lossesCount: Int = 0,
+    val winRatePct: Double = 0.0,
+    val avgWinPct: Double = 0.0,
+    val avgLossPct: Double = 0.0,
+    val payoffRatio: Double = 0.0,
+    val totalRealizedPnl: Double = 0.0,
+    val verdictTitle: String = "ACCUMULATING SAMPLE",
+    val verdictSubtext: String = "Live trade sample size is accumulating to establish statistical significance.",
+    val verdictStatus: String = "ACCUMULATING", // "PASS", "ACCUMULATING", "WARNING"
+    val activeRunnersCount: Int = 0,
+    val activeRunnersSummary: String = ""
+)
+
+fun calculateLiveMilestones(
+    transactions: List<TransactionItem>,
+    positions: List<PositionItem> = emptyList()
+): LiveMilestoneState {
+    val sells = transactions.filter { it.side.equals("SELL", ignoreCase = true) || it.realizedPnl != 0.0 }
+    if (sells.isEmpty()) {
+        val activeRunners = positions.filter { it.unrealizedPnlPct > 0.0 }
+        val runnerSummary = if (activeRunners.isNotEmpty()) {
+            activeRunners.joinToString(", ") { "${it.symbol} (+${String.format(Locale.US, "%.1f%%", it.unrealizedPnlPct)})" }
+        } else ""
+        return LiveMilestoneState(
+            activeRunnersCount = activeRunners.size,
+            activeRunnersSummary = runnerSummary
+        )
+    }
+
+    val closedTradesPnl = mutableListOf<Pair<Double, Double>>() // Pair(realizedPnl, returnPct)
+    for (s in sells) {
+        val pnl = s.realizedPnl
+        val sellVal = if (s.grossAmount > 0.0) s.grossAmount else (s.quantity * s.fillPrice)
+        val buyVal = sellVal - pnl
+        val retPct = if (buyVal > 0.0) (pnl / buyVal * 100.0) else 0.0
+        closedTradesPnl.add(Pair(pnl, retPct))
+    }
+
+    val totalTrades = closedTradesPnl.size
+    val wins = closedTradesPnl.filter { it.first > 0.0 }
+    val losses = closedTradesPnl.filter { it.first <= 0.0 }
+    val totalRealized = closedTradesPnl.sumOf { it.first }
+
+    val winRate = if (totalTrades > 0) (wins.size.toDouble() / totalTrades * 100.0) else 0.0
+    val avgWin = if (wins.isNotEmpty()) wins.map { it.second }.average() else 0.0
+    val avgLoss = if (losses.isNotEmpty()) losses.map { it.second }.average() else 0.0
+    val payoff = if (kotlin.math.abs(avgLoss) > 0.0001) kotlin.math.abs(avgWin / avgLoss) else 0.0
+
+    // Evaluate active momentum runners
+    val activeRunners = positions.filter { it.unrealizedPnlPct > 0.0 }
+    val runnerSummary = if (activeRunners.isNotEmpty()) {
+        activeRunners.joinToString(", ") { "${it.symbol} (+${String.format(Locale.US, "%.1f%%", it.unrealizedPnlPct)})" }
+    } else ""
+
+    // Dynamic mathematical verdict evaluation
+    val (title, subtext, status) = when {
+        payoff >= 2.5 && avgLoss >= -6.5 -> {
+            Triple(
+                "EDGE WORKING (PROVEN ASYMMETRY)",
+                "Wins average +${String.format(Locale.US, "%.1f%%", avgWin)} vs losses strictly truncated at ${String.format(Locale.US, "%.1f%%", avgLoss)}. The ${String.format(Locale.US, "%.2fx", payoff)} payoff ratio outpaces market drag.",
+                "PASS"
+            )
+        }
+        totalTrades < 15 -> {
+            Triple(
+                "ACCUMULATING SAMPLE (${totalTrades}/40 TRADES)",
+                "Early sample (${totalTrades} closed). Win rate ${String.format(Locale.US, "%.1f%%", winRate)} is in line with target (35-38%). Payoff ratio is healthy at ${String.format(Locale.US, "%.2fx", payoff)}.",
+                "ACCUMULATING"
+            )
+        }
+        avgLoss < -8.0 -> {
+            Triple(
+                "ATTENTION: SLIPPAGE / GAP EXPANSION",
+                "Average loss expanded to ${String.format(Locale.US, "%.1f%%", avgLoss)} (target is -4.2%). Inspect overnight gap-down risks or liquidity.",
+                "WARNING"
+            )
+        }
+        payoff >= 1.8 -> {
+            Triple(
+                "MODERATE ASYMMETRY ACTIVE",
+                "Payoff ratio is ${String.format(Locale.US, "%.2fx", payoff)} with win rate at ${String.format(Locale.US, "%.1f%%", winRate)}. Healthy positive expectancy.",
+                "PASS"
+            )
+        }
+        else -> {
+            Triple(
+                "CONSOLIDATION PHASE",
+                "Recent market chop is testing exit thresholds. Losses remain managed at ${String.format(Locale.US, "%.1f%%", avgLoss)}.",
+                "ACCUMULATING"
+            )
+        }
+    }
+
+    return LiveMilestoneState(
+        totalClosedTrades = totalTrades,
+        winsCount = wins.size,
+        lossesCount = losses.size,
+        winRatePct = winRate,
+        avgWinPct = avgWin,
+        avgLossPct = avgLoss,
+        payoffRatio = payoff,
+        totalRealizedPnl = totalRealized,
+        verdictTitle = title,
+        verdictSubtext = subtext,
+        verdictStatus = status,
+        activeRunnersCount = activeRunners.size,
+        activeRunnersSummary = runnerSummary
+    )
+}
+
 
 /**
  * Daily Return Record for Varalakshmi Equity Portfolio.

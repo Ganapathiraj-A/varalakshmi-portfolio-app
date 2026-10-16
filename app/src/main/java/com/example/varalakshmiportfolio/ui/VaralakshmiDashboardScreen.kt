@@ -1,5 +1,10 @@
 package com.example.varalakshmiportfolio.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -22,6 +27,8 @@ import android.content.SharedPreferences
 import android.widget.Toast
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Settings
@@ -59,6 +66,7 @@ import androidx.compose.foundation.clickable
 import com.example.varalakshmiportfolio.ui.components.TransactionsTable
 import com.example.varalakshmiportfolio.ui.components.StockRecommendationsTable
 import com.example.varalakshmiportfolio.ui.components.PastRecommendationsSection
+import com.example.varalakshmiportfolio.ui.components.LiveMilestoneCard
 import com.example.varalakshmiportfolio.ui.components.StockChartDialog
 import com.example.varalakshmiportfolio.ui.components.RecommendationHistoryDialog
 import com.example.varalakshmiportfolio.ui.components.DailyReturnDetailDialog
@@ -67,7 +75,9 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import com.example.varalakshmiportfolio.ui.components.VeeraLakshmiScreen
 import com.example.varalakshmiportfolio.ui.components.SanthanaLakshmiScreen
+import com.example.varalakshmiportfolio.ui.components.ArjunStocksScreen
 import com.example.varalakshmiportfolio.model.formatSanthanaLakshmiForClipboard
+import com.example.varalakshmiportfolio.model.formatArjunStocksForClipboard
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -84,11 +94,13 @@ fun VaralakshmiDashboardScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val veeraLakshmiState by viewModel.veeraLakshmiState.collectAsStateWithLifecycle()
     val santhanaLakshmiState by viewModel.santhanaLakshmiState.collectAsStateWithLifecycle()
-    val pagerState = rememberPagerState(initialPage = 1) { 3 }
+    val arjunStocksState by viewModel.arjunStocksState.collectAsStateWithLifecycle()
+    val pagerState = rememberPagerState(initialPage = 1) { 4 }
     val coroutineScope = rememberCoroutineScope()
     val scrollState = rememberScrollState()
     val fnoScrollState = rememberScrollState()
     val santhanaScrollState = rememberScrollState()
+    val arjunScrollState = rememberScrollState()
     val snackbarHostState = remember { SnackbarHostState() }
 
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -151,6 +163,7 @@ fun VaralakshmiDashboardScreen(
                                 text = when (pagerState.currentPage) {
                                     0 -> "SanthanaLakshmi IPO"
                                     2 -> "VeeraLakshmi F&O"
+                                    3 -> "Arjun Stocks"
                                     else -> "Vara"
                                 },
                                 style = MaterialTheme.typography.titleLarge,
@@ -161,6 +174,7 @@ fun VaralakshmiDashboardScreen(
                                 text = when (pagerState.currentPage) {
                                     0 -> "Regime-Gated IPO Application & Dynamic Listing Exit"
                                     2 -> "Multi-Asset Derivatives Paper Trading"
+                                    3 -> "Broker Recommendations & Live P&L Tracker"
                                     else -> "Live Dual-Strategy Alpha Compounder"
                                 },
                                 style = MaterialTheme.typography.bodySmall,
@@ -198,6 +212,12 @@ fun VaralakshmiDashboardScreen(
                                             lossDays = lossDays,
                                             avgDailyPnl = avgDailyPnl,
                                             bestDay = bestDay
+                                        )
+                                    }
+                                    3 -> {
+                                        formatArjunStocksForClipboard(
+                                            summary = arjunStocksState.summary,
+                                            stocks = arjunStocksState.recommendations
                                         )
                                     }
                                     else -> {
@@ -376,6 +396,48 @@ fun VaralakshmiDashboardScreen(
                             }
                         }
                     )
+                    Tab(
+                        selected = pagerState.currentPage == 3,
+                        onClick = { coroutineScope.launch { pagerState.animateScrollToPage(3) } },
+                        text = {
+                            val arjunPnl = arjunStocksState.summary.totalPnl
+                            val absPnl = kotlin.math.abs(arjunPnl)
+                            val formattedBadge = when {
+                                absPnl >= 100_000.0 -> String.format(Locale.US, "%s₹%.1fL", if (arjunPnl >= 0.0) "+" else "-", absPnl / 100_000.0)
+                                absPnl >= 1_000.0 -> String.format(Locale.US, "%s₹%.1fk", if (arjunPnl >= 0.0) "+" else "-", absPnl / 1000.0)
+                                else -> String.format(Locale.US, "%s₹%.0f", if (arjunPnl >= 0.0) "+" else "-", absPnl)
+                            }
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center,
+                                modifier = Modifier.padding(vertical = 4.dp)
+                            ) {
+                                Text(
+                                    text = "🏹 Arjun",
+                                    fontWeight = if (pagerState.currentPage == 3) FontWeight.Bold else FontWeight.Medium,
+                                    fontSize = 11.5.sp,
+                                    color = if (pagerState.currentPage == 3) TextPrimary else TextSecondary,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Surface(
+                                    shape = RoundedCornerShape(3.dp),
+                                    color = if (arjunPnl >= 0.0) ProfitGreenBg else LossRedBg
+                                ) {
+                                    Text(
+                                        text = formattedBadge,
+                                        fontSize = 8.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (arjunPnl >= 0.0) ProfitGreen else LossRed,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                    )
+                                }
+                            }
+                        }
+                    )
                 }
             }
         }
@@ -528,7 +590,80 @@ fun VaralakshmiDashboardScreen(
                     HorizontalDivider(color = DarkCardBorder.copy(alpha = 0.6f), thickness = 0.8.dp)
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // Row 2: Market Benchmark Indices (Nifty 50, Smlcap 250, Midcap 150, 500 Mom 50) - Change % Only
+                    // Row 2: Live Portfolio NAV & Cash Invested under Date Time
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = "PORTFOLIO VALUE (NAV)",
+                                fontSize = 8.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextMuted,
+                                letterSpacing = 0.8.sp
+                            )
+                            Spacer(modifier = Modifier.height(1.dp))
+                            Row(verticalAlignment = Alignment.Bottom) {
+                                Text(
+                                    text = "₹" + String.format(Locale.US, "%,.2f", uiState.summary.totalNav),
+                                    fontSize = 17.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = TextPrimary,
+                                    fontFamily = FontFamily.SansSerif,
+                                    maxLines = 1
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                val isTodayPos = uiState.summary.todayPnl >= 0.0
+                                val todayPnlColor = if (isTodayPos) ProfitGreen else LossRed
+                                val todayPnlSign = if (isTodayPos) "+" else ""
+                                Text(
+                                    text = String.format(Locale.US, "%s₹%,.0f (%s%.2f%%)", todayPnlSign, uiState.summary.todayPnl, todayPnlSign, uiState.summary.todayPnlPct),
+                                    fontSize = 10.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = todayPnlColor,
+                                    modifier = Modifier.padding(bottom = 2.dp),
+                                    maxLines = 1
+                                )
+                            }
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = DarkCard,
+                            border = androidx.compose.foundation.BorderStroke(0.8.dp, DarkCardBorder)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                horizontalAlignment = Alignment.End
+                            ) {
+                                Text(
+                                    text = "TOTAL GAIN",
+                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TextMuted,
+                                    letterSpacing = 0.5.sp
+                                )
+                                val isTotalPos = uiState.summary.totalPnl >= 0.0
+                                val totalColor = if (isTotalPos) ProfitGreen else LossRed
+                                val totalSign = if (isTotalPos) "+" else ""
+                                Text(
+                                    text = String.format(Locale.US, "%s%.2f%%", totalSign, uiState.summary.totalPnlPct),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = totalColor,
+                                    maxLines = 1
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    HorizontalDivider(color = DarkCardBorder.copy(alpha = 0.6f), thickness = 0.8.dp)
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Row 3: Market Benchmark Indices (Nifty 50, Smlcap 250, Midcap 150, 500 Mom 50) - Change % Only
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -597,15 +732,15 @@ fun VaralakshmiDashboardScreen(
                 appliedSymbols = appliedSymbols
             )
 
-            // 1. Portfolio Header Card (NAV, Returns, Capital Metrics)
-            PortfolioHeaderCard(summary = uiState.summary)
-
-            // 2. Individual Tickers Table (Symbol, % up/down, Value, Target Toggle)
+            // 1. Individual Tickers Table (Symbol, % up/down, Value, Target Toggle)
             HoldingsTable(
                 positions = uiState.positions,
                 onExitClick = { viewModel.requestExit(it) },
                 onToggleProfitTarget = { viewModel.toggleProfitTarget(it) }
             )
+
+            // 2. Portfolio Header Card (VARA ALPHA, NAV, Returns, Capital Metrics)
+            PortfolioHeaderCard(summary = uiState.summary)
 
             // 3. Today's Ticker Changes Table (Ticker, Price, Today Chg %, Today Value ₹)
             TodayTickerChangesTable(
@@ -639,6 +774,11 @@ fun VaralakshmiDashboardScreen(
                 summary = uiState.recommendationHistorySummary
             )
 
+            // 8. Real-World Live Execution Milestone Card (Daily Recalculated Health & Edge Verdict)
+            LiveMilestoneCard(
+                milestoneState = uiState.liveMilestoneState
+            )
+
             Spacer(modifier = Modifier.height(24.dp))
                     }
                 }
@@ -654,6 +794,26 @@ fun VaralakshmiDashboardScreen(
                             state = veeraLakshmiState,
                             onSelectInstance = { viewModel.selectFnoInstance(it) },
                             onRefresh = { viewModel.refreshFno() }
+                        )
+                        Spacer(modifier = Modifier.height(24.dp))
+                    }
+                }
+                3 -> {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(arjunScrollState)
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        ArjunStocksScreen(
+                            state = arjunStocksState,
+                            onAddRecommendation = { text -> viewModel.addArjunRecommendation(text) },
+                            onUpdateStock = { item -> viewModel.updateArjunStock(item) },
+                            onDeleteStock = { id -> viewModel.deleteArjunStock(id) },
+                            onCloseStock = { id, exitPrice -> viewModel.closeArjunStock(id, exitPrice) },
+                            onSelectFilter = { filter -> viewModel.selectArjunFilter(filter) },
+                            onRefresh = { viewModel.refreshArjunQuotes() }
                         )
                         Spacer(modifier = Modifier.height(24.dp))
                     }
@@ -1138,7 +1298,7 @@ fun VaralakshmiDashboardScreen(
                     )
 
                     Text(
-                        text = "App Updates & Releases (Current: v2.2.0)",
+                        text = "App Updates & Releases (Current: v2.4.1)",
                         color = TextPrimary,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold
@@ -1256,6 +1416,8 @@ fun DailyReturnsTable(
     onDailyReturnClick: (DailyReturnItem) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    var isExpanded by remember { mutableStateOf(false) }
+
     Card(
         modifier = modifier
             .fillMaxWidth()
@@ -1269,9 +1431,12 @@ fun DailyReturnsTable(
                 .fillMaxWidth()
                 .padding(16.dp)
         ) {
-            // Section Header
+            // Section Header (Clickable to expand/collapse)
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { isExpanded = !isExpanded },
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -1316,14 +1481,6 @@ fun DailyReturnsTable(
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "Tap row for trades",
-                        fontSize = 11.sp,
-                        color = AccentIndigoLight,
-                        maxLines = 1,
-                        softWrap = false
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
                     var isTableCopied by remember { mutableStateOf(false) }
                     val tableClipboard = LocalClipboardManager.current
                     val tableContext = LocalContext.current
@@ -1360,91 +1517,108 @@ fun DailyReturnsTable(
                             modifier = Modifier.size(16.dp)
                         )
                     }
+
+                    Spacer(modifier = Modifier.width(4.dp))
+
+                    Icon(
+                        imageVector = if (isExpanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+                        contentDescription = if (isExpanded) "Collapse" else "Expand",
+                        tint = TextSecondary,
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
-
-            // Table Header Bar
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(10.dp),
-                color = DarkCard
+            AnimatedVisibility(
+                visible = isExpanded,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 8.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "DATE",
-                        color = TextMuted,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.weight(1.05f)
-                    )
-                    Text(
-                        text = "FUND BAL",
-                        color = TextMuted,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.End,
-                        modifier = Modifier.weight(1.25f)
-                    )
-                    Text(
-                        text = "DAILY P&L",
-                        color = TextMuted,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.End,
-                        modifier = Modifier.weight(1.20f)
-                    )
-                    Text(
-                        text = "RETURN %",
-                        color = TextMuted,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.End,
-                        modifier = Modifier.weight(0.95f)
-                    )
-                    Text(
-                        text = "STATUS",
-                        color = TextMuted,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.weight(0.65f)
-                    )
-                }
-            }
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Spacer(modifier = Modifier.height(14.dp))
 
-            Spacer(modifier = Modifier.height(6.dp))
-
-            if (dailyReturns.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 24.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "No historical daily returns recorded yet",
-                        color = TextMuted,
-                        fontSize = 13.sp
-                    )
-                }
-            } else {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    dailyReturns.forEachIndexed { index, item ->
-                        key("${item.date}_$index") {
-                            DailyReturnRow(
-                                item = item,
-                                onRowClick = onDailyReturnClick
+                    // Table Header Bar
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp),
+                        color = DarkCard
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 8.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "DATE",
+                                color = TextMuted,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.weight(1.05f)
                             )
+                            Text(
+                                text = "FUND BAL",
+                                color = TextMuted,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                textAlign = TextAlign.End,
+                                modifier = Modifier.weight(1.25f)
+                            )
+                            Text(
+                                text = "DAILY P&L",
+                                color = TextMuted,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                textAlign = TextAlign.End,
+                                modifier = Modifier.weight(1.20f)
+                            )
+                            Text(
+                                text = "RETURN %",
+                                color = TextMuted,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                textAlign = TextAlign.End,
+                                modifier = Modifier.weight(0.95f)
+                            )
+                            Text(
+                                text = "STATUS",
+                                color = TextMuted,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.weight(0.65f)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    if (dailyReturns.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 24.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "No historical daily returns recorded yet",
+                                color = TextMuted,
+                                fontSize = 13.sp
+                            )
+                        }
+                    } else {
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            dailyReturns.forEachIndexed { index, item ->
+                                key("${item.date}_$index") {
+                                    DailyReturnRow(
+                                        item = item,
+                                        onRowClick = onDailyReturnClick
+                                    )
+                                }
+                            }
                         }
                     }
                 }

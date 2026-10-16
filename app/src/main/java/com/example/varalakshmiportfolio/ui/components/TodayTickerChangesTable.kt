@@ -3,6 +3,8 @@ package com.example.varalakshmiportfolio.ui.components
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -10,6 +12,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -63,9 +67,13 @@ fun TodayTickerChangesTable(
                 .fillMaxWidth()
                 .padding(16.dp)
         ) {
+            var isExpanded by remember { mutableStateOf(false) }
+
             // Section Header
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { isExpanded = !isExpanded },
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -100,16 +108,33 @@ fun TodayTickerChangesTable(
                     }
                 }
 
-                Text(
-                    text = if (otherPositions.isNotEmpty()) "Strategy + Zerodha" else "Daily Delta",
-                    fontSize = 11.sp,
-                    color = TextMuted,
-                    maxLines = 1,
-                    softWrap = false
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = if (otherPositions.isNotEmpty()) "Strategy + Zerodha" else "Daily Delta",
+                        fontSize = 11.sp,
+                        color = TextMuted,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                    Icon(
+                        imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                        contentDescription = if (isExpanded) "Collapse" else "Expand",
+                        tint = TextSecondary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            AnimatedVisibility(
+                visible = isExpanded,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Spacer(modifier = Modifier.height(14.dp))
 
             // Table Header Bar: TICKER | PRICE | TODAY CHG (%) | TODAY VALUE (₹)
             Surface(
@@ -411,6 +436,8 @@ fun TodayTickerChangesTable(
                             }
                         }
                     }
+                }
+            }
                 }
             }
         }

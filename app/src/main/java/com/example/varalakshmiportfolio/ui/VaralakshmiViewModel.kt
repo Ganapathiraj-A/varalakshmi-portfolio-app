@@ -26,6 +26,13 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import com.example.varalakshmiportfolio.model.DailyReturnItem
+import com.example.varalakshmiportfolio.data.ArjunRecommendationParser
+import com.example.varalakshmiportfolio.data.ArjunStockRepository
+import com.example.varalakshmiportfolio.model.ArjunStockItem
+import com.example.varalakshmiportfolio.model.ArjunStocksUiState
+import com.example.varalakshmiportfolio.model.ArjunPortfolioSummary
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 
 data class ExitOrderError(
@@ -63,7 +70,8 @@ data class VaralakshmiUiState(
     val isAutoSyncEnabled: Boolean = true,
     val lastSyncTimestamp: Long = 0L,
     val isMarketOpen: Boolean = false,
-    val marketStatusText: String = ""
+    val marketStatusText: String = "",
+    val liveMilestoneState: com.example.varalakshmiportfolio.model.LiveMilestoneState = com.example.varalakshmiportfolio.model.calculateLiveMilestones(transactions, positions)
 ) {
     val filteredRecommendationHistory: List<HistoricalRecommendationItem>
         get() = when (selectedHistoryFilter.uppercase(Locale.US)) {
@@ -111,9 +119,22 @@ class VaralakshmiViewModel(
     private val _santhanaLakshmiState = MutableStateFlow(repository.getCachedSanthanaState())
     val santhanaLakshmiState: StateFlow<SanthanaLakshmiUiState> = _santhanaLakshmiState.asStateFlow()
 
+    private val arjunRepository: ArjunStockRepository = ArjunStockRepository()
+    private val _arjunStocksState = MutableStateFlow(
+        run {
+            val initial = arjunRepository.getRecommendations()
+            ArjunStocksUiState(
+                recommendations = initial,
+                summary = arjunRepository.calculateSummary(initial)
+            )
+        }
+    )
+    val arjunStocksState: StateFlow<ArjunStocksUiState> = _arjunStocksState.asStateFlow()
+
     private var periodicSyncJob: Job? = null
     private var fnoSyncJob: Job? = null
     private var santhanaSyncJob: Job? = null
+    private var arjunSyncJob: Job? = null
 
     init {
         if (autoRefresh) {
@@ -231,6 +252,33 @@ class VaralakshmiViewModel(
                 }
             }
 
+            // Concurrent Arjun live quotes sync
+            arjunSyncJob?.cancel()
+            arjunSyncJob = launch {
+                try {
+                    _arjunStocksState.update { it.copy(isRefreshingQuotes = true) }
+                    val updated = arjunRepository.refreshLiveQuotes()
+                    val summary = arjunRepository.calculateSummary(updated)
+                    val timeStr = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+                    _arjunStocksState.update {
+                        it.copy(
+                            recommendations = updated,
+                            summary = summary,
+                            isRefreshingQuotes = false,
+                            lastRefreshedTime = timeStr,
+                            errorMessage = null
+                        )
+                    }
+                } catch (e: Throwable) {
+                    _arjunStocksState.update {
+                        it.copy(
+                            isRefreshingQuotes = false,
+                            errorMessage = e.message
+                        )
+                    }
+                }
+            }
+
             val syncResult = repository.refreshData(_uiState.value.serverUrl, _uiState.value.authToken)
             val now = System.currentTimeMillis()
             val isMarket = MarketHours.isMarketHours()
@@ -255,7 +303,8 @@ class VaralakshmiViewModel(
                             lastSyncTimestamp = now,
                             isMarketOpen = isMarket,
                             marketStatusText = statusText,
-                            snackbarMessage = if (isSilent) null else "Synced with live trading engine"
+                            snackbarMessage = if (isSilent) null else "Synced with live trading engine",
+                            liveMilestoneState = com.example.varalakshmiportfolio.model.calculateLiveMilestones(syncResult.transactions, syncResult.positions)
                         )
                     }
                 }
@@ -278,7 +327,8 @@ class VaralakshmiViewModel(
                             lastSyncTimestamp = now,
                             isMarketOpen = isMarket,
                             marketStatusText = statusText,
-                            snackbarMessage = if (isSilent) null else "Offline mode: showing cached snapshot"
+                            snackbarMessage = if (isSilent) null else "Offline mode: showing cached snapshot",
+                            liveMilestoneState = com.example.varalakshmiportfolio.model.calculateLiveMilestones(syncResult.transactions, syncResult.positions)
                         )
                     }
                 }
@@ -351,6 +401,9 @@ class VaralakshmiViewModel(
     override fun onCleared() {
         super.onCleared()
         stopPeriodicSync()
+        fnoSyncJob?.cancel()
+        santhanaSyncJob?.cancel()
+        arjunSyncJob?.cancel()
     }
 
     fun openRecommendationHistory() {
@@ -542,6 +595,99 @@ class VaralakshmiViewModel(
                     if (it.id == id || it.symbol.equals(id, ignoreCase = true)) it.copy(isDismissed = true) else it
                 }
             )
+        }
+    }
+
+    fun addArjunRecommendation(rawText: String) {
+        val parsed = ArjunRecommendationParser.parse(rawText)
+        if (parsed != null) {
+            val updatedList = arjunRepository.addRecommendation(parsed)
+            val updatedSummary = arjunRepository.calculateSummary(updatedList)
+            _arjunStocksState.update {
+                it.copy(
+                    recommendations = updatedList,
+                    summary = updatedSummary,
+                    errorMessage = null
+                )
+            }
+            refreshArjunQuotes()
+        } else {
+            _arjunStocksState.update {
+                it.copy(errorMessage = "Could not parse recommendation. Ensure it mentions BUY <SYMBOL>.")
+            }
+        }
+    }
+
+    fun updateArjunStock(item: ArjunStockItem) {
+        val updatedList = arjunRepository.updateRecommendation(item)
+        val updatedSummary = arjunRepository.calculateSummary(updatedList)
+        _arjunStocksState.update {
+            it.copy(
+                recommendations = updatedList,
+                summary = updatedSummary
+            )
+        }
+    }
+
+    fun deleteArjunStock(id: String) {
+        val updatedList = arjunRepository.deleteRecommendation(id)
+        val updatedSummary = arjunRepository.calculateSummary(updatedList)
+        _arjunStocksState.update {
+            it.copy(
+                recommendations = updatedList,
+                summary = updatedSummary
+            )
+        }
+    }
+
+    fun closeArjunStock(id: String, exitPrice: Double = 0.0) {
+        val updatedList = arjunRepository.markAsClosed(id, exitPrice)
+        val updatedSummary = arjunRepository.calculateSummary(updatedList)
+        _arjunStocksState.update {
+            it.copy(
+                recommendations = updatedList,
+                summary = updatedSummary
+            )
+        }
+    }
+
+    fun selectArjunFilter(filter: String) {
+        _arjunStocksState.update { it.copy(selectedFilter = filter) }
+    }
+
+    fun refreshArjunQuotes() {
+        refreshArjunQuotesInternal()
+    }
+
+    private fun refreshArjunQuotesInternal() {
+        arjunSyncJob?.cancel()
+        try {
+            arjunSyncJob = viewModelScope.launch {
+                try {
+                    _arjunStocksState.update { it.copy(isRefreshingQuotes = true) }
+                    val updated = arjunRepository.refreshLiveQuotes()
+                    val summary = arjunRepository.calculateSummary(updated)
+                    val timeStr = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+                    _arjunStocksState.update {
+                        it.copy(
+                            recommendations = updated,
+                            summary = summary,
+                            isRefreshingQuotes = false,
+                            lastRefreshedTime = timeStr,
+                            errorMessage = null
+                        )
+                    }
+                } catch (e: Exception) {
+                    _arjunStocksState.update {
+                        it.copy(
+                            isRefreshingQuotes = false,
+                            errorMessage = e.message
+                        )
+                    }
+                }
+            }
+        } catch (_: Throwable) {
+            // JVM test fallback
         }
     }
 

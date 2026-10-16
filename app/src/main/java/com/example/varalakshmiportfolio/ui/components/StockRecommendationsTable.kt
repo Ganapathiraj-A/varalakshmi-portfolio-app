@@ -1,5 +1,10 @@
 package com.example.varalakshmiportfolio.ui.components
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -10,9 +15,10 @@ import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.automirrored.filled.ShowChart
 import androidx.compose.material.icons.filled.AutoGraph
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.key
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -34,6 +40,8 @@ fun StockRecommendationsTable(
     historyWinRateSummary: String = "",
     modifier: Modifier = Modifier
 ) {
+    var isExpanded by remember { mutableStateOf(false) }
+
     Card(
         modifier = modifier
             .fillMaxWidth()
@@ -67,9 +75,12 @@ fun StockRecommendationsTable(
             val avgSign = if (isAvgPos) "+" else ""
             val avgTodayStr = String.format(Locale.US, "%s%.2f%%", avgSign, avgTodayGainPct)
 
-            // Section Header
+            // Section Header (Clickable to toggle)
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { isExpanded = !isExpanded },
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -105,7 +116,7 @@ fun StockRecommendationsTable(
                         border = BorderStroke(1.dp, avgColor.copy(alpha = 0.4f))
                     ) {
                         Text(
-                            text = "Avg Today: $avgTodayStr",
+                            text = "Avg: $avgTodayStr",
                             color = avgColor,
                             fontSize = 10.5.sp,
                             fontWeight = FontWeight.ExtraBold,
@@ -113,224 +124,225 @@ fun StockRecommendationsTable(
                         )
                     }
 
+                    Icon(
+                        imageVector = if (isExpanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+                        contentDescription = if (isExpanded) "Collapse" else "Expand",
+                        tint = TextSecondary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+
+            AnimatedVisibility(
+                visible = isExpanded,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Prominent Avg Gain/Loss Today Banner at the top
                     Surface(
-                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp),
+                        color = avgBg,
+                        border = BorderStroke(1.dp, avgColor.copy(alpha = 0.35f))
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 7.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = if (isAvgPos) "📈" else if (isAvgNeg) "📉" else "📊",
+                                    fontSize = 12.sp
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "TODAY'S AVG GAIN / LOSS",
+                                    fontSize = 9.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TextMuted,
+                                    letterSpacing = 0.5.sp
+                                )
+                            }
+                            Text(
+                                text = avgTodayStr,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = avgColor
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Table Header Bar: # | TICKER | PRICE / TODAY % | SCORE | CHART
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp),
+                        color = DarkCard
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 8.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "#",
+                                color = TextMuted,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.weight(0.40f),
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                            Text(
+                                text = "TICKER",
+                                color = TextMuted,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.weight(1.50f),
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                            Text(
+                                text = "PRICE / TODAY %",
+                                color = TextMuted,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.weight(1.55f),
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                            Text(
+                                text = "SCORE",
+                                color = TextMuted,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.weight(0.85f),
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                            Text(
+                                text = "CHART",
+                                color = TextMuted,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                textAlign = TextAlign.End,
+                                modifier = Modifier.weight(0.70f),
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    if (recommendations.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(24.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("No recommendations currently active", color = TextMuted, fontSize = 13.sp)
+                        }
+                    } else {
+                        recommendations.forEachIndexed { index, recommendation ->
+                            key(recommendation.rank, recommendation.symbol) {
+                                RecommendationRow(
+                                    item = recommendation,
+                                    onClick = { onRecommendationClick(recommendation) }
+                                )
+                                if (index < recommendations.size - 1) {
+                                    HorizontalDivider(
+                                        modifier = Modifier.padding(vertical = 4.dp),
+                                        color = DarkCardBorder.copy(alpha = 0.5f),
+                                        thickness = 0.8.dp
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+                    HorizontalDivider(
+                        color = DarkCardBorder.copy(alpha = 0.8f),
+                        thickness = 1.dp
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // History Button
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { onViewHistoryClick() },
+                        shape = RoundedCornerShape(12.dp),
                         color = DarkCard,
                         border = BorderStroke(1.dp, DarkCardBorder)
                     ) {
-                        Text(
-                            text = "${recommendations.size} Alpha",
-                            color = GoldAccent,
-                            fontSize = 10.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
-                    }
-                }
-            }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                modifier = Modifier.weight(1f, fill = false),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.History,
+                                    contentDescription = "Recommendation History",
+                                    tint = AccentIndigoLight,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column {
+                                    Text(
+                                        text = "Recommendation History",
+                                        color = TextPrimary,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = "Past 3 Months Track Record",
+                                        color = TextMuted,
+                                        fontSize = 9.5.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
 
-            Spacer(modifier = Modifier.height(10.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
 
-            // Prominent Avg Gain/Loss Today Banner at the top
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(10.dp),
-                color = avgBg,
-                border = BorderStroke(1.dp, avgColor.copy(alpha = 0.35f))
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 7.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = if (isAvgPos) "📈" else if (isAvgNeg) "📉" else "📊",
-                            fontSize = 12.sp
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "TODAY'S AVG GAIN / LOSS",
-                            fontSize = 9.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = TextMuted,
-                            letterSpacing = 0.5.sp
-                        )
-                    }
-                    Text(
-                        text = avgTodayStr,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = avgColor
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Table Header Bar: # | TICKER | PRICE / TODAY % | SCORE | CHART
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(10.dp),
-                color = DarkCard
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 8.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "#",
-                        color = TextMuted,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.weight(0.40f),
-                        maxLines = 1,
-                        softWrap = false
-                    )
-                    Text(
-                        text = "TICKER",
-                        color = TextMuted,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.weight(1.50f),
-                        maxLines = 1,
-                        softWrap = false
-                    )
-                    Text(
-                        text = "PRICE / TODAY %",
-                        color = TextMuted,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.weight(1.55f),
-                        maxLines = 1,
-                        softWrap = false
-                    )
-                    Text(
-                        text = "SCORE",
-                        color = TextMuted,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.weight(0.85f),
-                        maxLines = 1,
-                        softWrap = false
-                    )
-                    Text(
-                        text = "CHART",
-                        color = TextMuted,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.End,
-                        modifier = Modifier.weight(0.70f),
-                        maxLines = 1,
-                        softWrap = false
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            if (recommendations.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(24.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("No recommendations currently active", color = TextMuted, fontSize = 13.sp)
-                }
-            } else {
-                recommendations.forEachIndexed { index, recommendation ->
-                    key(recommendation.rank, recommendation.symbol) {
-                        RecommendationRow(
-                            item = recommendation,
-                            onClick = { onRecommendationClick(recommendation) }
-                        )
-                        if (index < recommendations.size - 1) {
-                            HorizontalDivider(
-                                modifier = Modifier.padding(vertical = 4.dp),
-                                color = DarkCardBorder.copy(alpha = 0.5f),
-                                thickness = 0.8.dp
-                            )
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = ProfitGreenBg,
+                                border = BorderStroke(0.8.dp, ProfitGreen.copy(alpha = 0.4f))
+                            ) {
+                                Text(
+                                    text = historyWinRateSummary.ifBlank { "73.3% Win Rate" },
+                                    color = ProfitGreen,
+                                    fontSize = 10.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
                         }
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-            HorizontalDivider(
-                color = DarkCardBorder.copy(alpha = 0.8f),
-                thickness = 1.dp
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // History Button
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .clickable { onViewHistoryClick() },
-                shape = RoundedCornerShape(12.dp),
-                color = DarkCard,
-                border = BorderStroke(1.dp, DarkCardBorder)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        modifier = Modifier.weight(1f, fill = false),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.History,
-                            contentDescription = "Recommendation History",
-                            tint = AccentIndigoLight,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Column {
-                            Text(
-                                text = "Recommendation History",
-                                color = TextPrimary,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Text(
-                                text = "Past 3 Months Track Record",
-                                color = TextMuted,
-                                fontSize = 9.5.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = ProfitGreenBg,
-                        border = BorderStroke(0.8.dp, ProfitGreen.copy(alpha = 0.4f))
-                    ) {
-                        Text(
-                            text = historyWinRateSummary.ifBlank { "73.3% Win Rate" },
-                            color = ProfitGreen,
-                            fontSize = 10.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
-                            maxLines = 1,
-                            softWrap = false
-                        )
                     }
                 }
             }

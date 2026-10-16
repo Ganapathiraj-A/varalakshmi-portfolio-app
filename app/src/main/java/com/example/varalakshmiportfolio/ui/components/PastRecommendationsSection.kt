@@ -44,7 +44,7 @@ fun PastRecommendationsSection(
     title: String = "PAST RECOMMENDATIONS",
     subtitle: String = "Past 3 Months Track Record • Tap ticker for Google Finance"
 ) {
-    var isExpanded by remember { mutableStateOf(true) }
+    var isExpanded by remember { mutableStateOf(false) }
     var selectedFilter by remember { mutableStateOf("ALL") }
 
     val totalCount = history.size
