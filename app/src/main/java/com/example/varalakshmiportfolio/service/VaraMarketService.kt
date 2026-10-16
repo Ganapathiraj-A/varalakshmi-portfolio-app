@@ -159,6 +159,11 @@ class VaraMarketService : Service() {
 
             // Push dynamic updates to FloatingScreenerService overlay if active
             FloatingScreenerService.updateData(cachedSummary, cachedPositions)
+
+            // Evaluate Arjun 5L Strategy triggers (Stop Loss & Profit Target auto-sells)
+            try {
+                com.example.varalakshmiportfolio.data.ArjunStockRepository().evaluateStrategyNow()
+            } catch (_: Exception) {}
         } catch (_: Exception) {}
     }
 

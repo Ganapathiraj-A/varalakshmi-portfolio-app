@@ -1,8 +1,6 @@
 package com.example.varalakshmiportfolio.data
 
-import com.example.varalakshmiportfolio.model.ArjunPortfolioSummary
-import com.example.varalakshmiportfolio.model.ArjunStockItem
-import com.example.varalakshmiportfolio.model.ArjunTradeStatus
+import com.example.varalakshmiportfolio.model.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -21,12 +19,23 @@ class ArjunStockRepository {
     companion object {
         const val ARJUN_CACHE_FILE = "arjun_stocks_cache.json"
 
+        const val TOTAL_STRATEGY_FUND = 500_000.0 // 5 Lakhs
+        const val TOTAL_STRATEGY_SLOTS = 10
+        const val SLOT_BUDGET = 50_000.0 // Approx 50k per slot
+
         @Volatile
         var enableNetworkQuotes: Boolean = true
 
         private val lock = Any()
         @Volatile
         private var memoryCache: MutableList<ArjunStockItem>? = null
+
+        private val executionEventsCache = mutableListOf<ArjunAutoExecutionEvent>()
+
+        fun resetCacheForTesting() = synchronized(lock) {
+            memoryCache = null
+            executionEventsCache.clear()
+        }
 
         fun createDefaultSeeds(): List<ArjunStockItem> {
             val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
@@ -46,9 +55,12 @@ class ArjunStockRepository {
                     targetPrice1 = 1175.0,
                     targetPrice2 = 1250.0,
                     stopLoss = 949.95,
-                    quantity = 25,
+                    quantity = 48, // approx ₹49,920 for Slot 1
                     notes = "Swing trade alert. Currently trading 1043.",
-                    rawText = "ARJUN Combo Package 🚀\nSWING TRADE\nBUY SKYGOLD AROUND 1035-1045\nTARGETS 1175-1250\nKEEP SL 949.95\nCURRENTLY TRADING 1043"
+                    rawText = "ARJUN Combo Package 🚀\nSWING TRADE\nBUY SKYGOLD AROUND 1035-1045\nTARGETS 1175-1250\nKEEP SL 949.95\nCURRENTLY TRADING 1043",
+                    isApprovedForStrategy = true,
+                    strategySlotIndex = 1,
+                    strategySlotCapital = SLOT_BUDGET
                 ),
                 ArjunStockItem(
                     id = "arjun-seed-lalitha",
@@ -60,14 +72,17 @@ class ArjunStockRepository {
                     entryPrice = 367.50,
                     entryPriceRange = "365 - 370",
                     entryDate = todayStr,
-                    currentPrice = 365.65,
+                    currentPrice = 368.50,
                     todayChangePct = 3.33,
                     targetPrice1 = 425.0,
                     targetPrice2 = 450.0,
                     stopLoss = 324.95,
-                    quantity = 50,
+                    quantity = 136, // approx ₹49,980 for Slot 2
                     notes = "Swing trade alert. Currently trading 368.50.",
-                    rawText = "ARJUN Combo Package 🚀\nSWING TRADE\nBUY LALITHA AROUND 365-370\nTARGETS 425 -450\nKEEP SL 324.95\nCURRENTLY TRADING 368.50"
+                    rawText = "ARJUN Combo Package 🚀\nSWING TRADE\nBUY LALITHA AROUND 365-370\nTARGETS 425 -450\nKEEP SL 324.95\nCURRENTLY TRADING 368.50",
+                    isApprovedForStrategy = true,
+                    strategySlotIndex = 2,
+                    strategySlotCapital = SLOT_BUDGET
                 ),
                 ArjunStockItem(
                     id = "arjun-seed-orienthot",
@@ -84,9 +99,12 @@ class ArjunStockRepository {
                     targetPrice1 = 190.0,
                     targetPrice2 = 225.0,
                     stopLoss = 129.95,
-                    quantity = 100,
+                    quantity = 335, // approx ₹49,931.75 for Slot 3
                     notes = "STRICTLY BUY ABOVE 149.05 (DON'T BUY BEFORE THE LEVEL)",
-                    rawText = "ARJUN Combo Package 🚀\nBREAKOUT ALERT\nBUY ORIENTHOT (ORIENT HOTELS)\nABOVE 149.05\nTARGETS 190-225\nKEEP SL 129.95\nCURRENTLY TRADING 145.50\nSTRICTLY BUY ABOVE 149.05 (DON'T BUY BEFORE THE LEVEL)"
+                    rawText = "ARJUN Combo Package 🚀\nBREAKOUT ALERT\nBUY ORIENTHOT (ORIENT HOTELS)\nABOVE 149.05\nTARGETS 190-225\nKEEP SL 129.95\nCURRENTLY TRADING 145.50\nSTRICTLY BUY ABOVE 149.05 (DON'T BUY BEFORE THE LEVEL)",
+                    isApprovedForStrategy = true,
+                    strategySlotIndex = 3,
+                    strategySlotCapital = SLOT_BUDGET
                 )
             )
         }
@@ -104,10 +122,9 @@ class ArjunStockRepository {
     fun addRecommendation(item: ArjunStockItem): List<ArjunStockItem> {
         synchronized(lock) {
             val list = (memoryCache ?: getRecommendations().toMutableList()).toMutableList()
-            // Add at top
             list.add(0, item)
             memoryCache = list
-            saveToDisk(list)
+            saveToDisk(list, executionEventsCache)
             return list.toList()
         }
     }
@@ -122,7 +139,7 @@ class ArjunStockRepository {
                 list.add(0, item)
             }
             memoryCache = list
-            saveToDisk(list)
+            saveToDisk(list, executionEventsCache)
             return list.toList()
         }
     }
@@ -132,12 +149,12 @@ class ArjunStockRepository {
             val list = (memoryCache ?: getRecommendations().toMutableList()).toMutableList()
             list.removeAll { it.id == id }
             memoryCache = list
-            saveToDisk(list)
+            saveToDisk(list, executionEventsCache)
             return list.toList()
         }
     }
 
-    fun markAsClosed(id: String, exitPrice: Double = 0.0): List<ArjunStockItem> {
+    fun markAsClosed(id: String, exitPrice: Double = 0.0, reason: String = "MANUAL_EXIT"): List<ArjunStockItem> {
         synchronized(lock) {
             val list = (memoryCache ?: getRecommendations().toMutableList()).toMutableList()
             val idx = list.indexOfFirst { it.id == id }
@@ -145,12 +162,173 @@ class ArjunStockRepository {
                 val old = list[idx]
                 val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
                 val finalExit = if (exitPrice > 0) exitPrice else old.currentPrice
-                list[idx] = old.copy(isClosed = true, closedPrice = finalExit, closedDate = todayStr)
+                list[idx] = old.copy(
+                    isClosed = true,
+                    closedPrice = finalExit,
+                    closedDate = todayStr,
+                    exitReason = reason,
+                    exitTriggerPrice = old.currentPrice
+                )
             }
             memoryCache = list
-            saveToDisk(list)
+            saveToDisk(list, executionEventsCache)
             return list.toList()
         }
+    }
+
+    /**
+     * Approves a recommendation into the Arjun 5L Strategy.
+     * Finds next available slot out of 10, calculates share quantity for approx ₹50,000,
+     * and activates automated SL and Target monitoring.
+     */
+    fun approveRecommendation(id: String, targetSlot: Int? = null): Pair<Boolean, String> = synchronized(lock) {
+        val list = (memoryCache ?: getRecommendations().toMutableList()).toMutableList()
+        val idx = list.indexOfFirst { it.id == id }
+        if (idx < 0) return Pair(false, "Stock recommendation not found.")
+
+        val item = list[idx]
+        if (item.isStrategySlotOccupied) {
+            return Pair(true, "${item.symbol} is already active in Strategy Slot #${item.strategySlotIndex}.")
+        }
+
+        // Find occupied slot indices among currently active strategy items
+        val occupiedSlots = list.filter { it.isStrategySlotOccupied }.map { it.strategySlotIndex }.toSet()
+        val assignedSlot = targetSlot?.takeIf { it in 1..TOTAL_STRATEGY_SLOTS && !occupiedSlots.contains(it) }
+            ?: (1..TOTAL_STRATEGY_SLOTS).firstOrNull { !occupiedSlots.contains(it) }
+
+        if (assignedSlot == null) {
+            return Pair(false, "All $TOTAL_STRATEGY_SLOTS strategy slots (₹5,00,000) are occupied! Wait for an active position to hit Target or Stop Loss to free up a slot.")
+        }
+
+        // Auto-calculate quantity for approx ₹50,000
+        val effectiveEntry = if (item.entryPrice > 0.0) item.entryPrice else item.currentPrice
+        val calculatedQty = if (effectiveEntry > 0.0) {
+            kotlin.math.max(1, (SLOT_BUDGET / effectiveEntry).toInt())
+        } else item.quantity
+        val invested = roundPaise(calculatedQty * effectiveEntry)
+
+        list[idx] = item.copy(
+            isApprovedForStrategy = true,
+            strategySlotIndex = assignedSlot,
+            strategySlotCapital = SLOT_BUDGET,
+            quantity = calculatedQty,
+            isClosed = false,
+            closedPrice = 0.0,
+            closedDate = "",
+            exitReason = "",
+            exitTriggerPrice = 0.0
+        )
+        memoryCache = list
+        saveToDisk(list, executionEventsCache)
+        return Pair(true, "Approved ${item.symbol} into Strategy Slot #$assignedSlot ($calculatedQty shares @ ₹$effectiveEntry ≈ ₹$invested).")
+    }
+
+    /**
+     * Removes a stock from strategy slot allocation back to regular recommendation.
+     */
+    fun unapproveRecommendation(id: String): List<ArjunStockItem> = synchronized(lock) {
+        val list = (memoryCache ?: getRecommendations().toMutableList()).toMutableList()
+        val idx = list.indexOfFirst { it.id == id }
+        if (idx >= 0) {
+            list[idx] = list[idx].copy(
+                isApprovedForStrategy = false,
+                strategySlotIndex = -1
+            )
+            memoryCache = list
+            saveToDisk(list, executionEventsCache)
+        }
+        return list.toList()
+    }
+
+    /**
+     * Evaluates daily Stop Loss and Profit Target levels for all active strategy positions.
+     * When Stop Loss is hit (currentPrice <= stopLoss): auto-sells at stop loss price, freeing the slot.
+     * When Target 1 is hit (currentPrice >= targetPrice1): auto-sells at target price, booking profit & freeing the slot.
+     */
+    fun evaluateStrategyTriggers(items: List<ArjunStockItem>): Pair<List<ArjunStockItem>, List<ArjunAutoExecutionEvent>> {
+        val updated = items.toMutableList()
+        val newEvents = mutableListOf<ArjunAutoExecutionEvent>()
+        val todayStr = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())
+
+        for (i in updated.indices) {
+            val stock = updated[i]
+            if (!stock.isStrategySlotOccupied) continue
+
+            // 1. Check Stop Loss Hit
+            if (stock.stopLoss > 0.0 && stock.currentPrice <= stock.stopLoss) {
+                val exitPrice = stock.stopLoss
+                val pnl = roundPaise((exitPrice - stock.entryPrice) * stock.quantity)
+                val pnlPct = if (stock.entryPrice > 0.0) roundPaise(((exitPrice - stock.entryPrice) / stock.entryPrice) * 100.0) else 0.0
+                val freedSlot = stock.strategySlotIndex
+
+                updated[i] = stock.copy(
+                    isClosed = true,
+                    closedPrice = exitPrice,
+                    closedDate = todayStr,
+                    exitReason = "STOP_LOSS_HIT",
+                    exitTriggerPrice = stock.currentPrice
+                )
+
+                val event = ArjunAutoExecutionEvent(
+                    stockId = stock.id,
+                    symbol = stock.symbol,
+                    timestamp = todayStr,
+                    eventType = "STOP_LOSS_HIT",
+                    triggerPrice = stock.currentPrice,
+                    entryPrice = stock.entryPrice,
+                    quantity = stock.quantity,
+                    pnlAmount = pnl,
+                    pnlPct = pnlPct,
+                    freedSlotIndex = freedSlot,
+                    headline = "🛑 Stop Loss Hit: ${stock.symbol} Auto-Sold",
+                    message = "${stock.symbol} touched Stop Loss ₹${stock.stopLoss} (CMP ₹${stock.currentPrice}). Position auto-sold at ₹$exitPrice. P&L: ${if (pnl >= 0) "+" else ""}₹$pnl ($pnlPct%). Slot #$freedSlot freed up for new picks!"
+                )
+                newEvents.add(event)
+            }
+            // 2. Check Target Hit (Target 1)
+            else if (stock.targetPrice1 > 0.0 && stock.currentPrice >= stock.targetPrice1) {
+                val exitPrice = stock.targetPrice1
+                val pnl = roundPaise((exitPrice - stock.entryPrice) * stock.quantity)
+                val pnlPct = if (stock.entryPrice > 0.0) roundPaise(((exitPrice - stock.entryPrice) / stock.entryPrice) * 100.0) else 0.0
+                val freedSlot = stock.strategySlotIndex
+
+                updated[i] = stock.copy(
+                    isClosed = true,
+                    closedPrice = exitPrice,
+                    closedDate = todayStr,
+                    exitReason = "TARGET_HIT",
+                    exitTriggerPrice = stock.currentPrice
+                )
+
+                val event = ArjunAutoExecutionEvent(
+                    stockId = stock.id,
+                    symbol = stock.symbol,
+                    timestamp = todayStr,
+                    eventType = "TARGET_HIT",
+                    triggerPrice = stock.currentPrice,
+                    entryPrice = stock.entryPrice,
+                    quantity = stock.quantity,
+                    pnlAmount = pnl,
+                    pnlPct = pnlPct,
+                    freedSlotIndex = freedSlot,
+                    headline = "🎯 Profit Target Hit: ${stock.symbol} Auto-Sold!",
+                    message = "${stock.symbol} reached Target 1 ₹${stock.targetPrice1} (CMP ₹${stock.currentPrice}). Position auto-sold. Profit booked: +₹$pnl (+${pnlPct}%). Slot #$freedSlot freed up for new picks!"
+                )
+                newEvents.add(event)
+            }
+        }
+        return Pair(updated.toList(), newEvents.toList())
+    }
+
+    fun evaluateStrategyNow(): Pair<List<ArjunStockItem>, List<ArjunAutoExecutionEvent>> = synchronized(lock) {
+        val current = getRecommendations()
+        val (evaluatedItems, newEvents) = evaluateStrategyTriggers(current)
+        if (newEvents.isNotEmpty()) {
+            memoryCache = evaluatedItems.toMutableList()
+            executionEventsCache.addAll(0, newEvents)
+            saveToDisk(evaluatedItems, executionEventsCache)
+        }
+        Pair(evaluatedItems, newEvents)
     }
 
     suspend fun refreshLiveQuotes(): List<ArjunStockItem> = withContext(Dispatchers.IO) {
@@ -177,14 +355,30 @@ class ArjunStockRepository {
                 }
             }
 
+            // Daily monitoring trigger evaluation
+            val (evaluatedItems, newEvents) = evaluateStrategyTriggers(updatedItems)
+
             synchronized(lock) {
-                memoryCache = updatedItems.toMutableList()
-                saveToDisk(updatedItems)
+                memoryCache = evaluatedItems.toMutableList()
+                if (newEvents.isNotEmpty()) {
+                    executionEventsCache.addAll(0, newEvents)
+                }
+                saveToDisk(evaluatedItems, executionEventsCache)
             }
-            updatedItems
+            evaluatedItems
         } catch (_: Throwable) {
             getRecommendations()
         }
+    }
+
+    fun getAutoExecutionEvents(): List<ArjunAutoExecutionEvent> = synchronized(lock) {
+        executionEventsCache.toList()
+    }
+
+    fun dismissAutoExecutionEvent(id: String): List<ArjunAutoExecutionEvent> = synchronized(lock) {
+        executionEventsCache.removeAll { it.id == id }
+        memoryCache?.let { saveToDisk(it, executionEventsCache) }
+        executionEventsCache.toList()
     }
 
     fun calculateSummary(items: List<ArjunStockItem>): ArjunPortfolioSummary {
@@ -214,6 +408,62 @@ class ArjunStockRepository {
         )
     }
 
+    fun calculateStrategySummary(items: List<ArjunStockItem>): ArjunStrategySummary {
+        val strategyItems = items.filter { it.isApprovedForStrategy }
+        val activeStrategyItems = strategyItems.filter { !it.isClosed }
+        val closedStrategyItems = strategyItems.filter { it.isClosed }
+
+        val occupiedSlots = activeStrategyItems.size.coerceAtMost(TOTAL_STRATEGY_SLOTS)
+        val availableSlots = (TOTAL_STRATEGY_SLOTS - occupiedSlots).coerceAtLeast(0)
+
+        val totalDeployedCapital = roundPaise(activeStrategyItems.sumOf { it.investedValue })
+        val currentDeployedValue = roundPaise(activeStrategyItems.sumOf { it.currentValue })
+        val unrealizedPnl = roundPaise(currentDeployedValue - totalDeployedCapital)
+
+        val realizedPnl = roundPaise(closedStrategyItems.sumOf {
+            (it.effectivePrice - it.entryPrice) * it.quantity
+        })
+
+        val totalPnl = roundPaise(unrealizedPnl + realizedPnl)
+        val availableCash = roundPaise(TOTAL_STRATEGY_FUND - totalDeployedCapital + realizedPnl)
+        val totalStrategyNav = roundPaise(availableCash + currentDeployedValue)
+        val totalStrategyReturnPct = if (TOTAL_STRATEGY_FUND > 0.0) {
+            roundPaise(((totalStrategyNav - TOTAL_STRATEGY_FUND) / TOTAL_STRATEGY_FUND) * 100.0)
+        } else 0.0
+
+        return ArjunStrategySummary(
+            totalFund = TOTAL_STRATEGY_FUND,
+            slotBudget = SLOT_BUDGET,
+            totalSlots = TOTAL_STRATEGY_SLOTS,
+            occupiedSlotsCount = occupiedSlots,
+            availableSlotsCount = availableSlots,
+            totalDeployedCapital = totalDeployedCapital,
+            availableCash = availableCash,
+            currentDeployedValue = currentDeployedValue,
+            unrealizedPnl = unrealizedPnl,
+            realizedPnl = realizedPnl,
+            totalStrategyNav = totalStrategyNav,
+            totalStrategyReturnPct = totalStrategyReturnPct
+        )
+    }
+
+    fun calculateStrategySlots(items: List<ArjunStockItem>): List<ArjunStrategySlot> {
+        val activeStrategyItems = items.filter { it.isStrategySlotOccupied }
+        val slots = mutableListOf<ArjunStrategySlot>()
+        for (i in 1..TOTAL_STRATEGY_SLOTS) {
+            val matchingStock = activeStrategyItems.firstOrNull { it.strategySlotIndex == i }
+            slots.add(
+                ArjunStrategySlot(
+                    slotIndex = i,
+                    isOccupied = matchingStock != null,
+                    stock = matchingStock,
+                    targetCapital = SLOT_BUDGET
+                )
+            )
+        }
+        return slots
+    }
+
     /**
      * Fetches live quote from Yahoo Finance API for given symbol: Pair(price, changePct)
      */
@@ -221,7 +471,7 @@ class ArjunStockRepository {
         if (!enableNetworkQuotes) return null
         val cleanSym = symbol.trim().uppercase(Locale.US)
         val nseUrl = "https://query1.finance.yahoo.com/v8/finance/chart/$cleanSym.NS?interval=1d&range=1d"
-        
+
         return try {
             val jsonStr = httpGetWithUa(nseUrl) ?: return null
             val root = JSONObject(jsonStr)
@@ -265,11 +515,43 @@ class ArjunStockRepository {
         if (!file.exists() || !file.isFile) return null
 
         return try {
-            val text = file.readText(Charsets.UTF_8)
-            val arr = JSONArray(text)
+            val text = file.readText(Charsets.UTF_8).trim()
             val list = mutableListOf<ArjunStockItem>()
-            for (i in 0 until arr.length()) {
-                val o = arr.optJSONObject(i) ?: continue
+            val itemsArr: JSONArray? = if (text.startsWith("{")) {
+                val root = JSONObject(text)
+                val evArr = root.optJSONArray("events")
+                if (evArr != null) {
+                    executionEventsCache.clear()
+                    for (j in 0 until evArr.length()) {
+                        val e = evArr.optJSONObject(j) ?: continue
+                        executionEventsCache.add(
+                            ArjunAutoExecutionEvent(
+                                id = e.optString("id", ""),
+                                stockId = e.optString("stock_id", ""),
+                                symbol = e.optString("symbol", ""),
+                                timestamp = e.optString("timestamp", ""),
+                                eventType = e.optString("event_type", "TARGET_HIT"),
+                                triggerPrice = e.optDouble("trigger_price", 0.0),
+                                entryPrice = e.optDouble("entry_price", 0.0),
+                                quantity = e.optInt("quantity", 0),
+                                pnlAmount = e.optDouble("pnl_amount", 0.0),
+                                pnlPct = e.optDouble("pnl_pct", 0.0),
+                                freedSlotIndex = e.optInt("freed_slot_index", 1),
+                                headline = e.optString("headline", ""),
+                                message = e.optString("message", "")
+                            )
+                        )
+                    }
+                }
+                root.optJSONArray("items")
+            } else if (text.startsWith("[")) {
+                JSONArray(text)
+            } else null
+
+            if (itemsArr == null) return null
+
+            for (i in 0 until itemsArr.length()) {
+                val o = itemsArr.optJSONObject(i) ?: continue
                 list.add(
                     ArjunStockItem(
                         id = o.optString("id", ""),
@@ -291,7 +573,12 @@ class ArjunStockRepository {
                         rawText = o.optString("raw_text", ""),
                         isClosed = o.optBoolean("is_closed", false),
                         closedPrice = o.optDouble("closed_price", 0.0),
-                        closedDate = o.optString("closed_date", "")
+                        closedDate = o.optString("closed_date", ""),
+                        isApprovedForStrategy = o.optBoolean("is_approved_for_strategy", false),
+                        strategySlotIndex = o.optInt("strategy_slot_index", -1),
+                        strategySlotCapital = o.optDouble("strategy_slot_capital", SLOT_BUDGET),
+                        exitReason = o.optString("exit_reason", ""),
+                        exitTriggerPrice = o.optDouble("exit_trigger_price", 0.0)
                     )
                 )
             }
@@ -301,11 +588,12 @@ class ArjunStockRepository {
         }
     }
 
-    private fun saveToDisk(items: List<ArjunStockItem>) {
+    private fun saveToDisk(items: List<ArjunStockItem>, events: List<ArjunAutoExecutionEvent> = emptyList()) {
         val dir = VaralakshmiRepository.getCacheDirectory() ?: return
         try {
             val file = File(dir, ARJUN_CACHE_FILE)
-            val arr = JSONArray()
+            val root = JSONObject()
+            val itemsArr = JSONArray()
             for (it in items) {
                 val o = JSONObject().apply {
                     put("id", it.id)
@@ -328,10 +616,38 @@ class ArjunStockRepository {
                     put("is_closed", it.isClosed)
                     put("closed_price", it.closedPrice)
                     put("closed_date", it.closedDate)
+                    put("is_approved_for_strategy", it.isApprovedForStrategy)
+                    put("strategy_slot_index", it.strategySlotIndex)
+                    put("strategy_slot_capital", it.strategySlotCapital)
+                    put("exit_reason", it.exitReason)
+                    put("exit_trigger_price", it.exitTriggerPrice)
                 }
-                arr.put(o)
+                itemsArr.put(o)
             }
-            file.writeText(arr.toString(2), Charsets.UTF_8)
+            root.put("items", itemsArr)
+
+            val evArr = JSONArray()
+            for (e in events) {
+                val eo = JSONObject().apply {
+                    put("id", e.id)
+                    put("stock_id", e.stockId)
+                    put("symbol", e.symbol)
+                    put("timestamp", e.timestamp)
+                    put("event_type", e.eventType)
+                    put("trigger_price", e.triggerPrice)
+                    put("entry_price", e.entryPrice)
+                    put("quantity", e.quantity)
+                    put("pnl_amount", e.pnlAmount)
+                    put("pnl_pct", e.pnlPct)
+                    put("freed_slot_index", e.freedSlotIndex)
+                    put("headline", e.headline)
+                    put("message", e.message)
+                }
+                evArr.put(eo)
+            }
+            root.put("events", evArr)
+
+            file.writeText(root.toString(2), Charsets.UTF_8)
         } catch (_: Exception) {
             // Ignore disk cache write errors
         }

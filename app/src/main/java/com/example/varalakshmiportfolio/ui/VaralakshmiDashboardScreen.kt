@@ -725,7 +725,10 @@ fun VaralakshmiDashboardScreen(
                             onDeleteStock = { id -> viewModel.deleteArjunStock(id) },
                             onCloseStock = { id, exitPrice -> viewModel.closeArjunStock(id, exitPrice) },
                             onSelectFilter = { filter -> viewModel.selectArjunFilter(filter) },
-                            onRefresh = { viewModel.refreshArjunQuotes() }
+                            onRefresh = { viewModel.refreshArjunQuotes() },
+                            onApproveStock = { id -> viewModel.approveArjunStock(id) },
+                            onUnapproveStock = { id -> viewModel.unapproveArjunStock(id) },
+                            onDismissExecutionEvent = { id -> viewModel.dismissAutoExecutionEvent(id) }
                         )
                         Spacer(modifier = Modifier.height(24.dp))
                     }

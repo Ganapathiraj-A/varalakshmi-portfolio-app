@@ -34,8 +34,16 @@ data class ArjunStockItem(
     val rawText: String = "",
     val isClosed: Boolean = false,
     val closedPrice: Double = 0.0,
-    val closedDate: String = ""
+    val closedDate: String = "",
+    val isApprovedForStrategy: Boolean = false,
+    val strategySlotIndex: Int = -1,
+    val strategySlotCapital: Double = 50_000.0,
+    val exitReason: String = "",
+    val exitTriggerPrice: Double = 0.0
 ) {
+    val isStrategySlotOccupied: Boolean
+        get() = isApprovedForStrategy && !isClosed && strategySlotIndex in 1..10
+
     val effectivePrice: Double get() = if (isClosed) closedPrice else currentPrice
 
     val isProfit: Boolean get() = effectivePrice >= entryPrice
@@ -125,9 +133,78 @@ data class ArjunPortfolioSummary(
     }
 }
 
+data class ArjunStrategySlot(
+    val slotIndex: Int, // 1 to 10
+    val isOccupied: Boolean,
+    val stock: ArjunStockItem? = null,
+    val targetCapital: Double = 50_000.0
+) {
+    val statusLabel: String
+        get() = if (isOccupied && stock != null) stock.symbol else "Slot $slotIndex Available"
+}
+
+data class ArjunStrategySummary(
+    val totalFund: Double = 500_000.0,
+    val slotBudget: Double = 50_000.0,
+    val totalSlots: Int = 10,
+    val occupiedSlotsCount: Int = 0,
+    val availableSlotsCount: Int = 10,
+    val totalDeployedCapital: Double = 0.0,
+    val availableCash: Double = 500_000.0,
+    val currentDeployedValue: Double = 0.0,
+    val unrealizedPnl: Double = 0.0,
+    val realizedPnl: Double = 0.0,
+    val totalStrategyNav: Double = 500_000.0,
+    val totalStrategyReturnPct: Double = 0.0
+) {
+    val formattedTotalFund: String get() = String.format(Locale.US, "₹%,.2f", totalFund)
+    val formattedTotalDeployed: String get() = String.format(Locale.US, "₹%,.2f", totalDeployedCapital)
+    val formattedAvailableCash: String get() = String.format(Locale.US, "₹%,.2f", availableCash)
+    val formattedCurrentValue: String get() = String.format(Locale.US, "₹%,.2f", currentDeployedValue)
+    val formattedTotalNav: String get() = String.format(Locale.US, "₹%,.2f", totalStrategyNav)
+    val totalPnl: Double get() = unrealizedPnl + realizedPnl
+    val formattedTotalPnl: String get() {
+        val sign = if (totalPnl >= 0.0) "+" else "-"
+        return String.format(Locale.US, "%s₹%,.2f", sign, kotlin.math.abs(totalPnl))
+    }
+    val formattedTotalPnlPct: String get() {
+        val sign = if (totalStrategyReturnPct >= 0.0) "+" else "-"
+        return String.format(Locale.US, "%s%.2f%%", sign, kotlin.math.abs(totalStrategyReturnPct))
+    }
+}
+
+data class ArjunAutoExecutionEvent(
+    val id: String = UUID.randomUUID().toString(),
+    val stockId: String,
+    val symbol: String,
+    val timestamp: String,
+    val eventType: String, // "TARGET_HIT" or "STOP_LOSS_HIT"
+    val triggerPrice: Double,
+    val entryPrice: Double,
+    val quantity: Int,
+    val pnlAmount: Double,
+    val pnlPct: Double,
+    val freedSlotIndex: Int,
+    val headline: String,
+    val message: String
+) {
+    val isProfit: Boolean get() = pnlAmount >= 0.0
+    val formattedPnl: String get() {
+        val sign = if (pnlAmount >= 0.0) "+" else "-"
+        return String.format(Locale.US, "%s₹%,.2f", sign, kotlin.math.abs(pnlAmount))
+    }
+    val formattedPnlPct: String get() {
+        val sign = if (pnlPct >= 0.0) "+" else "-"
+        return String.format(Locale.US, "%s%.2f%%", sign, kotlin.math.abs(pnlPct))
+    }
+}
+
 data class ArjunStocksUiState(
     val recommendations: List<ArjunStockItem> = emptyList(),
     val summary: ArjunPortfolioSummary = ArjunPortfolioSummary(),
+    val strategySummary: ArjunStrategySummary = ArjunStrategySummary(),
+    val strategySlots: List<ArjunStrategySlot> = emptyList(),
+    val autoExecutionEvents: List<ArjunAutoExecutionEvent> = emptyList(),
     val isLoading: Boolean = false,
     val isRefreshingQuotes: Boolean = false,
     val selectedFilter: String = "ALL",

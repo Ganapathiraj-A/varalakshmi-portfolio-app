@@ -125,7 +125,10 @@ class VaralakshmiViewModel(
             val initial = arjunRepository.getRecommendations()
             ArjunStocksUiState(
                 recommendations = initial,
-                summary = arjunRepository.calculateSummary(initial)
+                summary = arjunRepository.calculateSummary(initial),
+                strategySummary = arjunRepository.calculateStrategySummary(initial),
+                strategySlots = arjunRepository.calculateStrategySlots(initial),
+                autoExecutionEvents = arjunRepository.getAutoExecutionEvents()
             )
         }
     )
@@ -603,10 +606,15 @@ class VaralakshmiViewModel(
         if (parsed != null) {
             val updatedList = arjunRepository.addRecommendation(parsed)
             val updatedSummary = arjunRepository.calculateSummary(updatedList)
+            val strategySummary = arjunRepository.calculateStrategySummary(updatedList)
+            val strategySlots = arjunRepository.calculateStrategySlots(updatedList)
             _arjunStocksState.update {
                 it.copy(
                     recommendations = updatedList,
                     summary = updatedSummary,
+                    strategySummary = strategySummary,
+                    strategySlots = strategySlots,
+                    autoExecutionEvents = arjunRepository.getAutoExecutionEvents(),
                     errorMessage = null
                 )
             }
@@ -621,10 +629,15 @@ class VaralakshmiViewModel(
     fun updateArjunStock(item: ArjunStockItem) {
         val updatedList = arjunRepository.updateRecommendation(item)
         val updatedSummary = arjunRepository.calculateSummary(updatedList)
+        val strategySummary = arjunRepository.calculateStrategySummary(updatedList)
+        val strategySlots = arjunRepository.calculateStrategySlots(updatedList)
         _arjunStocksState.update {
             it.copy(
                 recommendations = updatedList,
-                summary = updatedSummary
+                summary = updatedSummary,
+                strategySummary = strategySummary,
+                strategySlots = strategySlots,
+                autoExecutionEvents = arjunRepository.getAutoExecutionEvents()
             )
         }
     }
@@ -632,23 +645,74 @@ class VaralakshmiViewModel(
     fun deleteArjunStock(id: String) {
         val updatedList = arjunRepository.deleteRecommendation(id)
         val updatedSummary = arjunRepository.calculateSummary(updatedList)
+        val strategySummary = arjunRepository.calculateStrategySummary(updatedList)
+        val strategySlots = arjunRepository.calculateStrategySlots(updatedList)
         _arjunStocksState.update {
             it.copy(
                 recommendations = updatedList,
-                summary = updatedSummary
+                summary = updatedSummary,
+                strategySummary = strategySummary,
+                strategySlots = strategySlots,
+                autoExecutionEvents = arjunRepository.getAutoExecutionEvents()
             )
         }
     }
 
     fun closeArjunStock(id: String, exitPrice: Double = 0.0) {
-        val updatedList = arjunRepository.markAsClosed(id, exitPrice)
+        val updatedList = arjunRepository.markAsClosed(id, exitPrice, "MANUAL_EXIT")
         val updatedSummary = arjunRepository.calculateSummary(updatedList)
+        val strategySummary = arjunRepository.calculateStrategySummary(updatedList)
+        val strategySlots = arjunRepository.calculateStrategySlots(updatedList)
         _arjunStocksState.update {
             it.copy(
                 recommendations = updatedList,
-                summary = updatedSummary
+                summary = updatedSummary,
+                strategySummary = strategySummary,
+                strategySlots = strategySlots,
+                autoExecutionEvents = arjunRepository.getAutoExecutionEvents()
             )
         }
+    }
+
+    fun approveArjunStock(id: String, targetSlot: Int? = null) {
+        val (success, message) = arjunRepository.approveRecommendation(id, targetSlot)
+        val updatedList = arjunRepository.getRecommendations()
+        val updatedSummary = arjunRepository.calculateSummary(updatedList)
+        val strategySummary = arjunRepository.calculateStrategySummary(updatedList)
+        val strategySlots = arjunRepository.calculateStrategySlots(updatedList)
+        _arjunStocksState.update {
+            it.copy(
+                recommendations = updatedList,
+                summary = updatedSummary,
+                strategySummary = strategySummary,
+                strategySlots = strategySlots,
+                autoExecutionEvents = arjunRepository.getAutoExecutionEvents(),
+                errorMessage = if (!success) message else null
+            )
+        }
+        _uiState.update { it.copy(snackbarMessage = message) }
+    }
+
+    fun unapproveArjunStock(id: String) {
+        val updatedList = arjunRepository.unapproveRecommendation(id)
+        val updatedSummary = arjunRepository.calculateSummary(updatedList)
+        val strategySummary = arjunRepository.calculateStrategySummary(updatedList)
+        val strategySlots = arjunRepository.calculateStrategySlots(updatedList)
+        _arjunStocksState.update {
+            it.copy(
+                recommendations = updatedList,
+                summary = updatedSummary,
+                strategySummary = strategySummary,
+                strategySlots = strategySlots,
+                autoExecutionEvents = arjunRepository.getAutoExecutionEvents()
+            )
+        }
+        _uiState.update { it.copy(snackbarMessage = "Removed from Arjun Strategy slots.") }
+    }
+
+    fun dismissAutoExecutionEvent(id: String) {
+        val updatedEvents = arjunRepository.dismissAutoExecutionEvent(id)
+        _arjunStocksState.update { it.copy(autoExecutionEvents = updatedEvents) }
     }
 
     fun selectArjunFilter(filter: String) {
@@ -667,11 +731,17 @@ class VaralakshmiViewModel(
                     _arjunStocksState.update { it.copy(isRefreshingQuotes = true) }
                     val updated = arjunRepository.refreshLiveQuotes()
                     val summary = arjunRepository.calculateSummary(updated)
+                    val strategySummary = arjunRepository.calculateStrategySummary(updated)
+                    val strategySlots = arjunRepository.calculateStrategySlots(updated)
+                    val events = arjunRepository.getAutoExecutionEvents()
                     val timeStr = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
                     _arjunStocksState.update {
                         it.copy(
                             recommendations = updated,
                             summary = summary,
+                            strategySummary = strategySummary,
+                            strategySlots = strategySlots,
+                            autoExecutionEvents = events,
                             isRefreshingQuotes = false,
                             lastRefreshedTime = timeStr,
                             errorMessage = null
