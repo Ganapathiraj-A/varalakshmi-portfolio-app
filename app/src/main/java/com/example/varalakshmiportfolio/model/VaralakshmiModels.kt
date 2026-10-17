@@ -78,6 +78,72 @@ fun calculateCurrentCagr(
     }
 }
 
+/**
+ * Calculates calendar days elapsed since a stock position was bought.
+ * Returns 0 if bought today or if entry date is blank/future.
+ */
+fun calculateDaysSinceBuy(
+    entryDateStr: String,
+    asOfDateStr: String? = null
+): Int {
+    if (entryDateStr.isBlank()) return 0
+    val trimmed = entryDateStr.trim()
+    if (trimmed.equals("today", ignoreCase = true)) return 0
+    if (isPositionBoughtToday(trimmed)) return 0
+
+    val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+    val asOfDate = try {
+        if (!asOfDateStr.isNullOrBlank() && asOfDateStr.length >= 10) {
+            sdf.parse(asOfDateStr.substring(0, 10)) ?: java.util.Date()
+        } else {
+            java.util.Date()
+        }
+    } catch (_: Exception) {
+        java.util.Date()
+    }
+
+    val asOfCal = java.util.Calendar.getInstance().apply {
+        time = asOfDate
+        set(java.util.Calendar.HOUR_OF_DAY, 0)
+        set(java.util.Calendar.MINUTE, 0)
+        set(java.util.Calendar.SECOND, 0)
+        set(java.util.Calendar.MILLISECOND, 0)
+    }
+
+    val cleanDateStr = when {
+        trimmed.contains(" ") -> trimmed.substringBefore(" ")
+        trimmed.contains("T") -> trimmed.substringBefore("T")
+        trimmed.length >= 10 -> trimmed.substring(0, 10)
+        else -> trimmed
+    }
+
+    val parsedDate = try {
+        sdf.parse(cleanDateStr)
+    } catch (_: Exception) {
+        val altFormats = arrayOf("dd-MM-yyyy", "dd/MM/yyyy", "yyyy/MM/dd")
+        var d: java.util.Date? = null
+        for (fmt in altFormats) {
+            try {
+                d = java.text.SimpleDateFormat(fmt, java.util.Locale.US).parse(cleanDateStr)
+                if (d != null) break
+            } catch (_: Exception) {}
+        }
+        d
+    } ?: return 0
+
+    val entryCal = java.util.Calendar.getInstance().apply {
+        time = parsedDate
+        set(java.util.Calendar.HOUR_OF_DAY, 0)
+        set(java.util.Calendar.MINUTE, 0)
+        set(java.util.Calendar.SECOND, 0)
+        set(java.util.Calendar.MILLISECOND, 0)
+    }
+
+    val diffMillis = asOfCal.timeInMillis - entryCal.timeInMillis
+    if (diffMillis <= 0L) return 0
+    return (diffMillis / (1000L * 60 * 60 * 24)).toInt().coerceAtLeast(0)
+}
+
 fun isPositionBoughtToday(entryDate: String): Boolean {
     if (entryDate.isBlank()) return false
     val trimmed = entryDate.trim()
@@ -360,10 +426,29 @@ data class PositionItem(
     val formattedAdditionalGainToTarget: String
         get() = "₹" + String.format(Locale.US, "%,.2f", additionalGainToTarget)
 
+    val daysSinceBuy: Int
+        get() = calculateDaysSinceBuy(entryDate)
+
+    val formattedDaysSinceBuy: String
+        get() = when (daysSinceBuy) {
+            0 -> "Today"
+            1 -> "1d"
+            else -> "${daysSinceBuy}d"
+        }
+
+    val formattedDaysHeld: String
+        get() = when (daysSinceBuy) {
+            0 -> "Today"
+            1 -> "1d held"
+            else -> "${daysSinceBuy}d held"
+        }
+
     companion object {
         fun isBoughtToday(entryDate: String): Boolean = isPositionBoughtToday(entryDate)
         fun calculateReferencePrice(entryDate: String, entryPrice: Double, previousClose: Double): Double =
             com.example.varalakshmiportfolio.model.calculateReferencePrice(entryDate, entryPrice, previousClose)
+        fun calculateDaysSinceBuy(entryDate: String, asOfDateStr: String? = null): Int =
+            com.example.varalakshmiportfolio.model.calculateDaysSinceBuy(entryDate, asOfDateStr)
     }
 }
 
@@ -420,12 +505,22 @@ data class LiveMilestoneState(
     val verdictSubtext: String = "Live trade sample size is accumulating to establish statistical significance.",
     val verdictStatus: String = "ACCUMULATING", // "PASS", "ACCUMULATING", "WARNING"
     val activeRunnersCount: Int = 0,
-    val activeRunnersSummary: String = ""
+    val activeRunnersSummary: String = "",
+    val calculationTimestamp: Long = System.currentTimeMillis(),
+    val formattedCalculationTimestamp: String = formatMilestoneCalculationTimestamp(calculationTimestamp)
 )
+
+fun formatMilestoneCalculationTimestamp(timestampMillis: Long): String {
+    val date = java.util.Date(timestampMillis)
+    val sdf = java.text.SimpleDateFormat("MMM dd, yyyy, hh:mm a", Locale.US)
+    sdf.timeZone = java.util.TimeZone.getTimeZone("Asia/Kolkata")
+    return sdf.format(date)
+}
 
 fun calculateLiveMilestones(
     transactions: List<TransactionItem>,
-    positions: List<PositionItem> = emptyList()
+    positions: List<PositionItem> = emptyList(),
+    timestampMillis: Long = System.currentTimeMillis()
 ): LiveMilestoneState {
     val sells = transactions.filter { it.side.equals("SELL", ignoreCase = true) || it.realizedPnl != 0.0 }
     if (sells.isEmpty()) {
@@ -435,7 +530,9 @@ fun calculateLiveMilestones(
         } else ""
         return LiveMilestoneState(
             activeRunnersCount = activeRunners.size,
-            activeRunnersSummary = runnerSummary
+            activeRunnersSummary = runnerSummary,
+            calculationTimestamp = timestampMillis,
+            formattedCalculationTimestamp = formatMilestoneCalculationTimestamp(timestampMillis)
         )
     }
 
@@ -516,7 +613,9 @@ fun calculateLiveMilestones(
         verdictSubtext = subtext,
         verdictStatus = status,
         activeRunnersCount = activeRunners.size,
-        activeRunnersSummary = runnerSummary
+        activeRunnersSummary = runnerSummary,
+        calculationTimestamp = timestampMillis,
+        formattedCalculationTimestamp = formatMilestoneCalculationTimestamp(timestampMillis)
     )
 }
 

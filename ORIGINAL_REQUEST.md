@@ -326,3 +326,48 @@ Integrity mode: development
 - [ ] `./gradlew testDebugUnitTest` passes with exit code 0.
 - [ ] `./gradlew assembleRelease` passes with exit code 0 and produces `varalakshmi-portfolio.apk`.
 
+## 2026-10-16T19:37:33Z
+
+This is a single self-contained fix; keep it small and focused.
+
+Review, audit, and harden the Arjun Stocks implementation in the Varalakshmi Portfolio Android application (`com.example.varalakshmiportfolio`). Perform a comprehensive 360° forensic review across financial invariant math, Jetpack Compose performance/recomposition, network/concurrency resilience, and test rigor, documenting findings and remediating any flaws.
+
+Working directory: /home/ganapathiraj/Code/Stock Research/ui/app
+Integrity mode: development
+
+## Requirements
+
+### R1. Financial Invariants & Strategy Capital Conservation
+Audit the ₹5,00,000 Arjun 5L Strategy (10 slots at ~₹50,000 budget each), validating that:
+- Total NAV conservation strictly holds: `Total NAV = Available Cash + Current Market Value of Open Holdings`.
+- Cash accounting is conserved across position creation, approval into slots, slot sizing, manual exits, and automated exits: `Available Cash = Total Fund - Total Deployed Capital + Realized PnL`.
+- Half-even paise rounding (`BigDecimal.setScale(2, RoundingMode.HALF_EVEN)`) is consistently enforced across all monetary fields, eliminating IEEE 754 precision drift.
+
+### R2. Jetpack Compose Performance & Recomposition Stability
+Audit `ArjunStocksScreen.kt` and related UI components:
+- Eliminate frame-rate recomposition storms (defer dynamic animations such as rotation/alphas to graphics layer or draw phase).
+- Ensure stable item keys are used in all list/column loops to prevent UI state bleeding.
+- Ensure lambdas and callbacks passed to composables are stable and don't trigger unnecessary full-table recompositions.
+- Verify state preservation across configuration changes (theme toggling, screen rotation) via ViewModel and StateFlow.
+
+### R3. Automated Triggers & Data Resilience
+Audit `ArjunStockRepository.kt` and `ArjunRecommendationParser.kt`:
+- Verify deterministic automated exit logic: Stop Loss triggers auto-sell when `currentPrice <= stopLoss`; Target 1 triggers profit-booking when `currentPrice >= targetPrice1`.
+- Verify that auto-execution events accurately capture fill prices, realized returns, and immediately free the assigned strategy slot.
+- Ensure thread-safe caching and atomic disk persistence (`arjun_stocks_cache.json`) without data corruption or concurrency race conditions.
+- Harden the broker alert regex parser against malformed, multi-line, or varied alert formats.
+
+### R4. Test Rigor & Verification
+Verify all existing and new unit tests for Arjun Stocks:
+- Maintain or extend unit test suites in `ArjunStockTest.kt` verifying parser variations, mathematical calculations, slot limits, auto-triggers, and ViewModel integration.
+- Ensure all test suites pass cleanly.
+
+## Acceptance Criteria
+
+### Verification & Quality Guardrails
+- [ ] `./gradlew testDebugUnitTest` runs with 0 errors and 0 test failures.
+- [ ] `./gradlew assembleDebug` compiles successfully without fatal errors or broken bindings.
+- [ ] Mathematical invariant test confirms `Total NAV == Available Cash + Current Value` across all lifecycle states.
+- [ ] Slot allocation test confirms exactly 10 slots maximum, with rejection of excess allocations until slots are freed.
+- [ ] Automated exit test confirms exact paise-level PnL computation and immediate slot liberation upon Stop Loss or Target Hit.
+- [ ] Review report / audit log updated or produced documenting all audit findings, severity classifications, and remediations.

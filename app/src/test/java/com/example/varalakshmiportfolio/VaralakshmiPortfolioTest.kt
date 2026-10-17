@@ -10,11 +10,29 @@ import com.example.varalakshmiportfolio.model.RecommendationHistorySummary
 import com.example.varalakshmiportfolio.model.isPositionBoughtToday
 import com.example.varalakshmiportfolio.model.calculateReferencePrice
 import com.example.varalakshmiportfolio.ui.VaralakshmiViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.setMain
+import org.junit.After
 import org.junit.Assert.*
+import org.junit.Before
 import org.junit.Test
 
 class VaralakshmiPortfolioTest {
+
+    private val testDispatcher = StandardTestDispatcher()
+
+    @Before
+    fun setUp() {
+        Dispatchers.setMain(testDispatcher)
+    }
+
+    @After
+    fun tearDown() {
+        Dispatchers.resetMain()
+    }
 
     @Test
     fun testBaselineSnapshotAndInvariant() {
@@ -2561,6 +2579,66 @@ class VaralakshmiPortfolioTest {
         assertEquals(7000, reloadedPcj!!.quantity)
         assertEquals(1050.00, reloadedPcj.todayValueChange, 0.01)
         assertEquals(1.05, reloadedPcj.todayPriceChangePct, 0.01)
+    }
+
+    @Test
+    fun testCalculateDaysSinceBuyAccuracy() {
+        val asOf = "2026-10-17"
+
+        // Same day / today
+        assertEquals(0, com.example.varalakshmiportfolio.model.calculateDaysSinceBuy("today", asOf))
+        assertEquals(0, com.example.varalakshmiportfolio.model.calculateDaysSinceBuy("", asOf))
+        assertEquals(0, com.example.varalakshmiportfolio.model.calculateDaysSinceBuy("   ", asOf))
+        assertEquals(0, com.example.varalakshmiportfolio.model.calculateDaysSinceBuy("2026-10-17", asOf))
+        assertEquals(0, com.example.varalakshmiportfolio.model.calculateDaysSinceBuy("2026-10-17 09:15:00", asOf))
+
+        // 1 day ago (yesterday)
+        assertEquals(1, com.example.varalakshmiportfolio.model.calculateDaysSinceBuy("2026-10-16", asOf))
+        assertEquals(1, com.example.varalakshmiportfolio.model.calculateDaysSinceBuy("2026-10-16 15:30:00", asOf))
+
+        // Portfolio active holdings inception dates
+        assertEquals(30, com.example.varalakshmiportfolio.model.calculateDaysSinceBuy("2026-09-17", asOf))
+        assertEquals(30, com.example.varalakshmiportfolio.model.calculateDaysSinceBuy("2026-09-17 08:41:42", asOf))
+        assertEquals(29, com.example.varalakshmiportfolio.model.calculateDaysSinceBuy("2026-09-18 09:23:45", asOf))
+        assertEquals(26, com.example.varalakshmiportfolio.model.calculateDaysSinceBuy("2026-09-21 09:26:07", asOf))
+
+        // Future dates should be clamped to 0
+        assertEquals(0, com.example.varalakshmiportfolio.model.calculateDaysSinceBuy("2026-10-25", asOf))
+    }
+
+    @Test
+    fun testPositionItemDaysSinceBuyFormatting() {
+        val todayPos = PositionItem(
+            positionId = "pos_today",
+            symbol = "TEST_TODAY",
+            quantity = 100,
+            entryPrice = 150.0,
+            currentPrice = 155.0,
+            marketValue = 15500.0,
+            unrealizedPnl = 500.0,
+            unrealizedPnlPct = 3.33,
+            peakPrice = 155.0,
+            entryDate = "today"
+        )
+        assertEquals(0, todayPos.daysSinceBuy)
+        assertEquals("Today", todayPos.formattedDaysSinceBuy)
+        assertEquals("Today", todayPos.formattedDaysHeld)
+
+        val heldPos = PositionItem(
+            positionId = "pos_held",
+            symbol = "IBULLSLTD",
+            quantity = 4198,
+            entryPrice = 35.40,
+            currentPrice = 34.45,
+            marketValue = 144621.10,
+            unrealizedPnl = -3988.10,
+            unrealizedPnlPct = -2.75,
+            peakPrice = 38.50,
+            entryDate = "2026-09-17 08:41:42"
+        )
+        assertTrue(heldPos.daysSinceBuy >= 25)
+        assertTrue(heldPos.formattedDaysSinceBuy.endsWith("d"))
+        assertTrue(heldPos.formattedDaysHeld.endsWith("d held"))
     }
 }
 

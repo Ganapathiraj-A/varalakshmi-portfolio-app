@@ -257,27 +257,54 @@ class VaralakshmiViewModel(
 
             // Concurrent Arjun live quotes sync
             arjunSyncJob?.cancel()
-            arjunSyncJob = launch {
-                try {
-                    _arjunStocksState.update { it.copy(isRefreshingQuotes = true) }
-                    val updated = arjunRepository.refreshLiveQuotes()
-                    val summary = arjunRepository.calculateSummary(updated)
-                    val timeStr = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
-                    _arjunStocksState.update {
-                        it.copy(
-                            recommendations = updated,
-                            summary = summary,
-                            isRefreshingQuotes = false,
-                            lastRefreshedTime = timeStr,
-                            errorMessage = null
-                        )
-                    }
-                } catch (e: Throwable) {
-                    _arjunStocksState.update {
-                        it.copy(
-                            isRefreshingQuotes = false,
-                            errorMessage = e.message
-                        )
+            if (!ArjunStockRepository.enableNetworkQuotes) {
+                val current = arjunRepository.getRecommendations()
+                val summary = arjunRepository.calculateSummary(current)
+                val strategySummary = arjunRepository.calculateStrategySummary(current)
+                val strategySlots = arjunRepository.calculateStrategySlots(current)
+                val events = arjunRepository.getAutoExecutionEvents()
+                val timeStr = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+                _arjunStocksState.update {
+                    it.copy(
+                        recommendations = current,
+                        summary = summary,
+                        strategySummary = strategySummary,
+                        strategySlots = strategySlots,
+                        autoExecutionEvents = events,
+                        isRefreshingQuotes = false,
+                        lastRefreshedTime = timeStr,
+                        errorMessage = null
+                    )
+                }
+            } else {
+                arjunSyncJob = launch {
+                    try {
+                        _arjunStocksState.update { it.copy(isRefreshingQuotes = true) }
+                        val updated = arjunRepository.refreshLiveQuotes()
+                        val summary = arjunRepository.calculateSummary(updated)
+                        val strategySummary = arjunRepository.calculateStrategySummary(updated)
+                        val strategySlots = arjunRepository.calculateStrategySlots(updated)
+                        val events = arjunRepository.getAutoExecutionEvents()
+                        val timeStr = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+                        _arjunStocksState.update {
+                            it.copy(
+                                recommendations = updated,
+                                summary = summary,
+                                strategySummary = strategySummary,
+                                strategySlots = strategySlots,
+                                autoExecutionEvents = events,
+                                isRefreshingQuotes = false,
+                                lastRefreshedTime = timeStr,
+                                errorMessage = null
+                            )
+                        }
+                    } catch (e: Throwable) {
+                        _arjunStocksState.update {
+                            it.copy(
+                                isRefreshingQuotes = false,
+                                errorMessage = e.message
+                            )
+                        }
                     }
                 }
             }
@@ -307,7 +334,7 @@ class VaralakshmiViewModel(
                             isMarketOpen = isMarket,
                             marketStatusText = statusText,
                             snackbarMessage = if (isSilent) null else "Synced with live trading engine",
-                            liveMilestoneState = com.example.varalakshmiportfolio.model.calculateLiveMilestones(syncResult.transactions, syncResult.positions)
+                            liveMilestoneState = com.example.varalakshmiportfolio.model.calculateLiveMilestones(syncResult.transactions, syncResult.positions, timestampMillis = now)
                         )
                     }
                 }
@@ -331,7 +358,7 @@ class VaralakshmiViewModel(
                             isMarketOpen = isMarket,
                             marketStatusText = statusText,
                             snackbarMessage = if (isSilent) null else "Offline mode: showing cached snapshot",
-                            liveMilestoneState = com.example.varalakshmiportfolio.model.calculateLiveMilestones(syncResult.transactions, syncResult.positions)
+                            liveMilestoneState = com.example.varalakshmiportfolio.model.calculateLiveMilestones(syncResult.transactions, syncResult.positions, timestampMillis = now)
                         )
                     }
                 }
@@ -725,6 +752,27 @@ class VaralakshmiViewModel(
 
     private fun refreshArjunQuotesInternal() {
         arjunSyncJob?.cancel()
+        if (!ArjunStockRepository.enableNetworkQuotes) {
+            val current = arjunRepository.getRecommendations()
+            val summary = arjunRepository.calculateSummary(current)
+            val strategySummary = arjunRepository.calculateStrategySummary(current)
+            val strategySlots = arjunRepository.calculateStrategySlots(current)
+            val events = arjunRepository.getAutoExecutionEvents()
+            val timeStr = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+            _arjunStocksState.update {
+                it.copy(
+                    recommendations = current,
+                    summary = summary,
+                    strategySummary = strategySummary,
+                    strategySlots = strategySlots,
+                    autoExecutionEvents = events,
+                    isRefreshingQuotes = false,
+                    lastRefreshedTime = timeStr,
+                    errorMessage = null
+                )
+            }
+            return
+        }
         try {
             arjunSyncJob = viewModelScope.launch {
                 try {

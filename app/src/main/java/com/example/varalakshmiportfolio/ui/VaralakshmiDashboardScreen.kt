@@ -720,15 +720,15 @@ fun VaralakshmiDashboardScreen(
                     ) {
                         ArjunStocksScreen(
                             state = arjunStocksState,
-                            onAddRecommendation = { text -> viewModel.addArjunRecommendation(text) },
-                            onUpdateStock = { item -> viewModel.updateArjunStock(item) },
-                            onDeleteStock = { id -> viewModel.deleteArjunStock(id) },
-                            onCloseStock = { id, exitPrice -> viewModel.closeArjunStock(id, exitPrice) },
-                            onSelectFilter = { filter -> viewModel.selectArjunFilter(filter) },
-                            onRefresh = { viewModel.refreshArjunQuotes() },
-                            onApproveStock = { id -> viewModel.approveArjunStock(id) },
-                            onUnapproveStock = { id -> viewModel.unapproveArjunStock(id) },
-                            onDismissExecutionEvent = { id -> viewModel.dismissAutoExecutionEvent(id) }
+                            onAddRecommendation = remember(viewModel) { { text: String -> viewModel.addArjunRecommendation(text) } },
+                            onUpdateStock = remember(viewModel) { { item: com.example.varalakshmiportfolio.model.ArjunStockItem -> viewModel.updateArjunStock(item) } },
+                            onDeleteStock = remember(viewModel) { { id: String -> viewModel.deleteArjunStock(id) } },
+                            onCloseStock = remember(viewModel) { { id: String, exitPrice: Double -> viewModel.closeArjunStock(id, exitPrice) } },
+                            onSelectFilter = remember(viewModel) { { filter: String -> viewModel.selectArjunFilter(filter) } },
+                            onRefresh = remember(viewModel) { { viewModel.refreshArjunQuotes() } },
+                            onApproveStock = remember(viewModel) { { id: String -> viewModel.approveArjunStock(id) } },
+                            onUnapproveStock = remember(viewModel) { { id: String -> viewModel.unapproveArjunStock(id) } },
+                            onDismissExecutionEvent = remember(viewModel) { { id: String -> viewModel.dismissAutoExecutionEvent(id) } }
                         )
                         Spacer(modifier = Modifier.height(24.dp))
                     }

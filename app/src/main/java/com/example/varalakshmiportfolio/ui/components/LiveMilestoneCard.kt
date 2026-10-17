@@ -155,38 +155,53 @@ fun LiveMilestoneCard(
                         color = statusBg,
                         border = androidx.compose.foundation.BorderStroke(1.dp, statusBorder)
                     ) {
-                        Row(
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(12.dp),
-                            verticalAlignment = Alignment.Top
+                                .padding(12.dp)
                         ) {
-                            Icon(
-                                imageVector = when (milestoneState.verdictStatus) {
-                                    "PASS" -> Icons.Filled.CheckCircle
-                                    "WARNING" -> Icons.Filled.Warning
-                                    else -> Icons.Filled.Info
-                                },
-                                contentDescription = null,
-                                tint = statusColor,
-                                modifier = Modifier
-                                    .size(20.dp)
-                                    .padding(top = 1.dp)
-                            )
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = milestoneState.verdictTitle,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = statusColor
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.Top
+                            ) {
+                                Icon(
+                                    imageVector = when (milestoneState.verdictStatus) {
+                                        "PASS" -> Icons.Filled.CheckCircle
+                                        "WARNING" -> Icons.Filled.Warning
+                                        else -> Icons.Filled.Info
+                                    },
+                                    contentDescription = null,
+                                    tint = statusColor,
+                                    modifier = Modifier
+                                        .size(20.dp)
+                                        .padding(top = 1.dp)
                                 )
-                                Spacer(modifier = Modifier.height(3.dp))
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = milestoneState.verdictTitle,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = statusColor
+                                    )
+                                    Spacer(modifier = Modifier.height(3.dp))
+                                    Text(
+                                        text = milestoneState.verdictSubtext,
+                                        fontSize = 11.sp,
+                                        color = TextSecondary,
+                                        lineHeight = 15.sp
+                                    )
+                                }
+                            }
+
+                            if (milestoneState.formattedCalculationTimestamp.isNotBlank()) {
+                                Spacer(modifier = Modifier.height(8.dp))
                                 Text(
-                                    text = milestoneState.verdictSubtext,
-                                    fontSize = 11.sp,
-                                    color = TextSecondary,
-                                    lineHeight = 15.sp
+                                    text = "Recalculated: ${milestoneState.formattedCalculationTimestamp}",
+                                    fontSize = 9.5.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = TextMuted,
+                                    modifier = Modifier.padding(start = 30.dp)
                                 )
                             }
                         }

@@ -13,8 +13,47 @@ object ArjunRecommendationParser {
         "M&M" to "M_M",
         "MCDOWELL" to "MCDOWELL-N",
         "TATAMOTOR" to "TATAMOTORS",
-        "BAJAJ-AUTO" to "BAJAJ_AUTO"
+        "TATA MOTORS" to "TATAMOTORS",
+        "TATA MOTOR" to "TATAMOTORS",
+        "BAJAJ-AUTO" to "BAJAJ_AUTO",
+        "BAJAJ AUTO" to "BAJAJ_AUTO",
+        "HDFC BANK" to "HDFCBANK",
+        "ICICI BANK" to "ICICIBANK",
+        "AXIS BANK" to "AXISBANK",
+        "KOTAK BANK" to "KOTAKBANK",
+        "MARUTI SUZUKI" to "MARUTI",
+        "ASHOK LEYLAND" to "ASHOKLEY",
+        "L&T" to "LT",
+        "L & T" to "LT"
     )
+
+    private fun cleanSymbol(raw: String): String {
+        var s = raw.uppercase(Locale.US).trim()
+        s = s.trim('"', '\'', '[', ']', '(', ')')
+        s = s.removeSuffix(".NS")
+            .removeSuffix(".NSE")
+            .removeSuffix(":NSE")
+            .removeSuffix("-EQ")
+            .removeSuffix(":EQ")
+            .removeSuffix(".BO")
+            .removeSuffix(":BSE")
+            .trim()
+        val aliased = SYMBOL_ALIASES[s] ?: s
+        return if (aliased.contains(" ")) aliased.replace(" ", "") else aliased
+    }
+
+    private fun cleanPrice(str: String): Double? {
+        val clean = str.replace("₹", "")
+            .replace(Regex("(?i)RS\\.?"), "")
+            .replace(Regex("(?i)INR"), "")
+            .replace("/-", "")
+            .replace(",", "")
+            .trimEnd { !it.isDigit() && it != '.' }
+            .trim()
+        val p = clean.toDoubleOrNull() ?: return null
+        if (p <= 0.0 || p > 500_000.0 || p.isNaN() || p.isInfinite()) return null
+        return p
+    }
 
     /**
      * Parses free-form text pasted from broker alerts or Telegram channels (such as ARJUN Combo Package)
@@ -54,44 +93,46 @@ object ArjunRecommendationParser {
         }
 
         // 3. Extract Symbol, Action, and Company Name
-        // Pattern: BUY/SELL <SYMBOL> [ (COMPANY NAME) ] [AROUND/ABOVE/AT/@ ...]
+        // Pattern: BUY/SELL/ACCUMULATE <SYMBOL> [ (COMPANY NAME) ] [AROUND/ABOVE/AT/@ ...]
         var action = "BUY"
         var symbol = ""
         var companyName = ""
         var entryPriceRange = ""
         var entryPrice = 0.0
 
-        val buyLineRegex = Regex("""(?i)\b(BUY|SELL|ACCUMULATE)\b\s+([A-Z0-9&_\.\-]+)(?:\s*\(([^)]+)\))?(.*)""")
+        val buyLineRegex = Regex("""(?i)\b(BUY|SELL|ACCUMULATE|LONG)\b[\s/:\-]+["'\[\(]?([A-Z0-9&_:\.\-]+(?:\s+[A-Z0-9&_:\.\-]+)*?)["'\]\)]?(?:\s*\(([^)]+)\))?(?:\s+(?=\b(?:AROUND|RANGE|BETWEEN|ENTRY|CMP|CURRENTLY|AT|ABOVE|NEAR|TARGETS?|TGT|KEEP|STOP|SL)\b|[@₹]|\d)|$)(.*)""")
+        var buyRemainder = ""
         for (line in lines) {
             val match = buyLineRegex.find(line)
             if (match != null) {
                 action = match.groupValues[1].uppercase(Locale.US)
-                val rawSym = match.groupValues[2].uppercase(Locale.US).trim()
+                if (action == "LONG") action = "BUY"
+                val rawSym = match.groupValues[2].trim()
                 companyName = match.groupValues[3].trim()
-                symbol = SYMBOL_ALIASES[rawSym] ?: rawSym
+                symbol = cleanSymbol(rawSym)
 
-                val remainder = match.groupValues[4].trim()
-                if (remainder.isNotBlank()) {
-                    entryPriceRange = remainder
-                }
+                buyRemainder = match.groupValues[4].trim()
                 break
             }
         }
 
         // If no explicit BUY line, search for symbol standalone
         if (symbol.isBlank()) {
-            val standaloneRegex = Regex("""\b([A-Z]{3,15})\b""")
+            val standaloneRegex = Regex("""\b([A-Z0-9&_\.\-]{3,15})\b""")
+            val ignoredWords = setOf(
+                "ARJUN", "TRADE", "TARGET", "TARGETS", "STOP", "LOSS", "KEEP", "ALERT",
+                "RECOMMENDATION", "PACKAGE", "COMBO", "SWING", "BREAKOUT", "INTRADAY",
+                "SHORT", "LONG", "ABOVE", "AROUND", "CURRENTLY", "TRADING", "ENTRY", "PRICE",
+                "BUY", "SELL", "ACCUMULATE"
+            )
             for (line in lines) {
-                if (line.contains("ARJUN", ignoreCase = true) || 
-                    line.contains("TRADE", ignoreCase = true) || 
-                    line.contains("TARGET", ignoreCase = true) ||
-                    line.contains("SL", ignoreCase = true)
-                ) continue
                 val match = standaloneRegex.find(line)
                 if (match != null) {
                     val rawSym = match.groupValues[1].uppercase(Locale.US)
-                    symbol = SYMBOL_ALIASES[rawSym] ?: rawSym
-                    break
+                    if (rawSym !in ignoredWords && !rawSym.startsWith("TGT") && !rawSym.startsWith("SL")) {
+                        symbol = cleanSymbol(rawSym)
+                        break
+                    }
                 }
             }
         }
@@ -102,31 +143,76 @@ object ArjunRecommendationParser {
         }
 
         // 4. Parse Entry Price / Range
-        // Check for "AROUND 1035-1045", "ABOVE 149.05", "AT 365", "CMP 1043", "CURRENTLY TRADING 1043"
-        val aroundRangeRegex = Regex("""(?i)AROUND\s+([0-9]+(?:\.[0-9]+)?)\s*[-–]\s*([0-9]+(?:\.[0-9]+)?)""")
-        val aboveRegex = Regex("""(?i)ABOVE\s+([0-9]+(?:\.[0-9]+)?)""")
-        val cmpRegex = Regex("""(?i)(?:CURRENTLY\s+TRADING|CMP|AT|@)\s*[:\s]?\s*([0-9]+(?:\.[0-9]+)?)""")
+        val aroundRangeRegex = Regex("""(?i)\b(?:AROUND|RANGE|BETWEEN|ENTRY|BUY\s+RANGE)\b\s*[:\s\-]?\s*(?:₹|RS\.?)?\s*([0-9]+(?:,[0-9]+)*(?:\.[0-9]+)?)\s*(?:/-)?\s*(?:[-–/]|(?i:\s+(?:TO|AND)\s+))\s*(?:₹|RS\.?)?\s*([0-9]+(?:,[0-9]+)*(?:\.[0-9]+)?)(?!\s*[:\d])""")
+        val directRangeRegex = Regex("""(?i)(?:@|AT)?\s*[:\s\-]?\s*(?:₹|RS\.?)?\s*([0-9]+(?:,[0-9]+)*(?:\.[0-9]+)?)\s*(?:/-)?\s*(?:[-–/]|(?i:\s+(?:TO|AND)\s+))\s*(?:₹|RS\.?)?\s*([0-9]+(?:,[0-9]+)*(?:\.[0-9]+)?)(?!\s*[:\d])""")
+        val aboveRegex = Regex("""(?i)\bABOVE\b\s*[:\s\-]?\s*(?:₹|RS\.?)?\s*([0-9]+(?:,[0-9]+)*(?:\.[0-9]+)?)(?!\s*[:\d])""")
+        val cmpRegex = Regex("""(?i)(?:\b(?:CURRENTLY\s+TRADING|CMP|AT|ENTRY\s*PRICE|ENTRY)\b|@)\s*[:\s\-]?\s*(?:₹|RS\.?)?\s*([0-9]+(?:,[0-9]+)*(?:\.[0-9]+)?)(?!\s*[:\d])""")
+        val dateLineRegex = Regex("""(?i)\b(?:DATE|TIME|POSTED|UPDATED?)\b|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}""")
+
+        // Parse from buyRemainder first if present to avoid cross-line timestamp/date confusion
+        if (buyRemainder.isNotBlank()) {
+            val aroundMatch = aroundRangeRegex.find(buyRemainder)
+            if (aroundMatch != null) {
+                val p1 = cleanPrice(aroundMatch.groupValues[1]) ?: 0.0
+                val p2 = cleanPrice(aroundMatch.groupValues[2]) ?: 0.0
+                entryPriceRange = "${aroundMatch.groupValues[1]} - ${aroundMatch.groupValues[2]}"
+                entryPrice = if (p1 > 0 && p2 > 0) com.example.varalakshmiportfolio.model.ArjunMoneyMath.roundPaise((p1 + p2) / 2.0) else maxOf(p1, p2)
+            }
+            if (entryPrice == 0.0) {
+                val directMatch = directRangeRegex.find(buyRemainder)
+                if (directMatch != null) {
+                    val p1 = cleanPrice(directMatch.groupValues[1]) ?: 0.0
+                    val p2 = cleanPrice(directMatch.groupValues[2]) ?: 0.0
+                    if (p1 > 0 && p2 > 0) {
+                        entryPriceRange = "${directMatch.groupValues[1]} - ${directMatch.groupValues[2]}"
+                        entryPrice = com.example.varalakshmiportfolio.model.ArjunMoneyMath.roundPaise((p1 + p2) / 2.0)
+                    }
+                }
+            }
+            if (entryPrice == 0.0) {
+                val aboveMatch = aboveRegex.find(buyRemainder)
+                if (aboveMatch != null) {
+                    val p = cleanPrice(aboveMatch.groupValues[1]) ?: 0.0
+                    entryPrice = p
+                    entryPriceRange = "ABOVE ${aboveMatch.groupValues[1]}"
+                }
+            }
+            if (entryPrice == 0.0) {
+                val cmpMatch = cmpRegex.find(buyRemainder)
+                if (cmpMatch != null) {
+                    val p = cleanPrice(cmpMatch.groupValues[1]) ?: 0.0
+                    if (p > 0.0) {
+                        entryPrice = p
+                        val prefix = if (cmpMatch.value.contains("CMP", ignoreCase = true)) "CMP" else "AT"
+                        entryPriceRange = "$prefix ${cmpMatch.groupValues[1]}"
+                    }
+                }
+            }
+        }
 
         var cmpPrice = 0.0
         for (line in lines) {
+            val isDateLine = dateLineRegex.containsMatchIn(line) && !line.contains("CMP", ignoreCase = true)
+            if (isDateLine) continue
+
             val aroundMatch = aroundRangeRegex.find(line)
-            if (aroundMatch != null) {
-                val p1 = aroundMatch.groupValues[1].toDoubleOrNull() ?: 0.0
-                val p2 = aroundMatch.groupValues[2].toDoubleOrNull() ?: 0.0
+            if (aroundMatch != null && entryPrice == 0.0) {
+                val p1 = cleanPrice(aroundMatch.groupValues[1]) ?: 0.0
+                val p2 = cleanPrice(aroundMatch.groupValues[2]) ?: 0.0
                 entryPriceRange = "${aroundMatch.groupValues[1]} - ${aroundMatch.groupValues[2]}"
-                entryPrice = if (p1 > 0 && p2 > 0) (p1 + p2) / 2.0 else maxOf(p1, p2)
+                entryPrice = if (p1 > 0 && p2 > 0) com.example.varalakshmiportfolio.model.ArjunMoneyMath.roundPaise((p1 + p2) / 2.0) else maxOf(p1, p2)
             }
 
             val aboveMatch = aboveRegex.find(line)
             if (aboveMatch != null && entryPrice == 0.0) {
-                val p = aboveMatch.groupValues[1].toDoubleOrNull() ?: 0.0
+                val p = cleanPrice(aboveMatch.groupValues[1]) ?: 0.0
                 entryPrice = p
                 entryPriceRange = "ABOVE ${aboveMatch.groupValues[1]}"
             }
 
             val cmpMatch = cmpRegex.find(line)
-            if (cmpMatch != null) {
-                cmpPrice = cmpMatch.groupValues[1].toDoubleOrNull() ?: 0.0
+            if (cmpMatch != null && cmpPrice == 0.0) {
+                cmpPrice = cleanPrice(cmpMatch.groupValues[1]) ?: 0.0
             }
         }
 
@@ -135,33 +221,47 @@ object ArjunRecommendationParser {
             if (entryPriceRange.isBlank()) entryPriceRange = "CMP $cmpPrice"
         }
 
-        // 5. Parse Targets (e.g. "TARGETS 1175-1250", "TARGET 425 -450", "TGT 190, 225")
+        // 5. Parse Targets (e.g. "TARGETS 1175-1250", "TARGET 1: 1175", "TARGET 2: 1250", "TGT 190, 225")
         var target1 = 0.0
         var target2 = 0.0
-        val targetRangeRegex = Regex("""(?i)(?:TARGETS?|TGT)\s*[:\s]?\s*([0-9]+(?:\.[0-9]+)?)\s*[-–,]\s*([0-9]+(?:\.[0-9]+)?)""")
-        val targetSingleRegex = Regex("""(?i)(?:TARGETS?|TGT)\s*[:\s]?\s*([0-9]+(?:\.[0-9]+)?)""")
+        val targetRangeRegex = Regex("""(?i)\b(?:TARGETS?|TGT)\b\s*[:\s\-]?\s*(?:₹|RS\.?)?\s*([0-9]+(?:,[0-9]+)*(?:\.[0-9]+)?)\s*(?:/-)?\s*(?:[-–,/&]|(?i:\s+(?:TO|AND)\s+))\s*(?:₹|RS\.?)?\s*([0-9]+(?:,[0-9]+)*(?:\.[0-9]+)?)(?!\s*[:\d])""")
+        val target1ExplicitRegex = Regex("""(?i)\b(?:TARGET\s*1|TGT\s*1|T1)\b\s*[:\s\-]?\s*(?:₹|RS\.?)?\s*([0-9]+(?:,[0-9]+)*(?:\.[0-9]+)?)(?!\s*[:\d])""")
+        val target2ExplicitRegex = Regex("""(?i)\b(?:TARGET\s*2|TGT\s*2|T2)\b\s*[:\s\-]?\s*(?:₹|RS\.?)?\s*([0-9]+(?:,[0-9]+)*(?:\.[0-9]+)?)(?!\s*[:\d])""")
+        val targetSingleRegex = Regex("""(?i)\b(?:TARGETS?|TGT)\b\s*[:\s\-]?\s*(?:₹|RS\.?)?\s*([0-9]+(?:,[0-9]+)*(?:\.[0-9]+)?)(?!\s*[:\d])""")
 
         for (line in lines) {
+            val t1Match = target1ExplicitRegex.find(line)
+            if (t1Match != null && target1 == 0.0) {
+                target1 = cleanPrice(t1Match.groupValues[1]) ?: 0.0
+            }
+            val t2Match = target2ExplicitRegex.find(line)
+            if (t2Match != null && target2 == 0.0) {
+                target2 = cleanPrice(t2Match.groupValues[1]) ?: 0.0
+            }
+
             val rangeMatch = targetRangeRegex.find(line)
-            if (rangeMatch != null) {
-                target1 = rangeMatch.groupValues[1].toDoubleOrNull() ?: 0.0
-                target2 = rangeMatch.groupValues[2].toDoubleOrNull() ?: 0.0
-                break
-            } else {
+            if (rangeMatch != null && target1 == 0.0) {
+                target1 = cleanPrice(rangeMatch.groupValues[1]) ?: 0.0
+                target2 = cleanPrice(rangeMatch.groupValues[2]) ?: 0.0
+            } else if (target1 == 0.0) {
                 val singleMatch = targetSingleRegex.find(line)
-                if (singleMatch != null && target1 == 0.0) {
-                    target1 = singleMatch.groupValues[1].toDoubleOrNull() ?: 0.0
+                if (singleMatch != null) {
+                    val p = cleanPrice(singleMatch.groupValues[1]) ?: 0.0
+                    // Avoid picking up literal "1" from "TARGET 1" if explicit didn't catch it
+                    if (p > 5.0) {
+                        target1 = p
+                    }
                 }
             }
         }
 
-        // 6. Parse Stop Loss (e.g. "KEEP SL 949.95", "SL 324.95", "STOP LOSS 129.95")
+        // 6. Parse Stop Loss (e.g. "KEEP SL 949.95", "SL: ₹324.95", "STOP LOSS: 129.95", "STRICT SL @ 949.95")
         var stopLoss = 0.0
-        val slRegex = Regex("""(?i)(?:KEEP\s+SL|SL|STOP\s*LOSS)\s*[:\s]?\s*([0-9]+(?:\.[0-9]+)?)""")
+        val slRegex = Regex("""(?i)(?:KEEP\s+SL|STRICT\s+SL|STOP\s*[-/]?\s*LOSS|\bSL\b)\s*[:\s@\-]?\s*(?:BELOW|UNDER)?\s*(?:₹|RS\.?)?\s*([0-9]+(?:,[0-9]+)*(?:\.[0-9]+)?)(?!\s*[:\d])""")
         for (line in lines) {
             val slMatch = slRegex.find(line)
             if (slMatch != null) {
-                stopLoss = slMatch.groupValues[1].toDoubleOrNull() ?: 0.0
+                stopLoss = cleanPrice(slMatch.groupValues[1]) ?: 0.0
                 break
             }
         }

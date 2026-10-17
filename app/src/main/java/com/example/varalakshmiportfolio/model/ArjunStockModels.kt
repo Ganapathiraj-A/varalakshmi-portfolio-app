@@ -48,17 +48,17 @@ data class ArjunStockItem(
 
     val isProfit: Boolean get() = effectivePrice >= entryPrice
 
-    val priceChange: Double get() = roundPaise(effectivePrice - entryPrice)
+    val priceChange: Double get() = ArjunMoneyMath.roundPaise(effectivePrice - entryPrice)
 
-    val pnlPct: Double get() = if (entryPrice > 0.0) {
-        roundPaise(((effectivePrice - entryPrice) / entryPrice) * 100.0)
-    } else 0.0
+    val pnlPct: Double get() = ArjunMoneyMath.calculatePnlPct(entryPrice, effectivePrice)
 
-    val investedValue: Double get() = roundPaise(quantity * entryPrice)
+    val investedValue: Double get() = ArjunMoneyMath.multiplyPaise(quantity, entryPrice)
 
-    val currentValue: Double get() = roundPaise(quantity * effectivePrice)
+    val currentValue: Double get() = ArjunMoneyMath.multiplyPaise(quantity, effectivePrice)
 
-    val unrealizedPnl: Double get() = roundPaise(currentValue - investedValue)
+    val unrealizedPnl: Double get() = ArjunMoneyMath.roundPaise(currentValue - investedValue)
+
+    val realizedPnl: Double get() = if (isClosed) ArjunMoneyMath.calculatePnl(quantity, entryPrice, closedPrice) else 0.0
 
     val status: ArjunTradeStatus
         get() {
@@ -69,7 +69,7 @@ data class ArjunStockItem(
             ) {
                 return ArjunTradeStatus.WAITING_TRIGGER
             }
-            if (stopLoss > 0.0 && currentPrice <= stopLoss) return ArjunTradeStatus.STOP_LOSS_HIT
+            if (stopLoss > 0.0 && currentPrice > 0.0 && currentPrice <= stopLoss) return ArjunTradeStatus.STOP_LOSS_HIT
             if (targetPrice2 > 0.0 && currentPrice >= targetPrice2) return ArjunTradeStatus.TARGET2_HIT
             if (targetPrice1 > 0.0 && currentPrice >= targetPrice1) return ArjunTradeStatus.TARGET1_HIT
             return ArjunTradeStatus.ACTIVE
@@ -91,22 +91,61 @@ data class ArjunStockItem(
         return String.format(Locale.US, "%s%.2f%%", sign, kotlin.math.abs(pnlPct))
     }
 
-    val target1GainPct: Double get() = if (entryPrice > 0 && targetPrice1 > 0) roundPaise(((targetPrice1 - entryPrice) / entryPrice) * 100.0) else 0.0
-    val target2GainPct: Double get() = if (entryPrice > 0 && targetPrice2 > 0) roundPaise(((targetPrice2 - entryPrice) / entryPrice) * 100.0) else 0.0
-    val stopLossLossPct: Double get() = if (entryPrice > 0 && stopLoss > 0) roundPaise(((stopLoss - entryPrice) / entryPrice) * 100.0) else 0.0
+    val target1GainPct: Double get() = ArjunMoneyMath.calculatePnlPct(entryPrice, targetPrice1)
+    val target2GainPct: Double get() = ArjunMoneyMath.calculatePnlPct(entryPrice, targetPrice2)
+    val stopLossLossPct: Double get() = ArjunMoneyMath.calculatePnlPct(entryPrice, stopLoss)
 
     /**
-     * Calculates position of current price between Stop Loss and Target 1 (0.0 = SL, 1.0 = Tgt1)
+     * Calculates position of current price between Stop Loss and Target 1 (0.0 = SL, 1.0 = Tgt1).
+     * Strictly guards against NaN and Infinite values to protect Compose LinearProgressIndicator.
      */
     val progressToTarget1: Float get() {
-        if (targetPrice1 <= stopLoss || stopLoss <= 0.0) return 0.5f
-        val fraction = (currentPrice - stopLoss) / (targetPrice1 - stopLoss)
+        if (targetPrice1 <= stopLoss || stopLoss <= 0.0 || currentPrice <= 0.0 ||
+            currentPrice.isNaN() || targetPrice1.isNaN() || stopLoss.isNaN() ||
+            currentPrice.isInfinite() || targetPrice1.isInfinite() || stopLoss.isInfinite()
+        ) return 0.5f
+        val range = targetPrice1 - stopLoss
+        if (range <= 0.0) return 0.5f
+        val fraction = (currentPrice - stopLoss) / range
+        if (fraction.isNaN() || fraction.isInfinite()) return 0.5f
         return fraction.coerceIn(0.0, 1.0).toFloat()
     }
 
-    private fun roundPaise(v: Double): Double =
+    fun roundPaise(v: Double): Double = ArjunMoneyMath.roundPaise(v)
+}
+
+object ArjunMoneyMath {
+    fun roundPaise(v: Double): Double =
         if (v.isNaN() || v.isInfinite()) 0.0
-        else BigDecimal.valueOf(v).setScale(2, RoundingMode.HALF_EVEN).toDouble()
+        else {
+            val res = BigDecimal.valueOf(v).setScale(2, RoundingMode.HALF_EVEN).toDouble()
+            if (res == 0.0) 0.0 else res
+        }
+
+    fun multiplyPaise(qty: Int, price: Double): Double =
+        if (qty <= 0 || price.isNaN() || price.isInfinite() || price <= 0.0) 0.0
+        else BigDecimal.valueOf(qty.toLong())
+            .multiply(BigDecimal.valueOf(price))
+            .setScale(2, RoundingMode.HALF_EVEN)
+            .toDouble()
+
+    fun calculatePnl(qty: Int, entryPrice: Double, exitPrice: Double): Double {
+        if (qty <= 0 || entryPrice.isNaN() || exitPrice.isNaN() || entryPrice.isInfinite() || exitPrice.isInfinite()) return 0.0
+        val entryTotal = BigDecimal.valueOf(qty.toLong()).multiply(BigDecimal.valueOf(entryPrice))
+        val exitTotal = BigDecimal.valueOf(qty.toLong()).multiply(BigDecimal.valueOf(exitPrice))
+        return exitTotal.subtract(entryTotal).setScale(2, RoundingMode.HALF_EVEN).toDouble()
+    }
+
+    fun calculatePnlPct(entryPrice: Double, exitPrice: Double): Double {
+        if (entryPrice <= 0.0 || exitPrice < 0.0 || entryPrice.isNaN() || exitPrice.isNaN() || entryPrice.isInfinite() || exitPrice.isInfinite()) return 0.0
+        val entryBd = BigDecimal.valueOf(entryPrice)
+        val exitBd = BigDecimal.valueOf(exitPrice)
+        return exitBd.subtract(entryBd)
+            .divide(entryBd, 6, RoundingMode.HALF_EVEN)
+            .multiply(BigDecimal.valueOf(100))
+            .setScale(2, RoundingMode.HALF_EVEN)
+            .toDouble()
+    }
 }
 
 data class ArjunPortfolioSummary(
@@ -162,7 +201,7 @@ data class ArjunStrategySummary(
     val formattedAvailableCash: String get() = String.format(Locale.US, "₹%,.2f", availableCash)
     val formattedCurrentValue: String get() = String.format(Locale.US, "₹%,.2f", currentDeployedValue)
     val formattedTotalNav: String get() = String.format(Locale.US, "₹%,.2f", totalStrategyNav)
-    val totalPnl: Double get() = unrealizedPnl + realizedPnl
+    val totalPnl: Double get() = ArjunMoneyMath.roundPaise(unrealizedPnl + realizedPnl)
     val formattedTotalPnl: String get() {
         val sign = if (totalPnl >= 0.0) "+" else "-"
         return String.format(Locale.US, "%s₹%,.2f", sign, kotlin.math.abs(totalPnl))
@@ -238,7 +277,8 @@ fun formatArjunStocksForClipboard(
             ArjunTradeStatus.ACTIVE -> "🟢 ACTIVE"
         }
         sb.appendLine("• ${s.symbol} [${s.tradeType}] - $statusLabel")
-        sb.appendLine("  Entry: ${s.formattedEntryPrice} (${s.entryPriceRange}) | Current: ${s.formattedCurrentPrice}")
+        val rangeStr = if (s.entryPriceRange.isNotBlank()) " (${s.entryPriceRange})" else ""
+        sb.appendLine("  Entry: ${s.formattedEntryPrice}$rangeStr | Current: ${s.formattedCurrentPrice}")
         sb.appendLine("  P&L: ${s.formattedPnl} (${s.formattedPnlPct}) | Qty: ${s.quantity} | Val: ${String.format(Locale.US, "₹%,.2f", s.currentValue)}")
         sb.appendLine("  Targets: T1=${s.formattedTarget1}, T2=${s.formattedTarget2} | SL=${s.formattedStopLoss}")
         if (s.notes.isNotBlank()) {

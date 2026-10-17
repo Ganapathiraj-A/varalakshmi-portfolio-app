@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.automirrored.filled.TrendingDown
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
@@ -46,6 +47,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -144,24 +146,19 @@ fun ArjunStocksScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 filteredList.forEach { stock ->
-                    ArjunStockCard(
-                        stock = stock,
-                        onEdit = { stockToEdit = stock },
-                        onClose = { stockToClose = stock },
-                        onDelete = { stockToDelete = stock },
-                        onApprove = { stockToApprove = stock },
-                        onUnapprove = { onUnapproveStock(stock.id) },
-                        onOpenChart = {
-                            val cleanSym = stock.symbol.trim().uppercase(Locale.US)
-                            val url = "https://www.google.com/finance/quote/$cleanSym:NSE"
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                            try {
-                                context.startActivity(intent)
-                            } catch (_: Exception) {
-                                Toast.makeText(context, "Cannot open browser", Toast.LENGTH_SHORT).show()
+                    key(stock.id) {
+                        ArjunStockCard(
+                            stock = stock,
+                            onEdit = { stockToEdit = stock },
+                            onClose = { stockToClose = stock },
+                            onDelete = { stockToDelete = stock },
+                            onApprove = { stockToApprove = stock },
+                            onUnapprove = { onUnapproveStock(stock.id) },
+                            onOpenChart = {
+                                StockLinkHelper.openGoogleFinance(context, stock.symbol)
                             }
-                        }
-                    )
+                        )
+                    }
                 }
             }
         }
@@ -340,7 +337,7 @@ private fun ArjunHeaderSummaryCard(
                             imageVector = Icons.Filled.Refresh,
                             contentDescription = "Refreshing Quotes",
                             tint = GoldAccent,
-                            modifier = Modifier.rotate(angle)
+                            modifier = Modifier.graphicsLayer { rotationZ = angle }
                         )
                     } else {
                         Icon(
@@ -577,36 +574,38 @@ private fun ArjunFilterChips(
         horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         filters.forEach { (label, count) ->
-            val isSelected = selectedFilter.equals(label, ignoreCase = true)
-            Surface(
-                modifier = Modifier
-                    .weight(1f)
-                    .clickable { onSelectFilter(label) },
-                shape = RoundedCornerShape(6.dp),
-                color = if (isSelected) AccentIndigoBg else DarkCard,
-                border = BorderStroke(
-                    1.dp,
-                    if (isSelected) AccentIndigo else DarkCardBorder
-                )
-            ) {
-                Column(
-                    modifier = Modifier.padding(vertical = 6.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
+            key(label) {
+                val isSelected = selectedFilter.equals(label, ignoreCase = true)
+                Surface(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable { onSelectFilter(label) },
+                    shape = RoundedCornerShape(6.dp),
+                    color = if (isSelected) AccentIndigoBg else DarkCard,
+                    border = BorderStroke(
+                        1.dp,
+                        if (isSelected) AccentIndigo else DarkCardBorder
+                    )
                 ) {
-                    Text(
-                        text = label,
-                        fontSize = 8.5.sp,
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                        color = if (isSelected) AccentIndigoLight else TextSecondary,
-                        maxLines = 1,
-                        softWrap = false
-                    )
-                    Text(
-                        text = "$count",
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (isSelected) AccentIndigo else TextPrimary
-                    )
+                    Column(
+                        modifier = Modifier.padding(vertical = 6.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = label,
+                            fontSize = 8.5.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            color = if (isSelected) AccentIndigoLight else TextSecondary,
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                        Text(
+                            text = "$count",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isSelected) AccentIndigo else TextPrimary
+                        )
+                    }
                 }
             }
         }
@@ -719,19 +718,36 @@ private fun ArjunStockCard(
                             )
                             Spacer(modifier = Modifier.width(5.dp))
                             Text(
-                                text = if (stock.strategySlotIndex in 1..10) "STRATEGY SLOT #${stock.strategySlotIndex} ACTIVE (~₹50k)" else "STRATEGY POSITION",
+                                text = when {
+                                    stock.isClosed && stock.strategySlotIndex in 1..10 -> "STRATEGY POSITION (CLOSED - FREED SLOT #${stock.strategySlotIndex})"
+                                    stock.isClosed -> "STRATEGY POSITION (CLOSED)"
+                                    stock.strategySlotIndex in 1..10 -> "STRATEGY SLOT #${stock.strategySlotIndex} ACTIVE (~₹50k)"
+                                    else -> "STRATEGY POSITION"
+                                },
                                 fontSize = 9.5.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = if (stock.isClosed) TextSecondary else ProfitGreen
                             )
                         }
                         if (!stock.isClosed) {
-                            Text(
-                                text = "🤖 Daily Auto-Sell Active",
-                                fontSize = 8.5.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = AccentIndigoLight
-                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "🤖 Auto-Sell Active",
+                                    fontSize = 8.5.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = AccentIndigoLight
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "• Free Slot",
+                                    fontSize = 8.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = GoldAccent,
+                                    modifier = Modifier
+                                        .clickable { onUnapprove() }
+                                        .padding(horizontal = 2.dp, vertical = 2.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -781,7 +797,7 @@ private fun ArjunStockCard(
                         val dayColor = if (isDayPos) ProfitGreen else LossRed
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
-                                imageVector = if (isDayPos) Icons.AutoMirrored.Filled.TrendingUp else Icons.Filled.TrendingDown,
+                                imageVector = if (isDayPos) Icons.AutoMirrored.Filled.TrendingUp else Icons.AutoMirrored.Filled.TrendingDown,
                                 contentDescription = null,
                                 tint = dayColor,
                                 modifier = Modifier.size(12.dp)
@@ -1733,17 +1749,19 @@ fun ArjunStrategySlotMatrixCard(
             ) {
                 for (i in 1..5) {
                     val slot = slots.firstOrNull { it.slotIndex == i }
-                    ArjunSlotPill(
-                        slotIndex = i,
-                        slot = slot,
-                        modifier = Modifier.weight(1f),
-                        onClick = {
-                            slot?.stock?.let { s ->
-                                onSelectStock(s.symbol)
-                                StockLinkHelper.openGoogleFinance(context, s.symbol)
+                    key(i) {
+                        ArjunSlotPill(
+                            slotIndex = i,
+                            slot = slot,
+                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                slot?.stock?.let { s ->
+                                    onSelectStock(s.symbol)
+                                    StockLinkHelper.openGoogleFinance(context, s.symbol)
+                                }
                             }
-                        }
-                    )
+                        )
+                    }
                 }
             }
 
@@ -1754,17 +1772,19 @@ fun ArjunStrategySlotMatrixCard(
             ) {
                 for (i in 6..10) {
                     val slot = slots.firstOrNull { it.slotIndex == i }
-                    ArjunSlotPill(
-                        slotIndex = i,
-                        slot = slot,
-                        modifier = Modifier.weight(1f),
-                        onClick = {
-                            slot?.stock?.let { s ->
-                                onSelectStock(s.symbol)
-                                StockLinkHelper.openGoogleFinance(context, s.symbol)
+                    key(i) {
+                        ArjunSlotPill(
+                            slotIndex = i,
+                            slot = slot,
+                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                slot?.stock?.let { s ->
+                                    onSelectStock(s.symbol)
+                                    StockLinkHelper.openGoogleFinance(context, s.symbol)
+                                }
                             }
-                        }
-                    )
+                        )
+                    }
                 }
             }
         }
@@ -1805,7 +1825,7 @@ private fun ArjunSlotPill(
                 color = if (isOccupied) ProfitGreen else TextMuted
             )
             Spacer(modifier = Modifier.height(1.dp))
-            if (isOccupied && stock != null) {
+            if (stock != null) {
                 Text(
                     text = stock.symbol,
                     fontSize = 8.sp,
@@ -1859,16 +1879,17 @@ fun ArjunAutoExecutionBanner(
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         events.take(3).forEach { event ->
-            val isProfit = event.isProfit
-            val borderColor = if (isProfit) ProfitGreen else LossRed
-            val bgColor = if (isProfit) ProfitGreenBg else LossRedBg
+            key(event.id) {
+                val isProfit = event.isProfit
+                val borderColor = if (isProfit) ProfitGreen else LossRed
+                val bgColor = if (isProfit) ProfitGreenBg else LossRedBg
 
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(8.dp),
-                color = bgColor,
-                border = BorderStroke(1.dp, borderColor)
-            ) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(8.dp),
+                    color = bgColor,
+                    border = BorderStroke(1.dp, borderColor)
+                ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1912,6 +1933,7 @@ fun ArjunAutoExecutionBanner(
             }
         }
     }
+    }
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -1926,7 +1948,7 @@ fun ArjunApprovalDialog(
 ) {
     val effectiveEntry = if (stock.entryPrice > 0.0) stock.entryPrice else stock.currentPrice
     val qty = if (effectiveEntry > 0.0) kotlin.math.max(1, (50_000.0 / effectiveEntry).toInt()) else 10
-    val approxTotal = qty * effectiveEntry
+    val approxTotal = com.example.varalakshmiportfolio.model.ArjunMoneyMath.multiplyPaise(qty, effectiveEntry)
 
     AlertDialog(
         onDismissRequest = onDismiss,

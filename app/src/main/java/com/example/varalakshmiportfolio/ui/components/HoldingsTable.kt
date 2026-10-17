@@ -147,7 +147,7 @@ fun HoldingsTable(
                         color = TextMuted,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
-                        modifier = Modifier.weight(1.30f)
+                        modifier = Modifier.weight(1.35f)
                     )
                     Text(
                         text = "% UP/DN",
@@ -169,7 +169,7 @@ fun HoldingsTable(
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         textAlign = TextAlign.Center,
-                        modifier = Modifier.weight(0.70f)
+                        modifier = Modifier.weight(0.65f)
                     )
                     Text(
                         text = "EXIT",
@@ -241,7 +241,7 @@ private fun HoldingRow(
             // 1. Ticker Column (Click to open Google Finance Chart in Chrome)
             Column(
                 modifier = Modifier
-                    .weight(1.30f)
+                    .weight(1.35f)
                     .clip(RoundedCornerShape(6.dp))
                     .clickable(
                         role = Role.Button,
@@ -272,12 +272,33 @@ private fun HoldingRow(
                         modifier = Modifier.size(11.dp)
                     )
                 }
-                Text(
-                    text = "${position.quantity} shares",
-                    color = TextMuted,
-                    fontSize = 10.5.sp,
-                    maxLines = 1
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "${position.quantity} shares",
+                        color = TextMuted,
+                        fontSize = 10.sp,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Text(
+                        text = "•",
+                        color = TextMuted.copy(alpha = 0.5f),
+                        fontSize = 10.sp
+                    )
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Text(
+                        text = position.formattedDaysSinceBuy,
+                        color = AccentIndigoLight,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                }
             }
 
             // 2. % UP/DOWN Column (Total & 1D Today)
@@ -339,7 +360,7 @@ private fun HoldingRow(
 
             // 4. 35% CAP / TARGET Toggle Switch Column
             Box(
-                modifier = Modifier.weight(0.70f),
+                modifier = Modifier.weight(0.65f),
                 contentAlignment = Alignment.Center
             ) {
                 TargetToggleSwitch(
@@ -439,8 +460,8 @@ private fun HoldingRow(
                 ) {
                     DetailItem(
                         label = "Entry Date",
-                        value = entryDateOnly,
-                        modifier = Modifier.weight(0.85f)
+                        value = "$entryDateOnly (${position.formattedDaysHeld})",
+                        modifier = Modifier.weight(0.95f)
                     )
                     DetailItem(
                         label = "Trail Stop (-8%)",

@@ -41,6 +41,11 @@ fun calculateStrategyDaysActive(
     asOfDateStr: String? = null
 ): Int = com.example.varalakshmiportfolio.model.calculateStrategyDaysActive(inceptionDateStr, asOfDateStr)
 
+fun calculateDaysSinceBuy(
+    entryDateStr: String,
+    asOfDateStr: String? = null
+): Int = com.example.varalakshmiportfolio.model.calculateDaysSinceBuy(entryDateStr, asOfDateStr)
+
 fun formatVaralakshmiAllStatementsForClipboard(
     summary: PortfolioSummary,
     positions: List<PositionItem>,

@@ -79,4 +79,13 @@ class LiveMilestoneTest {
         assertEquals("ACCUMULATING SAMPLE", state.verdictTitle)
         assertEquals("ACCUMULATING", state.verdictStatus)
     }
+
+    @Test
+    fun testMilestoneCalculationTimestampAccuracy() {
+        val fixedTimestamp = 1792213491000L // arbitrary fixed epoch millis
+        val state = calculateLiveMilestones(emptyList(), emptyList(), timestampMillis = fixedTimestamp)
+        assertEquals(fixedTimestamp, state.calculationTimestamp)
+        assertTrue(state.formattedCalculationTimestamp.isNotBlank())
+        assertTrue("Formatted timestamp should contain year or time", state.formattedCalculationTimestamp.contains("2026") || state.formattedCalculationTimestamp.contains(":"))
+    }
 }

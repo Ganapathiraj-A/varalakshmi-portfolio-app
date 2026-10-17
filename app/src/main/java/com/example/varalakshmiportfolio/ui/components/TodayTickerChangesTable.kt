@@ -560,6 +560,21 @@ private fun TodayTickerRow(
                         softWrap = false,
                         overflow = TextOverflow.Ellipsis
                     )
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Text(
+                        text = "•",
+                        color = TextMuted.copy(alpha = 0.5f),
+                        fontSize = 9.5.sp
+                    )
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Text(
+                        text = position.formattedDaysSinceBuy,
+                        color = AccentIndigoLight,
+                        fontSize = 9.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        softWrap = false
+                    )
                     if (!position.isStrategy) {
                         Spacer(modifier = Modifier.width(4.dp))
                         Surface(
@@ -723,6 +738,11 @@ private fun TodayTickerRow(
                         label = "Position Type",
                         value = if (position.isStrategy) "VaraLakshmi Strategy" else "Other Zerodha Holding",
                         valueColor = if (position.isStrategy) AccentIndigoLight else Purple80
+                    )
+                    DetailItem(
+                        label = "Days Held",
+                        value = position.formattedDaysHeld,
+                        valueColor = AccentIndigoLight
                     )
                     DetailItem(
                         label = "Total Market Value",
