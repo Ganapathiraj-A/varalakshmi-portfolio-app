@@ -123,7 +123,10 @@ fun LiveMilestoneCard(
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = "Daily Recalculated",
+                                text = if (milestoneState.formattedCalculationTimestamp.isNotBlank())
+                                    "Recalculated: ${milestoneState.formattedCalculationTimestamp}"
+                                else
+                                    "Daily Recalculated",
                                 fontSize = 9.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = TextSecondary
