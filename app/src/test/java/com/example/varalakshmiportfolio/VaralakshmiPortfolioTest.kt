@@ -9,6 +9,7 @@ import com.example.varalakshmiportfolio.model.HistoricalRecommendationItem
 import com.example.varalakshmiportfolio.model.RecommendationHistorySummary
 import com.example.varalakshmiportfolio.model.isPositionBoughtToday
 import com.example.varalakshmiportfolio.model.calculateReferencePrice
+import com.example.varalakshmiportfolio.model.ZerodhaAccountBalance
 import com.example.varalakshmiportfolio.ui.VaralakshmiViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -267,7 +268,7 @@ class VaralakshmiPortfolioTest {
     @Test
     fun testViewModelStateManagementAndExitFlow() = runTest {
         val repository = VaralakshmiRepository()
-        val viewModel = VaralakshmiViewModel(repository)
+        val viewModel = VaralakshmiViewModel(repository, autoRefresh = false)
 
         // Initial state
         val initialState = viewModel.uiState.value
@@ -294,6 +295,8 @@ class VaralakshmiPortfolioTest {
         assertEquals(3301.75, postExitState.summary.realizedPnl, 0.001)
         assertNotNull(postExitState.snackbarMessage)
         assertTrue(postExitState.snackbarMessage!!.contains("Exited AHCL"))
+        testScheduler.advanceUntilIdle()
+        viewModel.stopPeriodicSync()
     }
 
     @Test
@@ -321,7 +324,7 @@ class VaralakshmiPortfolioTest {
     @Test
     fun testDismissExitErrorResetsState() {
         val repository = VaralakshmiRepository()
-        val viewModel = VaralakshmiViewModel(repository)
+        val viewModel = VaralakshmiViewModel(repository, autoRefresh = false)
 
         // Verify initial state has no exit error
         assertNull(viewModel.uiState.value.exitErrorDialog)
@@ -2639,6 +2642,64 @@ class VaralakshmiPortfolioTest {
         assertTrue(heldPos.daysSinceBuy >= 25)
         assertTrue(heldPos.formattedDaysSinceBuy.endsWith("d"))
         assertTrue(heldPos.formattedDaysHeld.endsWith("d held"))
+    }
+
+    @Test
+    fun testZerodhaAccountBalanceModelAndJsonParsing() {
+        val balance = ZerodhaAccountBalance(
+            totalValue = 2036467.91,
+            cash = 987922.70,
+            equity = 946855.29,
+            etf = 101689.92,
+            fno = 0.00
+        )
+
+        assertEquals(2036467.91, balance.totalValue, 0.01)
+        assertEquals(987922.70, balance.cash, 0.01)
+        assertEquals(946855.29, balance.equity, 0.01)
+        assertEquals(101689.92, balance.etf, 0.01)
+        assertEquals(0.00, balance.fno, 0.01)
+
+        val sumOfComponents = balance.cash + balance.equity + balance.etf + balance.fno
+        assertEquals(balance.totalValue, sumOfComponents, 0.02)
+
+        assertTrue(balance.cashPct > 48.0 && balance.cashPct < 49.0)
+        assertTrue(balance.equityPct > 46.0 && balance.equityPct < 47.0)
+        assertTrue(balance.etfPct > 4.5 && balance.etfPct < 5.5)
+        assertEquals(0.0, balance.fnoPct, 0.01)
+
+        // Test JSON parsing into VaralakshmiRepository
+        val sampleJson = """
+            {
+                "summary": {
+                    "totalNav": 109268.80,
+                    "allocatedCapital": 100000.00,
+                    "deployedCapital": 99536.77,
+                    "availableCapital": 463.23,
+                    "unrealizedPnl": 9268.80,
+                    "totalPnl": 9268.80
+                },
+                "zerodha_account": {
+                    "total_value": 2036467.91,
+                    "cash": 987922.70,
+                    "equity": 946855.29,
+                    "etf": 101689.92,
+                    "fno": 0.00
+                },
+                "positions": []
+            }
+        """.trimIndent()
+
+        val repository = VaralakshmiRepository()
+        val success = repository.applyCachedJsonState(sampleJson)
+        assertTrue(success)
+
+        val updatedSummary = repository.getCachedSummary()
+        assertEquals(2036467.91, updatedSummary.zerodhaAccount.totalValue, 0.01)
+        assertEquals(987922.70, updatedSummary.zerodhaAccount.cash, 0.01)
+        assertEquals(946855.29, updatedSummary.zerodhaAccount.equity, 0.01)
+        assertEquals(101689.92, updatedSummary.zerodhaAccount.etf, 0.01)
+        assertEquals(0.00, updatedSummary.zerodhaAccount.fno, 0.01)
     }
 }
 

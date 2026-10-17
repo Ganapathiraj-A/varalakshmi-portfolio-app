@@ -210,6 +210,87 @@ fun PortfolioHeaderCard(
                 }
             }
 
+            Spacer(modifier = Modifier.height(7.dp))
+
+            // Total Zerodha Account Value & Split (Cash + Equity + ETF + F&O)
+            val zAcc = summary.zerodhaAccount
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(10.dp),
+                color = Color(0xFF0F141C),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF262C36))
+            ) {
+                Column(
+                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(6.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFFFF5722)) // Zerodha Kite signature orange
+                            )
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Text(
+                                text = "TOTAL ZERODHA ACCOUNT VALUE",
+                                fontSize = 8.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextMuted,
+                                letterSpacing = 0.6.sp
+                            )
+                        }
+                        Text(
+                            text = "₹" + String.format(Locale.US, "%,.2f", zAcc.totalValue),
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color(0xFFE6EDF3),
+                            fontFamily = FontFamily.SansSerif,
+                            maxLines = 1
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    // 4-Way Breakdown Split Chips: Cash, Equity, ETF, F&O
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        com.example.varalakshmiportfolio.ui.ZerodhaAccountSplitChip(
+                            modifier = Modifier.weight(1f),
+                            label = "Cash",
+                            amount = zAcc.cash,
+                            percentage = zAcc.cashPct,
+                            accentColor = Color(0xFF58A6FF)
+                        )
+                        com.example.varalakshmiportfolio.ui.ZerodhaAccountSplitChip(
+                            modifier = Modifier.weight(1f),
+                            label = "Equity",
+                            amount = zAcc.equity,
+                            percentage = zAcc.equityPct,
+                            accentColor = Color(0xFF3FB950)
+                        )
+                        com.example.varalakshmiportfolio.ui.ZerodhaAccountSplitChip(
+                            modifier = Modifier.weight(1f),
+                            label = "ETF",
+                            amount = zAcc.etf,
+                            percentage = zAcc.etfPct,
+                            accentColor = Color(0xFFD29922)
+                        )
+                        com.example.varalakshmiportfolio.ui.ZerodhaAccountSplitChip(
+                            modifier = Modifier.weight(1f),
+                            label = "F&O",
+                            amount = zAcc.fno,
+                            percentage = zAcc.fnoPct,
+                            accentColor = Color(0xFFA371F7)
+                        )
+                    }
+                }
+            }
+
             Spacer(modifier = Modifier.height(8.dp))
 
             // Side-by-side Return Badges (Total Return & Today's NAV Change)

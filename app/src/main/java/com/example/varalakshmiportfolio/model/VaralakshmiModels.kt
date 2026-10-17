@@ -5,6 +5,19 @@ import java.util.Date
 import java.util.Locale
 import kotlin.math.pow
 
+data class ZerodhaAccountBalance(
+    val totalValue: Double = 2036467.91,
+    val cash: Double = 987922.70,
+    val equity: Double = 946855.29,
+    val etf: Double = 101689.92,
+    val fno: Double = 0.00
+) {
+    val cashPct: Double get() = if (totalValue > 0) (cash / totalValue) * 100.0 else 0.0
+    val equityPct: Double get() = if (totalValue > 0) (equity / totalValue) * 100.0 else 0.0
+    val etfPct: Double get() = if (totalValue > 0) (etf / totalValue) * 100.0 else 0.0
+    val fnoPct: Double get() = if (totalValue > 0) (fno / totalValue) * 100.0 else 0.0
+}
+
 data class PortfolioSummary(
     val strategyId: String = "VARALAKSHMI_ALPHA_SCALE_35",
     val strategyName: String = "VaraLakshmi Alpha (80%+ Fast Rotation Compounder)",
@@ -25,7 +38,8 @@ data class PortfolioSummary(
     val maxSlots: Int = 3,
     val lastUpdated: String = "2026-09-21 09:26:07",
     val cagrPct: Double = 0.0,
-    val inceptionDate: String = "2026-09-17"
+    val inceptionDate: String = "2026-09-17",
+    val zerodhaAccount: ZerodhaAccountBalance = ZerodhaAccountBalance()
 ) {
     val todayNavChange: Double get() = todayPnl
     val todayNavChangePct: Double get() = todayPnlPct

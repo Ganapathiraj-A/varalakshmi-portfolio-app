@@ -285,7 +285,7 @@ class SanthanaLakshmiTest {
     }
 
     @Test
-    fun testViewModelStateInitialization() {
+    fun testViewModelStateInitialization() = runTest {
         val repo = VaralakshmiRepository()
         val viewModel = VaralakshmiViewModel(
             repository = repo,
@@ -307,6 +307,7 @@ class SanthanaLakshmiTest {
 
         viewModel.selectSanthanaTradeDetail(null)
         assertEquals(null, viewModel.santhanaLakshmiState.value.selectedTradeDetail)
+        viewModel.stopPeriodicSync()
     }
 
     @Test

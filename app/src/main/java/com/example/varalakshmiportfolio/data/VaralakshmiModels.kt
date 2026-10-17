@@ -22,6 +22,7 @@ typealias SanthanaLakshmiSummary = com.example.varalakshmiportfolio.model.Santha
 typealias SanthanaLakshmiUiState = com.example.varalakshmiportfolio.model.SanthanaLakshmiUiState
 typealias ActiveIpoApplication = com.example.varalakshmiportfolio.model.ActiveIpoApplication
 typealias PastIpoApplication = com.example.varalakshmiportfolio.model.PastIpoApplication
+typealias ZerodhaAccountBalance = com.example.varalakshmiportfolio.model.ZerodhaAccountBalance
 
 val SAMPLE_IPO_SYMBOLS = com.example.varalakshmiportfolio.model.SAMPLE_IPO_SYMBOLS
 val SAMPLE_PAST_IPO_SYMBOLS = com.example.varalakshmiportfolio.model.SAMPLE_PAST_IPO_SYMBOLS

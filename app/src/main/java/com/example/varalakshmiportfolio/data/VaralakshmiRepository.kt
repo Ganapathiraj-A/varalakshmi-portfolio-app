@@ -1636,6 +1636,7 @@ class VaralakshmiRepository {
         var fetchedRecommendationHistory: List<HistoricalRecommendationItem>? = null
         var fetchedIpoNotifications: List<IpoActionNotification>? = null
         var fetchedDailyReturns: List<DailyReturnItem>? = null
+        var fetchedZerodhaAccount: ZerodhaAccountBalance? = null
         var networkError: String? = null
 
         val tokenQuery = if (authToken.isNotBlank()) "&token=$authToken" else ""
@@ -1646,6 +1647,17 @@ class VaralakshmiRepository {
             val positionsJson = httpGet(positionsUrl, authToken)
             if (positionsJson != null) {
                 val root = JSONObject(positionsJson)
+
+                val zerodhaObj = root.optJSONObject("zerodha_account")
+                if (zerodhaObj != null) {
+                    fetchedZerodhaAccount = ZerodhaAccountBalance(
+                        totalValue = optSafeDouble(zerodhaObj, "total_value", optSafeDouble(zerodhaObj, "totalValue", cachedSummary.zerodhaAccount.totalValue)),
+                        cash = optSafeDouble(zerodhaObj, "cash", cachedSummary.zerodhaAccount.cash),
+                        equity = optSafeDouble(zerodhaObj, "equity", cachedSummary.zerodhaAccount.equity),
+                        etf = optSafeDouble(zerodhaObj, "etf", cachedSummary.zerodhaAccount.etf),
+                        fno = optSafeDouble(zerodhaObj, "fno", cachedSummary.zerodhaAccount.fno)
+                    )
+                }
 
                 val niftyObj = root.optJSONObject("nifty")
                 if (niftyObj != null) {
@@ -2229,7 +2241,8 @@ class VaralakshmiRepository {
                     activeSlots = cachedPositions.size,
                     lastUpdated = nowStr,
                     cagrPct = computedCagr,
-                    inceptionDate = inceptDate
+                    inceptionDate = inceptDate,
+                    zerodhaAccount = fetchedZerodhaAccount ?: cachedSummary.zerodhaAccount
                 )
                 if (fetchedOtherPositions != null) {
                     cachedOtherPositions.clear()
@@ -2820,6 +2833,15 @@ class VaralakshmiRepository {
             }
             root.put("other_positions", otherArray)
 
+            val zAccObj = JSONObject().apply {
+                put("totalValue", cachedSummary.zerodhaAccount.totalValue)
+                put("cash", cachedSummary.zerodhaAccount.cash)
+                put("equity", cachedSummary.zerodhaAccount.equity)
+                put("etf", cachedSummary.zerodhaAccount.etf)
+                put("fno", cachedSummary.zerodhaAccount.fno)
+            }
+            root.put("zerodha_account", zAccObj)
+
             val targetFile = File(dir, CACHE_FILE_NAME)
             val tempFile = File(dir, "$CACHE_FILE_NAME.tmp")
             tempFile.writeText(root.toString(2), Charsets.UTF_8)
@@ -2835,6 +2857,18 @@ class VaralakshmiRepository {
     fun applyCachedJsonState(jsonStr: String): Boolean = synchronized(lock) {
         try {
             val root = JSONObject(jsonStr)
+
+            val rawZAcc = root.optJSONObject("zerodha_account")
+                ?: root.optJSONObject("summary")?.optJSONObject("zerodha_account")
+            val parsedZerodhaAccount = if (rawZAcc != null) {
+                ZerodhaAccountBalance(
+                    totalValue = optSafeDouble(rawZAcc, "totalValue", optSafeDouble(rawZAcc, "total_value", cachedSummary.zerodhaAccount.totalValue)),
+                    cash = optSafeDouble(rawZAcc, "cash", cachedSummary.zerodhaAccount.cash),
+                    equity = optSafeDouble(rawZAcc, "equity", cachedSummary.zerodhaAccount.equity),
+                    etf = optSafeDouble(rawZAcc, "etf", cachedSummary.zerodhaAccount.etf),
+                    fno = optSafeDouble(rawZAcc, "fno", cachedSummary.zerodhaAccount.fno)
+                )
+            } else cachedSummary.zerodhaAccount
 
             val summaryObj = root.optJSONObject("summary")
             val parsedSummary = if (summaryObj != null) {
@@ -2861,7 +2895,8 @@ class VaralakshmiRepository {
                         summaryObj, "cagrPct",
                         optSafeDouble(summaryObj, "cagr_pct", optSafeDouble(summaryObj, "current_cagr", cachedSummary.cagrPct))
                     ),
-                    inceptionDate = summaryObj.optString("inceptionDate", summaryObj.optString("inception_date", cachedSummary.inceptionDate))
+                    inceptionDate = summaryObj.optString("inceptionDate", summaryObj.optString("inception_date", cachedSummary.inceptionDate)),
+                    zerodhaAccount = parsedZerodhaAccount
                 )
             } else null
 

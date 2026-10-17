@@ -580,6 +580,89 @@ fun VaralakshmiDashboardScreen(
                         }
                     }
 
+                    Spacer(modifier = Modifier.height(7.dp))
+                    HorizontalDivider(color = DarkCardBorder.copy(alpha = 0.5f), thickness = 0.8.dp)
+                    Spacer(modifier = Modifier.height(7.dp))
+
+                    // Row 2b: Total Zerodha Account Value & Split (Cash + Equity + ETF + F&O)
+                    val zAcc = uiState.summary.zerodhaAccount
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFF0F141C),
+                        border = androidx.compose.foundation.BorderStroke(0.8.dp, Color(0xFF262C36))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(5.5.dp)
+                                            .clip(CircleShape)
+                                            .background(Color(0xFFFF5722)) // Zerodha Kite signature orange
+                                    )
+                                    Spacer(modifier = Modifier.width(4.5.dp))
+                                    Text(
+                                        text = "TOTAL ZERODHA ACCOUNT VALUE",
+                                        fontSize = 8.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = TextMuted,
+                                        letterSpacing = 0.6.sp
+                                    )
+                                }
+                                Text(
+                                    text = "₹" + String.format(Locale.US, "%,.2f", zAcc.totalValue),
+                                    fontSize = 13.5.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color(0xFFE6EDF3),
+                                    fontFamily = FontFamily.SansSerif,
+                                    maxLines = 1
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(5.dp))
+                            // 4-Way Breakdown Split: Cash + Equity + ETF + F&O
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                ZerodhaAccountSplitChip(
+                                    modifier = Modifier.weight(1f),
+                                    label = "Cash",
+                                    amount = zAcc.cash,
+                                    percentage = zAcc.cashPct,
+                                    accentColor = Color(0xFF58A6FF)
+                                )
+                                ZerodhaAccountSplitChip(
+                                    modifier = Modifier.weight(1f),
+                                    label = "Equity",
+                                    amount = zAcc.equity,
+                                    percentage = zAcc.equityPct,
+                                    accentColor = Color(0xFF3FB950)
+                                )
+                                ZerodhaAccountSplitChip(
+                                    modifier = Modifier.weight(1f),
+                                    label = "ETF",
+                                    amount = zAcc.etf,
+                                    percentage = zAcc.etfPct,
+                                    accentColor = Color(0xFFD29922)
+                                )
+                                ZerodhaAccountSplitChip(
+                                    modifier = Modifier.weight(1f),
+                                    label = "F&O",
+                                    amount = zAcc.fno,
+                                    percentage = zAcc.fnoPct,
+                                    accentColor = Color(0xFFA371F7)
+                                )
+                            }
+                        }
+                    }
+
                     Spacer(modifier = Modifier.height(8.dp))
                     HorizontalDivider(color = DarkCardBorder.copy(alpha = 0.6f), thickness = 0.8.dp)
                     Spacer(modifier = Modifier.height(8.dp))
@@ -1680,6 +1763,73 @@ private fun DailyReturnRow(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun ZerodhaAccountSplitChip(
+    modifier: Modifier = Modifier,
+    label: String,
+    amount: Double,
+    percentage: Double,
+    accentColor: Color
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(6.dp),
+        color = DarkCard,
+        border = androidx.compose.foundation.BorderStroke(0.6.dp, DarkCardBorder)
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 2.dp, vertical = 3.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(4.dp)
+                        .clip(CircleShape)
+                        .background(accentColor)
+                )
+                Spacer(modifier = Modifier.width(3.dp))
+                Text(
+                    text = label.uppercase(Locale.US),
+                    fontSize = 7.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextMuted,
+                    letterSpacing = 0.3.sp,
+                    maxLines = 1,
+                    softWrap = false
+                )
+            }
+            Spacer(modifier = Modifier.height(2.dp))
+            val formattedAmt = if (amount >= 100000.0) {
+                String.format(Locale.US, "₹%.2fL", amount / 100000.0)
+            } else if (amount > 0.0) {
+                String.format(Locale.US, "₹%,.0f", amount)
+            } else {
+                "₹0.00"
+            }
+            Text(
+                text = formattedAmt,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = TextPrimary,
+                fontFamily = FontFamily.SansSerif,
+                maxLines = 1,
+                softWrap = false
+            )
+            Text(
+                text = String.format(Locale.US, "%.1f%%", percentage),
+                fontSize = 7.5.sp,
+                color = TextSecondary,
+                maxLines = 1,
+                softWrap = false
+            )
         }
     }
 }
