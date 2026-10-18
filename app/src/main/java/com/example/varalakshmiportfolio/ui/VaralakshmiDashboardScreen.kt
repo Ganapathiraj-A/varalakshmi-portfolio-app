@@ -817,7 +817,8 @@ fun VaralakshmiDashboardScreen(
                             onPartialSell = remember(viewModel) { { id: String, qty: Int, price: Double -> viewModel.partialSellArjunStock(id, qty, price) } },
                             onSetBreakoutOrder = remember(viewModel) { { order: com.example.varalakshmiportfolio.model.ArjunBreakoutOrder -> viewModel.setArjunBreakoutOrder(order) } },
                             onCancelBreakoutOrder = remember(viewModel) { { slotIndex: Int -> viewModel.cancelArjunBreakoutOrder(slotIndex) } },
-                            onUpdateStockLadders = remember(viewModel) { { id: String, tp: List<com.example.varalakshmiportfolio.model.ArjunLadderLevel>, sl: List<com.example.varalakshmiportfolio.model.ArjunLadderLevel> -> viewModel.updateArjunStockLadders(id, tp, sl) } }
+                            onUpdateStockLadders = remember(viewModel) { { id: String, tp: List<com.example.varalakshmiportfolio.model.ArjunLadderLevel>, sl: List<com.example.varalakshmiportfolio.model.ArjunLadderLevel> -> viewModel.updateArjunStockLadders(id, tp, sl) } },
+                            onRefreshTelegram = remember(viewModel) { { viewModel.refreshTelegramFeed() } }
                         )
                         Spacer(modifier = Modifier.height(24.dp))
                     }

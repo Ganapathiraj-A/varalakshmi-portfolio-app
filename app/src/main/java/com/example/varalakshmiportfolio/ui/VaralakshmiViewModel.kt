@@ -145,6 +145,7 @@ class VaralakshmiViewModel(
     private var exitPositionJob: Job? = null
     private var arjunActionJob: Job? = null
     private var profitTargetJob: Job? = null
+    private var lastTelegramSyncTimestamp = 0L
 
     init {
         if (autoRefresh) {
@@ -379,6 +380,11 @@ class VaralakshmiViewModel(
                     if (now - lastSync >= syncIntervalMillis) {
                         refresh(isSilent = true)
                     }
+                }
+
+                if (now - lastTelegramSyncTimestamp >= 25_000L) {
+                    lastTelegramSyncTimestamp = now
+                    refreshTelegramFeed(showLoading = false)
                 }
             }
         }
@@ -928,6 +934,8 @@ class VaralakshmiViewModel(
                                 strategySlots = payload.strategySlots,
                                 breakoutOrders = payload.breakoutOrders,
                                 autoExecutionEvents = arjunRepository.getAutoExecutionEvents(),
+                                telegramMessages = if (payload.telegramMessages.isNotEmpty()) payload.telegramMessages else it.telegramMessages,
+                                telegramTodayCount = payload.telegramMessages.count { msg -> msg.isToday },
                                 isRefreshingQuotes = false,
                                 isLoading = false,
                                 lastRefreshedTime = timeStr,
@@ -963,6 +971,38 @@ class VaralakshmiViewModel(
             }
         } catch (_: Throwable) {
             // JVM test fallback
+        }
+    }
+
+    fun refreshTelegramFeed(showLoading: Boolean = true) {
+        if (!ArjunStockRepository.enableNetworkQuotes) return
+        viewModelScope.launch {
+            if (showLoading) {
+                _arjunStocksState.update { it.copy(isTelegramSyncing = true) }
+            }
+            try {
+                val serverUrl = _uiState.value.serverUrl
+                val authToken = _uiState.value.authToken
+                val result = arjunRepository.fetchTelegramMessages(serverUrl, authToken)
+                if (result.isSuccess) {
+                    val msgs = result.getOrThrow()
+                    if (msgs.isNotEmpty()) {
+                        _arjunStocksState.update {
+                            it.copy(
+                                telegramMessages = msgs,
+                                telegramTodayCount = msgs.count { m -> m.isToday },
+                                isTelegramSyncing = false
+                            )
+                        }
+                    } else {
+                        _arjunStocksState.update { it.copy(isTelegramSyncing = false) }
+                    }
+                } else {
+                    _arjunStocksState.update { it.copy(isTelegramSyncing = false) }
+                }
+            } catch (_: Exception) {
+                _arjunStocksState.update { it.copy(isTelegramSyncing = false) }
+            }
         }
     }
 

@@ -1218,6 +1218,31 @@ class ArjunStockRepository {
             }
         }
 
+        // Parse Telegram messages
+        val telegramMsgList = mutableListOf<ArjunTelegramMessage>()
+        val tgArr = root.optJSONArray("telegram_messages") ?: root.optJSONObject("telegram")?.optJSONArray("messages")
+        if (tgArr != null) {
+            for (i in 0 until tgArr.length()) {
+                val tgo = tgArr.optJSONObject(i) ?: continue
+                val pid = tgo.optLong("post_id", 0L)
+                if (pid <= 0L) continue
+                telegramMsgList.add(
+                    ArjunTelegramMessage(
+                        postId = pid,
+                        datetime = tgo.optString("datetime", ""),
+                        date = tgo.optString("date", ""),
+                        time = tgo.optString("time", ""),
+                        formattedTime = tgo.optString("formatted_time", ""),
+                        views = tgo.optString("views", ""),
+                        hasMedia = tgo.optBoolean("has_media", false),
+                        text = tgo.optString("text", ""),
+                        rawUrl = tgo.optString("raw_url", ""),
+                        isToday = tgo.optBoolean("is_today", false)
+                    )
+                )
+            }
+        }
+
         val portfolioSummary = calculateSummary(positionsList)
 
         return ArjunServerSyncPayload(
@@ -1228,8 +1253,63 @@ class ArjunStockRepository {
             breakoutOrders = breakoutList,
             serverStatus = serverStatus,
             broker = broker,
-            lastUpdated = lastUpdated
+            lastUpdated = lastUpdated,
+            telegramMessages = telegramMsgList
         )
+    }
+
+    suspend fun fetchTelegramMessages(
+        serverBaseUrl: String,
+        authToken: String = ""
+    ): Result<List<ArjunTelegramMessage>> = withContext(Dispatchers.IO) {
+        val sUrl = serverBaseUrl.trimEnd('/')
+        var conn: HttpURLConnection? = null
+        try {
+            val endpoint = "$sUrl/api/arjun-stocks/telegram"
+            val url = URI.create(endpoint).toURL()
+            conn = (url.openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = 5000
+                readTimeout = 7000
+                setRequestProperty("Accept", "application/json")
+                if (authToken.isNotBlank()) {
+                    setRequestProperty("Authorization", "Bearer $authToken")
+                }
+            }
+            val responseCode = conn.responseCode
+            if (responseCode !in 200..299) {
+                return@withContext Result.failure(RuntimeException("Server HTTP $responseCode"))
+            }
+
+            val jsonStr = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+            val root = JSONObject(jsonStr)
+            val msgList = mutableListOf<ArjunTelegramMessage>()
+            val arr = root.optJSONArray("messages") ?: JSONArray()
+            for (i in 0 until arr.length()) {
+                val obj = arr.optJSONObject(i) ?: continue
+                val pid = obj.optLong("post_id", 0L)
+                if (pid <= 0L) continue
+                msgList.add(
+                    ArjunTelegramMessage(
+                        postId = pid,
+                        datetime = obj.optString("datetime", ""),
+                        date = obj.optString("date", ""),
+                        time = obj.optString("time", ""),
+                        formattedTime = obj.optString("formatted_time", ""),
+                        views = obj.optString("views", ""),
+                        hasMedia = obj.optBoolean("has_media", false),
+                        text = obj.optString("text", ""),
+                        rawUrl = obj.optString("raw_url", ""),
+                        isToday = obj.optBoolean("is_today", false)
+                    )
+                )
+            }
+            Result.success(msgList)
+        } catch (e: Exception) {
+            Result.failure(e)
+        } finally {
+            conn?.disconnect()
+        }
     }
 
     /**

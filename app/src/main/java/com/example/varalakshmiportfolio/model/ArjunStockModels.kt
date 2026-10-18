@@ -320,8 +320,32 @@ data class ArjunStocksUiState(
     val errorMessage: String? = null,
     val serverStatus: String = "DISCONNECTED",
     val isLiveSync: Boolean = false,
-    val broker: String = "Zerodha Kite CNC"
+    val broker: String = "Zerodha Kite CNC",
+    val telegramMessages: List<ArjunTelegramMessage> = emptyList(),
+    val isTelegramSyncing: Boolean = false,
+    val telegramChannel: String = "@FlyingcallsArjun",
+    val telegramTodayCount: Int = 0
 )
+
+data class ArjunTelegramMessage(
+    val postId: Long,
+    val datetime: String = "",
+    val date: String = "",
+    val time: String = "",
+    val formattedTime: String = "",
+    val views: String = "",
+    val hasMedia: Boolean = false,
+    val text: String = "",
+    val rawUrl: String = "",
+    val isToday: Boolean = false
+) {
+    val displayTime: String
+        get() = when {
+            formattedTime.isNotBlank() -> formattedTime
+            time.isNotBlank() && date.isNotBlank() -> "$date $time"
+            else -> time
+        }
+}
 
 data class ArjunServerSyncPayload(
     val positions: List<ArjunStockItem>,
@@ -331,7 +355,8 @@ data class ArjunServerSyncPayload(
     val breakoutOrders: List<ArjunBreakoutOrder> = emptyList(),
     val serverStatus: String = "ACTIVE_CNC",
     val broker: String = "Zerodha Kite CNC",
-    val lastUpdated: String = ""
+    val lastUpdated: String = "",
+    val telegramMessages: List<ArjunTelegramMessage> = emptyList()
 )
 
 fun formatArjunStocksForClipboard(

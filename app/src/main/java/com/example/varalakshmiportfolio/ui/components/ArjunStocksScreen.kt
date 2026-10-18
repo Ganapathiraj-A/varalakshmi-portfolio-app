@@ -65,6 +65,7 @@ import com.example.varalakshmiportfolio.model.ArjunStockItem
 import com.example.varalakshmiportfolio.model.ArjunStocksUiState
 import com.example.varalakshmiportfolio.model.ArjunStrategySlot
 import com.example.varalakshmiportfolio.model.ArjunStrategySummary
+import com.example.varalakshmiportfolio.model.ArjunTelegramMessage
 import com.example.varalakshmiportfolio.model.ArjunTradeStatus
 import com.example.varalakshmiportfolio.theme.*
 import com.example.varalakshmiportfolio.ui.util.StockLinkHelper
@@ -88,6 +89,7 @@ fun ArjunStocksScreen(
     onSetBreakoutOrder: (ArjunBreakoutOrder) -> Unit = {},
     onCancelBreakoutOrder: (slotIndex: Int) -> Unit = {},
     onUpdateStockLadders: (id: String, targetLadder: List<ArjunLadderLevel>, stopLossLadder: List<ArjunLadderLevel>) -> Unit = { _, _, _ -> },
+    onRefreshTelegram: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -148,6 +150,15 @@ fun ArjunStocksScreen(
                 onUpdateLadders = onUpdateStockLadders
             )
         }
+
+        // 2. Today's Telegram Messages Feed (Dynamically updated, latest first)
+        ArjunTelegramChannelCard(
+            messages = state.telegramMessages,
+            todayCount = state.telegramTodayCount,
+            channel = state.telegramChannel,
+            isSyncing = state.isTelegramSyncing,
+            onRefresh = onRefreshTelegram
+        )
     }
 }
 
@@ -1502,8 +1513,395 @@ private fun ArjunEmptyStateCard(
 }
 
 // ─────────────────────────────────────────────────────────────
+// 8. Arjun Telegram Channel Live Feed Card (Today's Messages First)
 // ─────────────────────────────────────────────────────────────
-// 8. Server Status Header & Error Banner
+@Composable
+fun ArjunTelegramChannelCard(
+    messages: List<ArjunTelegramMessage>,
+    todayCount: Int,
+    channel: String = "@FlyingcallsArjun",
+    isSyncing: Boolean = false,
+    onRefresh: () -> Unit = {},
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    var selectedTab by remember { mutableStateOf("TODAY") }
+
+    val todayMessages = remember(messages) { messages.filter { it.isToday } }
+    val displayMessages = if (selectedTab == "TODAY") todayMessages else messages
+
+    val infiniteTransition = rememberInfiniteTransition(label = "tg_spin")
+    val rotation by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "tg_rotation"
+    )
+
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        color = DarkSurface,
+        border = BorderStroke(1.dp, DarkCardBorder)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            // Header Row: Telegram Icon + Title + Live Pulse + Refresh
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                    Surface(
+                        shape = CircleShape,
+                        color = Color(0xFF229ED9).copy(alpha = 0.18f),
+                        border = BorderStroke(0.8.dp, Color(0xFF229ED9).copy(alpha = 0.5f)),
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(text = "✈️", fontSize = 15.sp)
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                text = "TELEGRAM CHANNEL",
+                                fontSize = 12.5.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = TextPrimary,
+                                letterSpacing = 0.5.sp
+                            )
+                            Surface(
+                                shape = RoundedCornerShape(3.dp),
+                                color = Color(0xFF229ED9).copy(alpha = 0.15f),
+                                border = BorderStroke(0.6.dp, Color(0xFF229ED9).copy(alpha = 0.4f))
+                            ) {
+                                Text(
+                                    text = channel,
+                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF229ED9),
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                )
+                            }
+                        }
+                        Text(
+                            text = if (todayCount > 0) "$todayCount alert${if (todayCount > 1) "s" else ""} posted today • Latest first"
+                            else "Live Analyst Alerts • Auto-Updating",
+                            fontSize = 8.5.sp,
+                            color = TextMuted
+                        )
+                    }
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    // Pulsing LIVE dot
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = ProfitGreenBg,
+                        border = BorderStroke(0.6.dp, ProfitGreen.copy(alpha = 0.4f))
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(6.dp)
+                                    .clip(CircleShape)
+                                    .background(ProfitGreen)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("LIVE", fontSize = 7.5.sp, fontWeight = FontWeight.Bold, color = ProfitGreen)
+                        }
+                    }
+
+                    // Refresh Button
+                    IconButton(
+                        onClick = onRefresh,
+                        enabled = !isSyncing,
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Refresh,
+                            contentDescription = "Refresh Telegram",
+                            tint = if (isSyncing) AccentBlue else TextSecondary,
+                            modifier = Modifier
+                                .size(16.dp)
+                                .graphicsLayer {
+                                    if (isSyncing) rotationZ = rotation
+                                }
+                        )
+                    }
+                }
+            }
+
+            // Filter Tabs: TODAY'S MESSAGES (N) | ALL RECENT (N)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                // Today Tab
+                val isTodayTabSelected = selectedTab == "TODAY"
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = if (isTodayTabSelected) AccentIndigo.copy(alpha = 0.25f) else DarkCard,
+                    border = BorderStroke(
+                        if (isTodayTabSelected) 1.dp else 0.6.dp,
+                        if (isTodayTabSelected) AccentIndigo else DarkCardBorder
+                    ),
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable { selectedTab = "TODAY" }
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 6.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "TODAY'S MESSAGES ($todayCount)",
+                            fontSize = 8.5.sp,
+                            fontWeight = if (isTodayTabSelected) FontWeight.ExtraBold else FontWeight.Medium,
+                            color = if (isTodayTabSelected) AccentIndigoLight else TextSecondary
+                        )
+                    }
+                }
+
+                // Recent Tab
+                val isRecentTabSelected = selectedTab == "RECENT"
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = if (isRecentTabSelected) AccentIndigo.copy(alpha = 0.25f) else DarkCard,
+                    border = BorderStroke(
+                        if (isRecentTabSelected) 1.dp else 0.6.dp,
+                        if (isRecentTabSelected) AccentIndigo else DarkCardBorder
+                    ),
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable { selectedTab = "RECENT" }
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 6.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "ALL RECENT (${messages.size})",
+                            fontSize = 8.5.sp,
+                            fontWeight = if (isRecentTabSelected) FontWeight.ExtraBold else FontWeight.Medium,
+                            color = if (isRecentTabSelected) AccentIndigoLight else TextSecondary
+                        )
+                    }
+                }
+            }
+
+            HorizontalDivider(color = DarkCardBorder.copy(alpha = 0.5f), thickness = 0.8.dp)
+
+            // Message Cards List or Empty Notice
+            if (displayMessages.isEmpty()) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = DarkCard,
+                    border = BorderStroke(0.6.dp, DarkCardBorder),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Info,
+                            contentDescription = null,
+                            tint = TextMuted,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Text(
+                            text = if (selectedTab == "TODAY") "No messages posted today yet" else "No recent messages found",
+                            fontSize = 10.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextSecondary
+                        )
+                        Text(
+                            text = if (selectedTab == "TODAY") "The channel has not posted any alerts so far today. New updates will dynamically appear here the moment they are posted."
+                            else "Connecting to Telegram channel feed...",
+                            fontSize = 8.5.sp,
+                            color = TextMuted,
+                            textAlign = TextAlign.Center
+                        )
+                        if (selectedTab == "TODAY" && messages.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Button(
+                                onClick = { selectedTab = "RECENT" },
+                                shape = RoundedCornerShape(6.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = AccentIndigo),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                                modifier = Modifier.height(28.dp)
+                            ) {
+                                Text("View Recent Posts (${messages.size})", fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            } else {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    displayMessages.forEach { msg ->
+                        key(msg.postId) {
+                            ArjunTelegramMessageItemCard(
+                                message = msg,
+                                onOpenUrl = { url ->
+                                    try {
+                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                        context.startActivity(intent)
+                                    } catch (_: Exception) {
+                                        Toast.makeText(context, "Could not open link: $url", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ArjunTelegramMessageItemCard(
+    message: ArjunTelegramMessage,
+    onOpenUrl: (String) -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(8.dp),
+        color = DarkCard,
+        border = BorderStroke(
+            if (message.isToday) 1.dp else 0.6.dp,
+            if (message.isToday) ProfitGreen.copy(alpha = 0.5f) else DarkCardBorder
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            // Top Meta Row: Post ID, Timestamp, Views, Open Link
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Surface(
+                        shape = RoundedCornerShape(3.dp),
+                        color = AccentIndigoBg,
+                        border = BorderStroke(0.5.dp, AccentIndigo.copy(alpha = 0.4f))
+                    ) {
+                        Text(
+                            text = "#${message.postId}",
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = AccentIndigoLight,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                        )
+                    }
+
+                    if (message.isToday) {
+                        Surface(
+                            shape = RoundedCornerShape(3.dp),
+                            color = ProfitGreenBg,
+                            border = BorderStroke(0.5.dp, ProfitGreen.copy(alpha = 0.5f))
+                        ) {
+                            Text(
+                                text = "TODAY",
+                                fontSize = 7.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = ProfitGreen,
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                            )
+                        }
+                    }
+
+                    Text(
+                        text = message.displayTime,
+                        fontSize = 8.sp,
+                        color = if (message.isToday) ProfitGreen else TextMuted,
+                        fontWeight = if (message.isToday) FontWeight.Bold else FontWeight.Normal
+                    )
+
+                    if (message.views.isNotBlank()) {
+                        Text(
+                            text = "👁 ${message.views}",
+                            fontSize = 7.5.sp,
+                            color = TextMuted
+                        )
+                    }
+                }
+
+                if (message.rawUrl.isNotBlank()) {
+                    IconButton(
+                        onClick = { onOpenUrl(message.rawUrl) },
+                        modifier = Modifier.size(22.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                            contentDescription = "Open in Telegram",
+                            tint = Color(0xFF229ED9),
+                            modifier = Modifier.size(13.dp)
+                        )
+                    }
+                }
+            }
+
+            // Message Body Text
+            Text(
+                text = message.text,
+                fontSize = 10.5.sp,
+                lineHeight = 15.sp,
+                color = TextPrimary,
+                fontFamily = FontFamily.Default
+            )
+
+            if (message.hasMedia) {
+                Surface(
+                    shape = RoundedCornerShape(3.dp),
+                    color = DarkSurface,
+                    border = BorderStroke(0.5.dp, DarkCardBorder)
+                ) {
+                    Text(
+                        text = "📷 Media / Photo attached",
+                        fontSize = 7.5.sp,
+                        color = TextMuted,
+                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────
+// 8b. Server Status Header & Error Banner
 // ─────────────────────────────────────────────────────────────
 @Composable
 fun ArjunServerErrorBanner(

@@ -1920,6 +1920,61 @@ class ArjunStockTest {
         assertEquals("FEDERALBNK", payload.breakoutOrders.first().symbol)
         assertEquals(205.0, payload.breakoutOrders.first().triggerPrice, 0.01)
     }
+
+    @Test
+    fun testParseServerFullPayloadTelegramMessages() {
+        val repo = ArjunStockRepository()
+        val mockJson = """
+            {
+              "status": "success",
+              "summary": { "total_strategy_capital": 500000.0, "total_slots": 10 },
+              "positions": [],
+              "slots": [],
+              "watchlist": [],
+              "telegram_messages": [
+                {
+                  "post_id": 16777,
+                  "datetime": "2026-10-18T03:00:00+00:00",
+                  "date": "2026-10-18",
+                  "time": "08:30 AM",
+                  "formatted_time": "Today, 08:30 AM",
+                  "views": "3.5K",
+                  "has_media": true,
+                  "text": "FIRE CALL: BUY ORIENTHOT @ 175",
+                  "raw_url": "https://t.me/FlyingcallsArjun/16777",
+                  "is_today": true
+                },
+                {
+                  "post_id": 16776,
+                  "datetime": "2026-10-17T14:19:07+00:00",
+                  "date": "2026-10-17",
+                  "time": "07:49 PM",
+                  "formatted_time": "Oct 17, 07:49 PM",
+                  "views": "5.2K",
+                  "has_media": false,
+                  "text": "Good evening traders",
+                  "raw_url": "https://t.me/FlyingcallsArjun/16776",
+                  "is_today": false
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val payload = repo.parseServerFullPayload(mockJson)
+        assertEquals(2, payload.telegramMessages.size)
+
+        val first = payload.telegramMessages[0]
+        assertEquals(16777L, first.postId)
+        assertEquals("Today, 08:30 AM", first.displayTime)
+        assertTrue(first.isToday)
+        assertTrue(first.hasMedia)
+        assertEquals("FIRE CALL: BUY ORIENTHOT @ 175", first.text)
+
+        val second = payload.telegramMessages[1]
+        assertEquals(16776L, second.postId)
+        assertFalse(second.isToday)
+        assertEquals("Oct 17, 07:49 PM", second.displayTime)
+    }
 }
 
 
