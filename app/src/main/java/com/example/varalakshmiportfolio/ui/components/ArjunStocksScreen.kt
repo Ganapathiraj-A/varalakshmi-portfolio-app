@@ -2096,21 +2096,30 @@ fun ArjunStrategySlotMatrixCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 8.dp)
+                ) {
                     Text(text = "🏹", fontSize = 16.sp)
                     Spacer(modifier = Modifier.width(6.dp))
-                    Column {
+                    Column(modifier = Modifier.weight(1f, fill = false)) {
                         Text(
                             text = strategyTitle,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = TextPrimary,
-                            letterSpacing = 0.5.sp
+                            letterSpacing = 0.5.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                         Text(
                             text = subtitle,
                             fontSize = 9.sp,
-                            color = TextMuted
+                            color = TextMuted,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
@@ -2125,6 +2134,8 @@ fun ArjunStrategySlotMatrixCard(
                         fontSize = 9.5.sp,
                         fontWeight = FontWeight.Bold,
                         color = AccentIndigoLight,
+                        maxLines = 1,
+                        softWrap = false,
                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.5.dp)
                     )
                 }
@@ -2190,13 +2201,18 @@ fun ArjunStrategySlotMatrixCard(
                     fontSize = 8.5.sp,
                     fontWeight = FontWeight.Bold,
                     color = TextSecondary,
-                    letterSpacing = 0.5.sp
+                    letterSpacing = 0.5.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false).padding(end = 6.dp)
                 )
                 Text(
                     text = "Tap slot to manage / configure ↗",
                     fontSize = 7.5.sp,
                     color = AccentBlue,
-                    fontWeight = FontWeight.Medium
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    softWrap = false
                 )
             }
 
