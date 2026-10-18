@@ -1941,8 +1941,10 @@ class ArjunStockTest {
                   "views": "3.5K",
                   "has_media": true,
                   "text": "FIRE CALL: BUY ORIENTHOT @ 175",
-                  "raw_url": "https://t.me/FlyingcallsArjun/16777",
-                  "is_today": true
+                  "raw_url": "tg://join?invite=89tRMCZSC81mMjFl",
+                  "is_today": true,
+                  "is_pinned": true,
+                  "reactions": "54 👍"
                 },
                 {
                   "post_id": 16776,
@@ -1953,8 +1955,10 @@ class ArjunStockTest {
                   "views": "5.2K",
                   "has_media": false,
                   "text": "Good evening traders",
-                  "raw_url": "https://t.me/FlyingcallsArjun/16776",
-                  "is_today": false
+                  "raw_url": "tg://join?invite=89tRMCZSC81mMjFl",
+                  "is_today": false,
+                  "is_pinned": false,
+                  "reactions": ""
                 }
               ]
             }
@@ -1968,11 +1972,14 @@ class ArjunStockTest {
         assertEquals("Today, 08:30 AM", first.displayTime)
         assertTrue(first.isToday)
         assertTrue(first.hasMedia)
+        assertTrue(first.isPinned)
+        assertEquals("54 👍", first.reactions)
         assertEquals("FIRE CALL: BUY ORIENTHOT @ 175", first.text)
 
         val second = payload.telegramMessages[1]
         assertEquals(16776L, second.postId)
         assertFalse(second.isToday)
+        assertFalse(second.isPinned)
         assertEquals("Oct 17, 07:49 PM", second.displayTime)
     }
 }

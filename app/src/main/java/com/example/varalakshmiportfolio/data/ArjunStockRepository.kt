@@ -1237,7 +1237,9 @@ class ArjunStockRepository {
                         hasMedia = tgo.optBoolean("has_media", false),
                         text = tgo.optString("text", ""),
                         rawUrl = tgo.optString("raw_url", ""),
-                        isToday = tgo.optBoolean("is_today", false)
+                        isToday = tgo.optBoolean("is_today", false),
+                        isPinned = tgo.optBoolean("is_pinned", false),
+                        reactions = tgo.optString("reactions", "")
                     )
                 )
             }
@@ -1300,7 +1302,9 @@ class ArjunStockRepository {
                         hasMedia = obj.optBoolean("has_media", false),
                         text = obj.optString("text", ""),
                         rawUrl = obj.optString("raw_url", ""),
-                        isToday = obj.optBoolean("is_today", false)
+                        isToday = obj.optBoolean("is_today", false),
+                        isPinned = obj.optBoolean("is_pinned", false),
+                        reactions = obj.optString("reactions", "")
                     )
                 )
             }

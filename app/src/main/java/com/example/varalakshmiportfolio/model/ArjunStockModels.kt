@@ -323,7 +323,7 @@ data class ArjunStocksUiState(
     val broker: String = "Zerodha Kite CNC",
     val telegramMessages: List<ArjunTelegramMessage> = emptyList(),
     val isTelegramSyncing: Boolean = false,
-    val telegramChannel: String = "@FlyingcallsArjun",
+    val telegramChannel: String = "ARJUN Combo Package 🚀",
     val telegramTodayCount: Int = 0
 )
 
@@ -337,7 +337,9 @@ data class ArjunTelegramMessage(
     val hasMedia: Boolean = false,
     val text: String = "",
     val rawUrl: String = "",
-    val isToday: Boolean = false
+    val isToday: Boolean = false,
+    val isPinned: Boolean = false,
+    val reactions: String = ""
 ) {
     val displayTime: String
         get() = when {

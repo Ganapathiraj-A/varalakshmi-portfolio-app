@@ -1519,13 +1519,15 @@ private fun ArjunEmptyStateCard(
 fun ArjunTelegramChannelCard(
     messages: List<ArjunTelegramMessage>,
     todayCount: Int,
-    channel: String = "@FlyingcallsArjun",
+    channel: String = "ARJUN Combo Package 🚀",
     isSyncing: Boolean = false,
     onRefresh: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    var selectedTab by remember { mutableStateOf("TODAY") }
+    var selectedTab by remember(todayCount, messages.size) {
+        mutableStateOf(if (todayCount > 0) "TODAY" else "RECENT")
+    }
 
     val todayMessages = remember(messages) { messages.filter { it.isToday } }
     val displayMessages = if (selectedTab == "TODAY") todayMessages else messages
@@ -1553,13 +1555,13 @@ fun ArjunTelegramChannelCard(
                 .padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            // Header Row: Telegram Icon + Title + Live Pulse + Refresh
+            // Header Row: Telegram Icon + Title + Subscribers + Live Pulse + Refresh
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f).padding(end = 8.dp)) {
                     Surface(
                         shape = CircleShape,
                         color = Color(0xFF229ED9).copy(alpha = 0.18f),
@@ -1567,39 +1569,43 @@ fun ArjunTelegramChannelCard(
                         modifier = Modifier.size(32.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
-                            Text(text = "✈️", fontSize = 15.sp)
+                            Text(text = "🚀", fontSize = 16.sp)
                         }
                     }
                     Spacer(modifier = Modifier.width(10.dp))
-                    Column {
+                    Column(modifier = Modifier.weight(1f, fill = false)) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text(
-                                text = "TELEGRAM CHANNEL",
+                                text = channel,
                                 fontSize = 12.5.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = TextPrimary,
-                                letterSpacing = 0.5.sp
+                                letterSpacing = 0.3.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             Surface(
                                 shape = RoundedCornerShape(3.dp),
                                 color = Color(0xFF229ED9).copy(alpha = 0.15f),
                                 border = BorderStroke(0.6.dp, Color(0xFF229ED9).copy(alpha = 0.4f))
                             ) {
                                 Text(
-                                    text = channel,
-                                    fontSize = 8.sp,
+                                    text = "1,258 SUBSCRIBERS",
+                                    fontSize = 7.5.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color(0xFF229ED9),
                                     modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
                                 )
                             }
+                            Text(
+                                text = if (todayCount > 0) "• $todayCount alert${if (todayCount > 1) "s" else ""} today" else "• Latest alerts first",
+                                fontSize = 8.sp,
+                                color = TextMuted,
+                                maxLines = 1
+                            )
                         }
-                        Text(
-                            text = if (todayCount > 0) "$todayCount alert${if (todayCount > 1) "s" else ""} posted today • Latest first"
-                            else "Live Analyst Alerts • Auto-Updating",
-                            fontSize = 8.5.sp,
-                            color = TextMuted
-                        )
                     }
                 }
 
@@ -1770,10 +1776,17 @@ fun ArjunTelegramChannelCard(
                                 message = msg,
                                 onOpenUrl = { url ->
                                     try {
-                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                                        context.startActivity(intent)
+                                        val tgIntent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                                            setPackage("org.telegram.messenger")
+                                        }
+                                        context.startActivity(tgIntent)
                                     } catch (_: Exception) {
-                                        Toast.makeText(context, "Could not open link: $url", Toast.LENGTH_SHORT).show()
+                                        try {
+                                            val genericIntent = Intent(Intent.ACTION_VIEW, Uri.parse(if (url.startsWith("tg://")) "https://t.me/+89tRMCZSC81mMjFl" else url))
+                                            context.startActivity(genericIntent)
+                                        } catch (_: Exception) {
+                                            Toast.makeText(context, "Opening ARJUN Combo Package", Toast.LENGTH_SHORT).show()
+                                        }
                                     }
                                 }
                             )
@@ -1795,8 +1808,8 @@ private fun ArjunTelegramMessageItemCard(
         shape = RoundedCornerShape(8.dp),
         color = DarkCard,
         border = BorderStroke(
-            if (message.isToday) 1.dp else 0.6.dp,
-            if (message.isToday) ProfitGreen.copy(alpha = 0.5f) else DarkCardBorder
+            if (message.isPinned) 1.2.dp else if (message.isToday) 1.dp else 0.6.dp,
+            if (message.isPinned) GoldAccent.copy(alpha = 0.7f) else if (message.isToday) ProfitGreen.copy(alpha = 0.5f) else DarkCardBorder
         )
     ) {
         Column(
@@ -1805,13 +1818,33 @@ private fun ArjunTelegramMessageItemCard(
                 .padding(10.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            // Top Meta Row: Post ID, Timestamp, Views, Open Link
+            // Top Meta Row: Post ID, Pinned, Today, Timestamp, Views, Reactions, Open Link
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    modifier = Modifier.weight(1f).padding(end = 6.dp)
+                ) {
+                    if (message.isPinned) {
+                        Surface(
+                            shape = RoundedCornerShape(3.dp),
+                            color = GoldAccent.copy(alpha = 0.2f),
+                            border = BorderStroke(0.6.dp, GoldAccent.copy(alpha = 0.6f))
+                        ) {
+                            Text(
+                                text = "📌 PINNED",
+                                fontSize = 7.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = GoldAccent,
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                            )
+                        }
+                    }
+
                     Surface(
                         shape = RoundedCornerShape(3.dp),
                         color = AccentIndigoBg,
@@ -1876,24 +1909,48 @@ private fun ArjunTelegramMessageItemCard(
             // Message Body Text
             Text(
                 text = message.text,
-                fontSize = 10.5.sp,
-                lineHeight = 15.sp,
+                fontSize = 10.sp,
+                lineHeight = 14.5.sp,
                 color = TextPrimary,
                 fontFamily = FontFamily.Default
             )
 
-            if (message.hasMedia) {
-                Surface(
-                    shape = RoundedCornerShape(3.dp),
-                    color = DarkSurface,
-                    border = BorderStroke(0.5.dp, DarkCardBorder)
+            // Audio Alert / Media / Reactions row
+            if (message.hasMedia || message.reactions.isNotBlank()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "📷 Media / Photo attached",
-                        fontSize = 7.5.sp,
-                        color = TextMuted,
-                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
-                    )
+                    if (message.hasMedia) {
+                        Surface(
+                            shape = RoundedCornerShape(3.dp),
+                            color = Color(0xFF229ED9).copy(alpha = 0.15f),
+                            border = BorderStroke(0.5.dp, Color(0xFF229ED9).copy(alpha = 0.4f))
+                        ) {
+                            Text(
+                                text = if (message.text.contains("Voice message", ignoreCase = true)) "🎙️ Voice Audio Attached" else "📷 Media / Document",
+                                fontSize = 7.5.sp,
+                                color = Color(0xFF229ED9),
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                    if (message.reactions.isNotBlank()) {
+                        Surface(
+                            shape = RoundedCornerShape(3.dp),
+                            color = DarkSurface,
+                            border = BorderStroke(0.5.dp, DarkCardBorder)
+                        ) {
+                            Text(
+                                text = message.reactions,
+                                fontSize = 7.5.sp,
+                                color = TextSecondary,
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
                 }
             }
         }
