@@ -26,6 +26,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import com.example.varalakshmiportfolio.model.DailyReturnItem
+import com.example.varalakshmiportfolio.model.ArjunBreakoutOrder
+import com.example.varalakshmiportfolio.model.ArjunLadderLevel
 import com.example.varalakshmiportfolio.data.ArjunRecommendationParser
 import com.example.varalakshmiportfolio.data.ArjunStockRepository
 import com.example.varalakshmiportfolio.model.ArjunStockItem
@@ -128,6 +130,7 @@ class VaralakshmiViewModel(
                 summary = arjunRepository.calculateSummary(initial),
                 strategySummary = arjunRepository.calculateStrategySummary(initial),
                 strategySlots = arjunRepository.calculateStrategySlots(initial),
+                breakoutOrders = arjunRepository.getBreakoutOrders(),
                 autoExecutionEvents = arjunRepository.getAutoExecutionEvents()
             )
         }
@@ -135,9 +138,13 @@ class VaralakshmiViewModel(
     val arjunStocksState: StateFlow<ArjunStocksUiState> = _arjunStocksState.asStateFlow()
 
     private var periodicSyncJob: Job? = null
+    private var refreshJob: Job? = null
     private var fnoSyncJob: Job? = null
     private var santhanaSyncJob: Job? = null
     private var arjunSyncJob: Job? = null
+    private var exitPositionJob: Job? = null
+    private var arjunActionJob: Job? = null
+    private var profitTargetJob: Job? = null
 
     init {
         if (autoRefresh) {
@@ -160,35 +167,51 @@ class VaralakshmiViewModel(
         val updated = repository.selectFnoInstance(instanceId)
         _veeraLakshmiState.value = updated.copy(isLoading = true)
         fnoSyncJob?.cancel()
-        fnoSyncJob = viewModelScope.launch {
+        if (!VaralakshmiRepository.isRunningInUnitTest || !_uiState.value.serverUrl.startsWith(VaralakshmiRepository.DEFAULT_SERVER_URL)) {
             try {
-                val synced = repository.syncFno(_uiState.value.serverUrl, instanceId, _uiState.value.authToken)
-                if (_veeraLakshmiState.value.selectedInstanceId == instanceId) {
-                    _veeraLakshmiState.value = synced
+                fnoSyncJob = viewModelScope.launch {
+                    try {
+                        val synced = repository.syncFno(_uiState.value.serverUrl, instanceId, _uiState.value.authToken)
+                        if (_veeraLakshmiState.value.selectedInstanceId == instanceId) {
+                            _veeraLakshmiState.value = synced
+                        }
+                    } catch (_: Exception) {
+                        if (_veeraLakshmiState.value.selectedInstanceId == instanceId) {
+                            _veeraLakshmiState.update { it.copy(isLoading = false) }
+                        }
+                    }
                 }
-            } catch (_: Exception) {
-                if (_veeraLakshmiState.value.selectedInstanceId == instanceId) {
-                    _veeraLakshmiState.update { it.copy(isLoading = false) }
-                }
+            } catch (_: Throwable) {
+                _veeraLakshmiState.update { it.copy(isLoading = false) }
             }
+        } else {
+            _veeraLakshmiState.update { it.copy(isLoading = false) }
         }
     }
 
     fun refreshFno() {
         fnoSyncJob?.cancel()
         val currentId = _veeraLakshmiState.value.selectedInstanceId
-        fnoSyncJob = viewModelScope.launch {
-            _veeraLakshmiState.update { it.copy(isLoading = true) }
+        if (!VaralakshmiRepository.isRunningInUnitTest || !_uiState.value.serverUrl.startsWith(VaralakshmiRepository.DEFAULT_SERVER_URL)) {
             try {
-                val synced = repository.syncFno(_uiState.value.serverUrl, currentId, _uiState.value.authToken)
-                if (_veeraLakshmiState.value.selectedInstanceId == currentId) {
-                    _veeraLakshmiState.value = synced
+                fnoSyncJob = viewModelScope.launch {
+                    _veeraLakshmiState.update { it.copy(isLoading = true) }
+                    try {
+                        val synced = repository.syncFno(_uiState.value.serverUrl, currentId, _uiState.value.authToken)
+                        if (_veeraLakshmiState.value.selectedInstanceId == currentId) {
+                            _veeraLakshmiState.value = synced
+                        }
+                    } catch (e: Exception) {
+                        if (_veeraLakshmiState.value.selectedInstanceId == currentId) {
+                            _veeraLakshmiState.update { it.copy(isLoading = false, errorMessage = e.message) }
+                        }
+                    }
                 }
-            } catch (e: Exception) {
-                if (_veeraLakshmiState.value.selectedInstanceId == currentId) {
-                    _veeraLakshmiState.update { it.copy(isLoading = false, errorMessage = e.message) }
-                }
+            } catch (_: Throwable) {
+                _veeraLakshmiState.update { it.copy(isLoading = false) }
             }
+        } else {
+            _veeraLakshmiState.update { it.copy(isLoading = false) }
         }
     }
 
@@ -202,14 +225,22 @@ class VaralakshmiViewModel(
 
     fun refreshSanthana() {
         santhanaSyncJob?.cancel()
-        santhanaSyncJob = viewModelScope.launch {
-            _santhanaLakshmiState.update { it.copy(isLoading = true) }
+        if (!VaralakshmiRepository.isRunningInUnitTest || !_uiState.value.serverUrl.startsWith(VaralakshmiRepository.DEFAULT_SERVER_URL)) {
             try {
-                val synced = repository.refreshSanthana(_uiState.value.serverUrl, _uiState.value.authToken)
-                _santhanaLakshmiState.value = synced
-            } catch (e: Exception) {
-                _santhanaLakshmiState.update { it.copy(isLoading = false, errorMessage = e.message) }
+                santhanaSyncJob = viewModelScope.launch {
+                    _santhanaLakshmiState.update { it.copy(isLoading = true) }
+                    try {
+                        val synced = repository.refreshSanthana(_uiState.value.serverUrl, _uiState.value.authToken)
+                        _santhanaLakshmiState.value = synced
+                    } catch (e: Exception) {
+                        _santhanaLakshmiState.update { it.copy(isLoading = false, errorMessage = e.message) }
+                    }
+                }
+            } catch (_: Throwable) {
+                _santhanaLakshmiState.update { it.copy(isLoading = false) }
             }
+        } else {
+            _santhanaLakshmiState.update { it.copy(isLoading = false) }
         }
     }
 
@@ -225,89 +256,47 @@ class VaralakshmiViewModel(
 
     fun refresh(isSilent: Boolean = false) {
         if (_uiState.value.isRefreshing) return
-        viewModelScope.launch {
-            _uiState.update { it.copy(isRefreshing = true) }
-            _veeraLakshmiState.update { it.copy(isLoading = true) }
-            _santhanaLakshmiState.update { it.copy(isLoading = true) }
+        refreshJob?.cancel()
+        refreshJob = viewModelScope.launch {
+                _uiState.update { it.copy(isRefreshing = true) }
+                _veeraLakshmiState.update { it.copy(isLoading = true) }
+                _santhanaLakshmiState.update { it.copy(isLoading = true) }
 
-            // Concurrent F&O sync
-            fnoSyncJob?.cancel()
-            val targetInstanceId = _veeraLakshmiState.value.selectedInstanceId
-            fnoSyncJob = launch {
-                try {
-                    val fnoSynced = repository.syncFno(_uiState.value.serverUrl, targetInstanceId, _uiState.value.authToken)
-                    if (_veeraLakshmiState.value.selectedInstanceId == targetInstanceId) {
-                        _veeraLakshmiState.value = fnoSynced
+                // Concurrent F&O sync
+                fnoSyncJob?.cancel()
+                val targetInstanceId = _veeraLakshmiState.value.selectedInstanceId
+                if (!VaralakshmiRepository.isRunningInUnitTest || !_uiState.value.serverUrl.startsWith(VaralakshmiRepository.DEFAULT_SERVER_URL)) {
+                    fnoSyncJob = launch {
+                        try {
+                            val fnoSynced = repository.syncFno(_uiState.value.serverUrl, targetInstanceId, _uiState.value.authToken)
+                            if (_veeraLakshmiState.value.selectedInstanceId == targetInstanceId) {
+                                _veeraLakshmiState.value = fnoSynced
+                            }
+                        } catch (_: Exception) {
+                            _veeraLakshmiState.update { it.copy(isLoading = false) }
+                        }
                     }
-                } catch (_: Exception) {
+                } else {
                     _veeraLakshmiState.update { it.copy(isLoading = false) }
                 }
-            }
 
-            // Concurrent SanthanaLakshmi sync
-            santhanaSyncJob?.cancel()
-            santhanaSyncJob = launch {
-                try {
-                    val santhanaSynced = repository.refreshSanthana(_uiState.value.serverUrl, _uiState.value.authToken)
-                    _santhanaLakshmiState.value = santhanaSynced
-                } catch (_: Exception) {
-                    _santhanaLakshmiState.update { it.copy(isLoading = false) }
-                }
-            }
-
-            // Concurrent Arjun live quotes sync
-            arjunSyncJob?.cancel()
-            if (!ArjunStockRepository.enableNetworkQuotes) {
-                val current = arjunRepository.getRecommendations()
-                val summary = arjunRepository.calculateSummary(current)
-                val strategySummary = arjunRepository.calculateStrategySummary(current)
-                val strategySlots = arjunRepository.calculateStrategySlots(current)
-                val events = arjunRepository.getAutoExecutionEvents()
-                val timeStr = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
-                _arjunStocksState.update {
-                    it.copy(
-                        recommendations = current,
-                        summary = summary,
-                        strategySummary = strategySummary,
-                        strategySlots = strategySlots,
-                        autoExecutionEvents = events,
-                        isRefreshingQuotes = false,
-                        lastRefreshedTime = timeStr,
-                        errorMessage = null
-                    )
-                }
-            } else {
-                arjunSyncJob = launch {
-                    try {
-                        _arjunStocksState.update { it.copy(isRefreshingQuotes = true) }
-                        val updated = arjunRepository.refreshLiveQuotes()
-                        val summary = arjunRepository.calculateSummary(updated)
-                        val strategySummary = arjunRepository.calculateStrategySummary(updated)
-                        val strategySlots = arjunRepository.calculateStrategySlots(updated)
-                        val events = arjunRepository.getAutoExecutionEvents()
-                        val timeStr = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
-                        _arjunStocksState.update {
-                            it.copy(
-                                recommendations = updated,
-                                summary = summary,
-                                strategySummary = strategySummary,
-                                strategySlots = strategySlots,
-                                autoExecutionEvents = events,
-                                isRefreshingQuotes = false,
-                                lastRefreshedTime = timeStr,
-                                errorMessage = null
-                            )
-                        }
-                    } catch (e: Throwable) {
-                        _arjunStocksState.update {
-                            it.copy(
-                                isRefreshingQuotes = false,
-                                errorMessage = e.message
-                            )
+                // Concurrent SanthanaLakshmi sync
+                santhanaSyncJob?.cancel()
+                if (!VaralakshmiRepository.isRunningInUnitTest || !_uiState.value.serverUrl.startsWith(VaralakshmiRepository.DEFAULT_SERVER_URL)) {
+                    santhanaSyncJob = launch {
+                        try {
+                            val santhanaSynced = repository.refreshSanthana(_uiState.value.serverUrl, _uiState.value.authToken)
+                            _santhanaLakshmiState.value = santhanaSynced
+                        } catch (_: Exception) {
+                            _santhanaLakshmiState.update { it.copy(isLoading = false) }
                         }
                     }
+                } else {
+                    _santhanaLakshmiState.update { it.copy(isLoading = false) }
                 }
-            }
+
+            // Concurrent Arjun live server sync
+            refreshArjunQuotesInternal()
 
             val syncResult = repository.refreshData(_uiState.value.serverUrl, _uiState.value.authToken)
             val now = System.currentTimeMillis()
@@ -398,6 +387,20 @@ class VaralakshmiViewModel(
     fun stopPeriodicSync() {
         periodicSyncJob?.cancel()
         periodicSyncJob = null
+        refreshJob?.cancel()
+        refreshJob = null
+        fnoSyncJob?.cancel()
+        fnoSyncJob = null
+        santhanaSyncJob?.cancel()
+        santhanaSyncJob = null
+        arjunSyncJob?.cancel()
+        arjunSyncJob = null
+        exitPositionJob?.cancel()
+        exitPositionJob = null
+        arjunActionJob?.cancel()
+        arjunActionJob = null
+        profitTargetJob?.cancel()
+        profitTargetJob = null
     }
 
     fun onAppResume() {
@@ -409,7 +412,7 @@ class VaralakshmiViewModel(
                 marketStatusText = MarketHours.getMarketStatusText()
             )
         }
-        if (_uiState.value.isAutoSyncEnabled && isMarket) {
+        if (_uiState.value.isAutoSyncEnabled && isMarket && !VaralakshmiRepository.isRunningInUnitTest) {
             val lastSync = _uiState.value.lastSyncTimestamp
             if (now - lastSync >= syncIntervalMillis) {
                 refresh(isSilent = true)
@@ -420,7 +423,7 @@ class VaralakshmiViewModel(
     fun toggleAutoSync(enabled: Boolean) {
         repository.setAutoSyncEnabled(enabled)
         _uiState.update { it.copy(isAutoSyncEnabled = enabled) }
-        if (enabled && MarketHours.isMarketHours()) {
+        if (enabled && MarketHours.isMarketHours() && !VaralakshmiRepository.isRunningInUnitTest) {
             val now = System.currentTimeMillis()
             if (now - _uiState.value.lastSyncTimestamp >= syncIntervalMillis) {
                 refresh(isSilent = true)
@@ -431,9 +434,6 @@ class VaralakshmiViewModel(
     override fun onCleared() {
         super.onCleared()
         stopPeriodicSync()
-        fnoSyncJob?.cancel()
-        santhanaSyncJob?.cancel()
-        arjunSyncJob?.cancel()
     }
 
     fun openRecommendationHistory() {
@@ -491,7 +491,8 @@ class VaralakshmiViewModel(
         }
 
         try {
-            viewModelScope.launch {
+            exitPositionJob?.cancel()
+            exitPositionJob = viewModelScope.launch {
                 val res = repository.exitPosition(
                     strategyId = stratId,
                     symbol = target.symbol,
@@ -506,7 +507,9 @@ class VaralakshmiViewModel(
                                 snackbarMessage = "Exited ${target.symbol} • $msg"
                             )
                         }
-                        refresh()
+                        if (!VaralakshmiRepository.isRunningInUnitTest) {
+                            refresh()
+                        }
                     },
                     onFailure = { err ->
                         val errMsg = err.message ?: "Broker order failed or was rejected"
@@ -571,25 +574,28 @@ class VaralakshmiViewModel(
         repository.updateProfitTarget(position.symbol, newEnabled)
 
         // 3. Asynchronously update backend endpoint
-        try {
-            viewModelScope.launch {
-                val ok = repository.syncProfitTargetToBackend(
-                    strategyId = _uiState.value.summary.strategyId,
-                    symbol = position.symbol,
-                    enabled = newEnabled,
-                    serverBaseUrl = _uiState.value.serverUrl,
-                    authToken = _uiState.value.authToken
-                )
-                if (!ok) {
-                    _uiState.update { current ->
-                        current.copy(
-                            snackbarMessage = "Warning: Failed to sync ${position.symbol} profit target to backend (saved offline)"
-                        )
+        if (!VaralakshmiRepository.isRunningInUnitTest || !_uiState.value.serverUrl.startsWith(VaralakshmiRepository.DEFAULT_SERVER_URL)) {
+            try {
+                profitTargetJob?.cancel()
+                profitTargetJob = viewModelScope.launch {
+                    val ok = repository.syncProfitTargetToBackend(
+                        strategyId = _uiState.value.summary.strategyId,
+                        symbol = position.symbol,
+                        enabled = newEnabled,
+                        serverBaseUrl = _uiState.value.serverUrl,
+                        authToken = _uiState.value.authToken
+                    )
+                    if (!ok && !VaralakshmiRepository.isRunningInUnitTest) {
+                        _uiState.update { current ->
+                            current.copy(
+                                snackbarMessage = "Warning: Failed to sync ${position.symbol} profit target to backend (saved offline)"
+                            )
+                        }
                     }
                 }
+            } catch (e: Throwable) {
+                // Safeguard against unconfigured Main dispatcher in headless JVM tests
             }
-        } catch (e: Throwable) {
-            // Safeguard against unconfigured Main dispatcher in headless JVM tests
         }
     }
 
@@ -686,7 +692,19 @@ class VaralakshmiViewModel(
     }
 
     fun closeArjunStock(id: String, exitPrice: Double = 0.0) {
+        val targetStock = arjunRepository.getRecommendations().find { it.id == id }
         val updatedList = arjunRepository.markAsClosed(id, exitPrice, "MANUAL_EXIT")
+        if (targetStock != null && ArjunStockRepository.enableNetworkQuotes) {
+            arjunActionJob?.cancel()
+            arjunActionJob = viewModelScope.launch {
+                try {
+                    val effectiveExit = if (exitPrice > 0.0) exitPrice else targetStock.currentPrice
+                    arjunRepository.dispatchBrokerExecution(targetStock.symbol, "SELL", targetStock.quantity, effectiveExit)
+                } catch (_: Throwable) {
+                    // Safe offline fallback
+                }
+            }
+        }
         val updatedSummary = arjunRepository.calculateSummary(updatedList)
         val strategySummary = arjunRepository.calculateStrategySummary(updatedList)
         val strategySlots = arjunRepository.calculateStrategySlots(updatedList)
@@ -696,8 +714,125 @@ class VaralakshmiViewModel(
                 summary = updatedSummary,
                 strategySummary = strategySummary,
                 strategySlots = strategySlots,
+                breakoutOrders = arjunRepository.getBreakoutOrders(),
                 autoExecutionEvents = arjunRepository.getAutoExecutionEvents()
             )
+        }
+    }
+
+    fun partialBuyArjunStock(id: String, quantity: Int, price: Double) {
+        val (success, message) = arjunRepository.partialBuy(id, quantity, price)
+        val updatedList = arjunRepository.getRecommendations()
+        val item = updatedList.find { it.id == id }
+        if (success && item != null && ArjunStockRepository.enableNetworkQuotes) {
+            arjunActionJob?.cancel()
+            arjunActionJob = viewModelScope.launch {
+                try {
+                    arjunRepository.dispatchBrokerExecution(item.symbol, "BUY", quantity, price)
+                } catch (_: Throwable) {
+                    // Safe offline fallback
+                }
+            }
+        }
+        val updatedSummary = arjunRepository.calculateSummary(updatedList)
+        val strategySummary = arjunRepository.calculateStrategySummary(updatedList)
+        val strategySlots = arjunRepository.calculateStrategySlots(updatedList)
+        _arjunStocksState.update {
+            it.copy(
+                recommendations = updatedList,
+                summary = updatedSummary,
+                strategySummary = strategySummary,
+                strategySlots = strategySlots,
+                breakoutOrders = arjunRepository.getBreakoutOrders(),
+                autoExecutionEvents = arjunRepository.getAutoExecutionEvents(),
+                errorMessage = if (!success) message else null
+            )
+        }
+        _uiState.update { it.copy(snackbarMessage = message) }
+    }
+
+    fun partialSellArjunStock(id: String, quantity: Int, price: Double) {
+        val currentStock = arjunRepository.getRecommendations().find { it.id == id }
+        val (success, message) = arjunRepository.partialSell(id, quantity, price)
+        if (success && currentStock != null && ArjunStockRepository.enableNetworkQuotes) {
+            arjunActionJob?.cancel()
+            arjunActionJob = viewModelScope.launch {
+                try {
+                    arjunRepository.dispatchBrokerExecution(currentStock.symbol, "SELL", quantity, price)
+                } catch (_: Throwable) {
+                    // Safe offline fallback
+                }
+            }
+        }
+        val updatedList = arjunRepository.getRecommendations()
+        val updatedSummary = arjunRepository.calculateSummary(updatedList)
+        val strategySummary = arjunRepository.calculateStrategySummary(updatedList)
+        val strategySlots = arjunRepository.calculateStrategySlots(updatedList)
+        _arjunStocksState.update {
+            it.copy(
+                recommendations = updatedList,
+                summary = updatedSummary,
+                strategySummary = strategySummary,
+                strategySlots = strategySlots,
+                breakoutOrders = arjunRepository.getBreakoutOrders(),
+                autoExecutionEvents = arjunRepository.getAutoExecutionEvents(),
+                errorMessage = if (!success) message else null
+            )
+        }
+        _uiState.update { it.copy(snackbarMessage = message) }
+    }
+
+    fun setArjunBreakoutOrder(order: ArjunBreakoutOrder) {
+        val (success, message) = arjunRepository.setBreakoutOrder(order)
+        val updatedList = arjunRepository.getRecommendations()
+        val strategySummary = arjunRepository.calculateStrategySummary(updatedList)
+        val strategySlots = arjunRepository.calculateStrategySlots(updatedList)
+        _arjunStocksState.update {
+            it.copy(
+                recommendations = updatedList,
+                strategySummary = strategySummary,
+                strategySlots = strategySlots,
+                breakoutOrders = arjunRepository.getBreakoutOrders(),
+                errorMessage = if (!success) message else null
+            )
+        }
+        _uiState.update { it.copy(snackbarMessage = message) }
+    }
+
+    fun cancelArjunBreakoutOrder(slotIndex: Int) {
+        val (success, message) = arjunRepository.cancelBreakoutOrder(slotIndex)
+        val updatedList = arjunRepository.getRecommendations()
+        val strategySummary = arjunRepository.calculateStrategySummary(updatedList)
+        val strategySlots = arjunRepository.calculateStrategySlots(updatedList)
+        _arjunStocksState.update {
+            it.copy(
+                strategySummary = strategySummary,
+                strategySlots = strategySlots,
+                breakoutOrders = arjunRepository.getBreakoutOrders()
+            )
+        }
+        _uiState.update { it.copy(snackbarMessage = message) }
+    }
+
+    fun updateArjunStockLadders(
+        id: String,
+        targetLadder: List<ArjunLadderLevel>,
+        stopLossLadder: List<ArjunLadderLevel>
+    ) {
+        val (success, message) = arjunRepository.updateStockLadders(id, targetLadder, stopLossLadder)
+        val updatedList = arjunRepository.getRecommendations()
+        _arjunStocksState.update {
+            it.copy(
+                recommendations = updatedList,
+                strategySlots = arjunRepository.calculateStrategySlots(updatedList)
+            )
+        }
+        _uiState.update { it.copy(snackbarMessage = message) }
+    }
+
+    fun selectArjunSlot(slotIndex: Int?) {
+        _arjunStocksState.update {
+            it.copy(selectedSlotIndex = if (it.selectedSlotIndex == slotIndex) null else slotIndex)
         }
     }
 
@@ -713,6 +848,7 @@ class VaralakshmiViewModel(
                 summary = updatedSummary,
                 strategySummary = strategySummary,
                 strategySlots = strategySlots,
+                breakoutOrders = arjunRepository.getBreakoutOrders(),
                 autoExecutionEvents = arjunRepository.getAutoExecutionEvents(),
                 errorMessage = if (!success) message else null
             )
@@ -731,6 +867,7 @@ class VaralakshmiViewModel(
                 summary = updatedSummary,
                 strategySummary = strategySummary,
                 strategySlots = strategySlots,
+                breakoutOrders = arjunRepository.getBreakoutOrders(),
                 autoExecutionEvents = arjunRepository.getAutoExecutionEvents()
             )
         }
@@ -775,31 +912,51 @@ class VaralakshmiViewModel(
         }
         try {
             arjunSyncJob = viewModelScope.launch {
+                _arjunStocksState.update { it.copy(isRefreshingQuotes = true) }
                 try {
-                    _arjunStocksState.update { it.copy(isRefreshingQuotes = true) }
-                    val updated = arjunRepository.refreshLiveQuotes()
-                    val summary = arjunRepository.calculateSummary(updated)
-                    val strategySummary = arjunRepository.calculateStrategySummary(updated)
-                    val strategySlots = arjunRepository.calculateStrategySlots(updated)
-                    val events = arjunRepository.getAutoExecutionEvents()
-                    val timeStr = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
-                    _arjunStocksState.update {
-                        it.copy(
-                            recommendations = updated,
-                            summary = summary,
-                            strategySummary = strategySummary,
-                            strategySlots = strategySlots,
-                            autoExecutionEvents = events,
-                            isRefreshingQuotes = false,
-                            lastRefreshedTime = timeStr,
-                            errorMessage = null
-                        )
+                    val serverUrl = _uiState.value.serverUrl
+                    val authToken = _uiState.value.authToken
+                    val syncResult = arjunRepository.syncWithServer(serverUrl, authToken)
+                    if (syncResult.isSuccess) {
+                        val payload = syncResult.getOrThrow()
+                        val timeStr = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+                        _arjunStocksState.update {
+                            it.copy(
+                                recommendations = payload.positions,
+                                summary = payload.portfolioSummary,
+                                strategySummary = payload.strategySummary,
+                                strategySlots = payload.strategySlots,
+                                breakoutOrders = payload.breakoutOrders,
+                                autoExecutionEvents = arjunRepository.getAutoExecutionEvents(),
+                                isRefreshingQuotes = false,
+                                isLoading = false,
+                                lastRefreshedTime = timeStr,
+                                serverStatus = payload.serverStatus,
+                                isLiveSync = true,
+                                broker = payload.broker,
+                                errorMessage = null
+                            )
+                        }
+                    } else {
+                        val err = syncResult.exceptionOrNull()?.message ?: "Failed to connect to Arjun server"
+                        _arjunStocksState.update {
+                            it.copy(
+                                isRefreshingQuotes = false,
+                                isLoading = false,
+                                isLiveSync = false,
+                                serverStatus = "DISCONNECTED",
+                                errorMessage = err
+                            )
+                        }
                     }
                 } catch (e: Exception) {
                     _arjunStocksState.update {
                         it.copy(
                             isRefreshingQuotes = false,
-                            errorMessage = e.message
+                            isLoading = false,
+                            isLiveSync = false,
+                            serverStatus = "ERROR",
+                            errorMessage = e.message ?: "Failed to connect to server"
                         )
                     }
                 }

@@ -32,6 +32,8 @@ class VaralakshmiPortfolioTest {
 
     @After
     fun tearDown() {
+        VaralakshmiRepository.resetIoDispatcherForTesting()
+        testDispatcher.scheduler.advanceUntilIdle()
         Dispatchers.resetMain()
     }
 
@@ -332,6 +334,7 @@ class VaralakshmiPortfolioTest {
         // Dismiss when null is safe
         viewModel.dismissExitError()
         assertNull(viewModel.uiState.value.exitErrorDialog)
+        viewModel.stopPeriodicSync()
     }
 
     @Test
@@ -977,6 +980,7 @@ class VaralakshmiPortfolioTest {
         val viewModel = VaralakshmiViewModel(repository, autoRefresh = false)
         assertEquals(5, viewModel.uiState.value.recommendations.size)
         assertEquals("RAYMOND", viewModel.uiState.value.recommendations[0].symbol)
+        viewModel.stopPeriodicSync()
     }
 
     @Test
@@ -1089,6 +1093,7 @@ class VaralakshmiPortfolioTest {
         // 4. Dismiss modal chart
         viewModel.dismissRecommendationChart()
         assertNull(viewModel.uiState.value.selectedRecommendationForChart)
+        viewModel.stopPeriodicSync()
     }
 
     @Test
@@ -1486,26 +1491,29 @@ class VaralakshmiPortfolioTest {
     @Test
     fun testRecommendationHistoryViewModelStateTransitions() = runTest {
         val repository = VaralakshmiRepository()
-        val viewModel = VaralakshmiViewModel(repository = repository, autoRefresh = false)
+        val viewModel = VaralakshmiViewModel(repository = repository, autoRefresh = false, enablePeriodicSync = false)
+        try {
+            assertFalse(viewModel.uiState.value.showRecommendationHistory)
+            assertEquals("ALL", viewModel.uiState.value.selectedHistoryFilter)
 
-        assertFalse(viewModel.uiState.value.showRecommendationHistory)
-        assertEquals("ALL", viewModel.uiState.value.selectedHistoryFilter)
+            viewModel.openRecommendationHistory()
+            assertTrue(viewModel.uiState.value.showRecommendationHistory)
 
-        viewModel.openRecommendationHistory()
-        assertTrue(viewModel.uiState.value.showRecommendationHistory)
+            viewModel.setHistoryFilter("PROFITABLE")
+            assertEquals("PROFITABLE", viewModel.uiState.value.selectedHistoryFilter)
+            assertEquals(12, viewModel.uiState.value.filteredRecommendationHistory.size)
 
-        viewModel.setHistoryFilter("PROFITABLE")
-        assertEquals("PROFITABLE", viewModel.uiState.value.selectedHistoryFilter)
-        assertEquals(12, viewModel.uiState.value.filteredRecommendationHistory.size)
+            viewModel.setHistoryFilter("LOSS")
+            assertEquals(4, viewModel.uiState.value.filteredRecommendationHistory.size)
 
-        viewModel.setHistoryFilter("LOSS")
-        assertEquals(4, viewModel.uiState.value.filteredRecommendationHistory.size)
+            viewModel.setHistoryFilter("ACTIVE")
+            assertEquals(3, viewModel.uiState.value.filteredRecommendationHistory.size)
 
-        viewModel.setHistoryFilter("ACTIVE")
-        assertEquals(3, viewModel.uiState.value.filteredRecommendationHistory.size)
-
-        viewModel.closeRecommendationHistory()
-        assertFalse(viewModel.uiState.value.showRecommendationHistory)
+            viewModel.closeRecommendationHistory()
+            assertFalse(viewModel.uiState.value.showRecommendationHistory)
+        } finally {
+            viewModel.stopPeriodicSync()
+        }
     }
 
     @Test

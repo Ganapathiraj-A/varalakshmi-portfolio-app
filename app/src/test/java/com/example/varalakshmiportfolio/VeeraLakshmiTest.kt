@@ -28,6 +28,7 @@ class VeeraLakshmiTest {
 
     @After
     fun tearDown() {
+        VaralakshmiRepository.resetIoDispatcherForTesting()
         VaralakshmiRepository.resetCacheDirectoryForTesting()
         tempDir.deleteRecursively()
     }
@@ -200,6 +201,7 @@ class VeeraLakshmiTest {
         vm.selectFnoInstance("10L")
         assertEquals("10L", vm.veeraLakshmiState.value.selectedInstanceId)
         assertTrue(vm.veeraLakshmiState.value.activePositions.isEmpty())
+        vm.stopPeriodicSync()
     }
 
     @Test
@@ -500,6 +502,7 @@ class VeeraLakshmiTest {
         vm.selectFnoInstance("3L")
         assertEquals("3L", vm.veeraLakshmiState.value.selectedInstanceId)
         assertTrue(vm.veeraLakshmiState.value.activePositions.isEmpty())
+        vm.stopPeriodicSync()
     }
 
     @Test

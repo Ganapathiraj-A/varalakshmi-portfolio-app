@@ -9,11 +9,33 @@ import com.example.varalakshmiportfolio.model.TransactionItem
 import com.example.varalakshmiportfolio.model.formatVaralakshmiAllStatementsForClipboard
 import com.example.varalakshmiportfolio.model.formatDailyReturnStatementForClipboard
 import com.example.varalakshmiportfolio.ui.VaralakshmiViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.setMain
+import org.junit.After
 import org.junit.Assert.*
+import org.junit.Before
 import org.junit.Test
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class DailyReturnsTest {
+
+    private val testDispatcher = StandardTestDispatcher()
+
+    @Before
+    fun setUp() {
+        Dispatchers.setMain(testDispatcher)
+    }
+
+    @After
+    fun tearDown() {
+        VaralakshmiRepository.resetIoDispatcherForTesting()
+        testDispatcher.scheduler.advanceUntilIdle()
+        Dispatchers.resetMain()
+    }
 
     @Test
     fun testPositiveReturnItemFormattingAndStatus() {
@@ -249,12 +271,16 @@ class DailyReturnsTest {
     fun testVaralakshmiUiStateInclusionUponRepositoryLoad() {
         val repository = VaralakshmiRepository()
         val viewModel = VaralakshmiViewModel(repository = repository, autoRefresh = false)
-        val uiState = viewModel.uiState.value
+        try {
+            val uiState = viewModel.uiState.value
 
-        assertNotNull("UiState dailyReturns must not be null", uiState.dailyReturns)
-        assertTrue("UiState dailyReturns must be populated from repository", uiState.dailyReturns.isNotEmpty())
-        assertEquals(repository.getCachedDailyReturns().size, uiState.dailyReturns.size)
-        assertEquals(repository.getCachedDailyReturns(), uiState.dailyReturns)
+            assertNotNull("UiState dailyReturns must not be null", uiState.dailyReturns)
+            assertTrue("UiState dailyReturns must be populated from repository", uiState.dailyReturns.isNotEmpty())
+            assertEquals(repository.getCachedDailyReturns().size, uiState.dailyReturns.size)
+            assertEquals(repository.getCachedDailyReturns(), uiState.dailyReturns)
+        } finally {
+            viewModel.stopPeriodicSync()
+        }
     }
 
     @Test
@@ -448,43 +474,49 @@ class DailyReturnsTest {
     fun testViewModelRefreshSyncsDailyReturns() = runTest {
         val repository = VaralakshmiRepository()
         repository.setServerConfig("http://127.0.0.1:59999")
-        val viewModel = VaralakshmiViewModel(repository = repository, autoRefresh = false)
+        val viewModel = VaralakshmiViewModel(repository = repository, autoRefresh = false, enablePeriodicSync = false)
+        try {
+            val initialReturns = viewModel.uiState.value.dailyReturns
+            assertEquals(12, initialReturns.size)
 
-        val initialReturns = viewModel.uiState.value.dailyReturns
-        assertEquals(12, initialReturns.size)
+            val updatedJson = """
+                {
+                    "daily_returns": [
+                        {
+                            "date": "2026-09-23",
+                            "daily_pnl": 1800.00,
+                            "return_pct": 1.65,
+                            "total_nav": 111068.80,
+                            "trade_count": 2,
+                            "status": "WIN"
+                        }
+                    ]
+                }
+            """.trimIndent()
+            repository.applyCachedJsonState(updatedJson)
 
-        val updatedJson = """
-            {
-                "daily_returns": [
-                    {
-                        "date": "2026-09-23",
-                        "daily_pnl": 1800.00,
-                        "return_pct": 1.65,
-                        "total_nav": 111068.80,
-                        "trade_count": 2,
-                        "status": "WIN"
-                    }
-                ]
+            viewModel.refresh()
+            val startTime = System.currentTimeMillis()
+            while (viewModel.uiState.value.dailyReturns.size != 1 && (System.currentTimeMillis() - startTime) < 3000) {
+                testScheduler.runCurrent()
+                Thread.sleep(20)
             }
-        """.trimIndent()
-        repository.applyCachedJsonState(updatedJson)
+            testScheduler.runCurrent()
 
-        viewModel.refresh()
-        val startTime = System.currentTimeMillis()
-        while (viewModel.uiState.value.dailyReturns.size != 1 && (System.currentTimeMillis() - startTime) < 3000) {
-            Thread.sleep(20)
+            val syncedReturns = viewModel.uiState.value.dailyReturns
+            assertEquals(1, syncedReturns.size)
+            assertEquals("2026-09-23", syncedReturns[0].date)
+            assertEquals(1800.00, syncedReturns[0].dailyPnl, 0.001)
+
+            // Also verify directly that refreshData returns dailyReturns in OfflineCacheFallback
+            val directResult = repository.refreshData("http://127.0.0.1:59999")
+            assertTrue(directResult is SyncResult.OfflineCacheFallback)
+            assertEquals(1, directResult.dailyReturns.size)
+            assertEquals("2026-09-23", directResult.dailyReturns[0].date)
+        } finally {
+            viewModel.stopPeriodicSync()
+            testScheduler.advanceUntilIdle()
         }
-
-        val syncedReturns = viewModel.uiState.value.dailyReturns
-        assertEquals(1, syncedReturns.size)
-        assertEquals("2026-09-23", syncedReturns[0].date)
-        assertEquals(1800.00, syncedReturns[0].dailyPnl, 0.001)
-
-        // Also verify directly that refreshData returns dailyReturns in OfflineCacheFallback
-        val directResult = repository.refreshData("http://127.0.0.1:59999")
-        assertTrue(directResult is SyncResult.OfflineCacheFallback)
-        assertEquals(1, directResult.dailyReturns.size)
-        assertEquals("2026-09-23", directResult.dailyReturns[0].date)
     }
 
     @Test
@@ -796,15 +828,18 @@ class DailyReturnsTest {
     fun testViewModelDailyReturnSelectionAndDismissal() {
         val repo = VaralakshmiRepository()
         val viewModel = VaralakshmiViewModel(repository = repo, autoRefresh = false)
+        try {
+            assertNull(viewModel.uiState.value.selectedDailyReturnForDetail)
 
-        assertNull(viewModel.uiState.value.selectedDailyReturnForDetail)
+            val target = viewModel.uiState.value.dailyReturns.first()
+            viewModel.selectDailyReturn(target)
+            assertEquals(target, viewModel.uiState.value.selectedDailyReturnForDetail)
 
-        val target = viewModel.uiState.value.dailyReturns.first()
-        viewModel.selectDailyReturn(target)
-        assertEquals(target, viewModel.uiState.value.selectedDailyReturnForDetail)
-
-        viewModel.dismissDailyReturnDetail()
-        assertNull(viewModel.uiState.value.selectedDailyReturnForDetail)
+            viewModel.dismissDailyReturnDetail()
+            assertNull(viewModel.uiState.value.selectedDailyReturnForDetail)
+        } finally {
+            viewModel.stopPeriodicSync()
+        }
     }
 
     @Test

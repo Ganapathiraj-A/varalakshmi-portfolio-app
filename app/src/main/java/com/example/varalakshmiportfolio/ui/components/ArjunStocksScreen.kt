@@ -57,9 +57,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.varalakshmiportfolio.data.ArjunRecommendationParser
+import com.example.varalakshmiportfolio.model.ArjunBreakoutOrder
+import com.example.varalakshmiportfolio.model.ArjunLadderLevel
 import com.example.varalakshmiportfolio.model.ArjunPortfolioSummary
+import com.example.varalakshmiportfolio.model.ArjunSlotStatus
 import com.example.varalakshmiportfolio.model.ArjunStockItem
 import com.example.varalakshmiportfolio.model.ArjunStocksUiState
+import com.example.varalakshmiportfolio.model.ArjunStrategySlot
+import com.example.varalakshmiportfolio.model.ArjunStrategySummary
 import com.example.varalakshmiportfolio.model.ArjunTradeStatus
 import com.example.varalakshmiportfolio.theme.*
 import com.example.varalakshmiportfolio.ui.util.StockLinkHelper
@@ -77,15 +82,14 @@ fun ArjunStocksScreen(
     onApproveStock: (String) -> Unit = {},
     onUnapproveStock: (String) -> Unit = {},
     onDismissExecutionEvent: (String) -> Unit = {},
+    onSelectSlot: (Int?) -> Unit = {},
+    onPartialBuy: (id: String, quantity: Int, price: Double) -> Unit = { _, _, _ -> },
+    onPartialSell: (id: String, quantity: Int, price: Double) -> Unit = { _, _, _ -> },
+    onSetBreakoutOrder: (ArjunBreakoutOrder) -> Unit = {},
+    onCancelBreakoutOrder: (slotIndex: Int) -> Unit = {},
+    onUpdateStockLadders: (id: String, targetLadder: List<ArjunLadderLevel>, stopLossLadder: List<ArjunLadderLevel>) -> Unit = { _, _, _ -> },
     modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.current
-    var showPasteDialog by remember { mutableStateOf(false) }
-    var stockToEdit by remember { mutableStateOf<ArjunStockItem?>(null) }
-    var stockToClose by remember { mutableStateOf<ArjunStockItem?>(null) }
-    var stockToDelete by remember { mutableStateOf<ArjunStockItem?>(null) }
-    var stockToApprove by remember { mutableStateOf<ArjunStockItem?>(null) }
-
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(14.dp)
@@ -98,166 +102,52 @@ fun ArjunStocksScreen(
             )
         }
 
-        // 1. Arjun 5L Strategy 10-Slot Allocation Matrix Card
+        // Real Server Connection Error Banner (if connection failed)
+        if (state.errorMessage != null) {
+            ArjunServerErrorBanner(
+                errorMessage = state.errorMessage,
+                onRetry = onRefresh
+            )
+        }
+
+        // Real Server Status & Sync Header (Live Server Connection, Broker, Timestamp, Refresh)
+        ArjunServerStatusHeader(
+            isLive = state.errorMessage == null && state.isLiveSync,
+            serverStatus = state.serverStatus,
+            broker = state.broker,
+            lastUpdated = state.lastRefreshedTime,
+            isRefreshing = state.isRefreshingQuotes,
+            onRefresh = onRefresh
+        )
+
+        // 1. Arjun Strategy Allocation Matrix Card (Dynamic 7 or 10-Slot Matrix)
         ArjunStrategySlotMatrixCard(
             summary = state.strategySummary,
             slots = state.strategySlots,
-            onSelectStock = { onSelectFilter("STRATEGY") }
-        )
-
-        // 2. Header & Summary KPI Card
-        ArjunHeaderSummaryCard(
-            summary = state.summary,
-            isRefreshing = state.isRefreshingQuotes,
-            onRefresh = onRefresh,
-            onOpenPasteDialog = { showPasteDialog = true }
-        )
-
-        // 3. Filter Chips Row
-        ArjunFilterChips(
-            selectedFilter = state.selectedFilter,
-            recommendations = state.recommendations,
-            onSelectFilter = onSelectFilter
-        )
-
-        // 4. Filtered Recommendations List
-        val filteredList = remember(state.recommendations, state.selectedFilter) {
-            when (state.selectedFilter.uppercase(Locale.US)) {
-                "STRATEGY", "5L STRATEGY" -> state.recommendations.filter { it.isApprovedForStrategy }
-                "ACTIVE" -> state.recommendations.filter { !it.isClosed }
-                "PROFITABLE", "WINS" -> state.recommendations.filter { it.isProfit }
-                "TARGET HIT", "TARGETS", "TARGET" -> state.recommendations.filter {
-                    it.status == ArjunTradeStatus.TARGET1_HIT || it.status == ArjunTradeStatus.TARGET2_HIT
-                }
-                "SL HIT" -> state.recommendations.filter { it.status == ArjunTradeStatus.STOP_LOSS_HIT }
-                "CLOSED" -> state.recommendations.filter { it.isClosed }
-                else -> state.recommendations
+            selectedSlotIndex = state.selectedSlotIndex,
+            onSelectSlot = { slotIndex ->
+                onSelectSlot(if (state.selectedSlotIndex == slotIndex) null else slotIndex)
             }
-        }
+        )
 
-        if (filteredList.isEmpty()) {
-            ArjunEmptyStateCard(
-                filter = state.selectedFilter,
-                onOpenPasteDialog = { showPasteDialog = true }
+        // 1b. Dynamic Slot Configuration & Action Card (Rendered directly below the matrix)
+        val selectedSlotIdx = state.selectedSlotIndex
+        if (selectedSlotIdx != null) {
+            val selectedSlot = state.strategySlots.firstOrNull { it.slotIndex == selectedSlotIdx }
+                ?: ArjunStrategySlot(slotIndex = selectedSlotIdx, targetCapital = state.strategySummary.slotBudget)
+
+            ArjunSlotConfigurationActionCard(
+                slotIndex = selectedSlotIdx,
+                slot = selectedSlot,
+                onCloseSlotCard = { onSelectSlot(null) },
+                onSetBreakoutOrder = onSetBreakoutOrder,
+                onCancelBreakoutOrder = { onCancelBreakoutOrder(selectedSlotIdx) },
+                onPartialBuy = onPartialBuy,
+                onPartialSell = onPartialSell,
+                onFullSell = { stock -> onCloseStock(stock.id, stock.currentPrice) },
+                onUpdateLadders = onUpdateStockLadders
             )
-        } else {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                filteredList.forEach { stock ->
-                    key(stock.id) {
-                        ArjunStockCard(
-                            stock = stock,
-                            onEdit = { stockToEdit = stock },
-                            onClose = { stockToClose = stock },
-                            onDelete = { stockToDelete = stock },
-                            onApprove = { stockToApprove = stock },
-                            onUnapprove = { onUnapproveStock(stock.id) },
-                            onOpenChart = {
-                                StockLinkHelper.openGoogleFinance(context, stock.symbol)
-                            }
-                        )
-                    }
-                }
-            }
         }
-    }
-
-    // Modal: Paste Recommendation Dialog
-    if (showPasteDialog) {
-        PasteRecommendationDialog(
-            onDismiss = { showPasteDialog = false },
-            onSave = { rawText, customQty ->
-                val parsed = ArjunRecommendationParser.parse(rawText)
-                if (parsed != null) {
-                    val finalItem = if (customQty > 0) parsed.copy(quantity = customQty) else parsed
-                    onUpdateStock(finalItem)
-                    Toast.makeText(context, "Added ${finalItem.symbol}!", Toast.LENGTH_SHORT).show()
-                } else {
-                    onAddRecommendation(rawText)
-                }
-                showPasteDialog = false
-            }
-        )
-    }
-
-    // Modal: Edit Stock Dialog
-    stockToEdit?.let { stock ->
-        EditStockDialog(
-            stock = stock,
-            onDismiss = { stockToEdit = null },
-            onSave = { updated ->
-                onUpdateStock(updated)
-                stockToEdit = null
-                Toast.makeText(context, "Updated ${updated.symbol}", Toast.LENGTH_SHORT).show()
-            }
-        )
-    }
-
-    // Modal: Close Position Dialog
-    stockToClose?.let { stock ->
-        CloseStockDialog(
-            stock = stock,
-            onDismiss = { stockToClose = null },
-            onConfirmClose = { exitPrice ->
-                onCloseStock(stock.id, exitPrice)
-                stockToClose = null
-                Toast.makeText(context, "Closed ${stock.symbol} position", Toast.LENGTH_SHORT).show()
-            }
-        )
-    }
-
-    // Modal: Delete Confirmation Dialog
-    stockToDelete?.let { stock ->
-        AlertDialog(
-            onDismissRequest = { stockToDelete = null },
-            containerColor = DarkSurface,
-            title = {
-                Text(
-                    text = "Delete ${stock.symbol}?",
-                    color = TextPrimary,
-                    fontWeight = FontWeight.Bold
-                )
-            },
-            text = {
-                Text(
-                    text = "Are you sure you want to remove this recommendation? This cannot be undone.",
-                    color = TextSecondary,
-                    fontSize = 13.sp
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        onDeleteStock(stock.id)
-                        stockToDelete = null
-                        Toast.makeText(context, "Deleted ${stock.symbol}", Toast.LENGTH_SHORT).show()
-                    },
-                    colors = ButtonDefaults.textButtonColors(contentColor = LossRed)
-                ) {
-                    Text("Delete", fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { stockToDelete = null }) {
-                    Text("Cancel", color = TextSecondary)
-                }
-            }
-        )
-    }
-
-    // Modal: Approve Recommendation for 5L Strategy Dialog
-    stockToApprove?.let { stock ->
-        ArjunApprovalDialog(
-            stock = stock,
-            availableSlots = state.strategySummary.availableSlotsCount,
-            onConfirm = {
-                onApproveStock(stock.id)
-                stockToApprove = null
-            },
-            onDismiss = { stockToApprove = null }
-        )
     }
 }
 
@@ -719,9 +609,9 @@ private fun ArjunStockCard(
                             Spacer(modifier = Modifier.width(5.dp))
                             Text(
                                 text = when {
-                                    stock.isClosed && stock.strategySlotIndex in 1..10 -> "STRATEGY POSITION (CLOSED - FREED SLOT #${stock.strategySlotIndex})"
+                                    stock.isClosed && stock.strategySlotIndex in 1..7 -> "STRATEGY POSITION (CLOSED - FREED SLOT #${stock.strategySlotIndex})"
                                     stock.isClosed -> "STRATEGY POSITION (CLOSED)"
-                                    stock.strategySlotIndex in 1..10 -> "STRATEGY SLOT #${stock.strategySlotIndex} ACTIVE (~₹50k)"
+                                    stock.strategySlotIndex in 1..7 -> "STRATEGY SLOT #${stock.strategySlotIndex} ACTIVE (~₹1,00,000)"
                                     else -> "STRATEGY POSITION"
                                 },
                                 fontSize = 9.5.sp,
@@ -1069,7 +959,7 @@ private fun ArjunStockCard(
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "Approve & Buy into Strategy (₹50k Slot)",
+                        text = "Approve & Buy into Strategy (₹1L Slot)",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -1153,6 +1043,7 @@ private fun ArjunStatusBadge(status: ArjunTradeStatus) {
         ArjunTradeStatus.TARGET1_HIT -> Triple("🎯 TARGET 1 HIT", ProfitGreen, ProfitGreenBg)
         ArjunTradeStatus.STOP_LOSS_HIT -> Triple("🛑 STOP LOSS HIT", LossRed, LossRedBg)
         ArjunTradeStatus.WAITING_TRIGGER -> Triple("⏳ WAITING TRIGGER", GoldAccent, GoldAccentBg)
+        ArjunTradeStatus.PENDING_BREAKOUT -> Triple("🚀 BREAKOUT PENDING", GoldAccent, GoldAccentBg)
         ArjunTradeStatus.CLOSED -> Triple("🔒 CLOSED", TextMuted, Color(0xFF1E293B))
         ArjunTradeStatus.ACTIVE -> Triple("🟢 ACTIVE", AccentIndigoLight, AccentIndigoBg)
     }
@@ -1611,14 +1502,184 @@ private fun ArjunEmptyStateCard(
 }
 
 // ─────────────────────────────────────────────────────────────
-// 8. Arjun 5L Strategy 10-Slot Matrix Card
+// ─────────────────────────────────────────────────────────────
+// 8. Server Status Header & Error Banner
+// ─────────────────────────────────────────────────────────────
+@Composable
+fun ArjunServerErrorBanner(
+    errorMessage: String,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(10.dp),
+        color = LossRedBg,
+        border = BorderStroke(1.dp, LossRed.copy(alpha = 0.6f))
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f)
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Warning,
+                    contentDescription = null,
+                    tint = LossRed,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Column {
+                    Text(
+                        text = "LIVE SERVER DISCONNECTED",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = LossRed,
+                        letterSpacing = 0.5.sp
+                    )
+                    Text(
+                        text = errorMessage,
+                        fontSize = 9.sp,
+                        color = TextSecondary,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            Button(
+                onClick = onRetry,
+                shape = RoundedCornerShape(6.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = LossRed),
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                modifier = Modifier.height(28.dp)
+            ) {
+                Text("RETRY", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
+            }
+        }
+    }
+}
+
+@Composable
+fun ArjunServerStatusHeader(
+    isLive: Boolean,
+    serverStatus: String,
+    broker: String,
+    lastUpdated: String,
+    isRefreshing: Boolean,
+    onRefresh: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "arjun_spin")
+    val rotation by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "rotation"
+    )
+
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(10.dp),
+        color = DarkSurface,
+        border = BorderStroke(0.8.dp, if (isLive) DarkCardBorder else LossRed.copy(alpha = 0.4f))
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.weight(1f)
+            ) {
+                // Live Indicator Dot
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(if (isLive) ProfitGreen else LossRed)
+                )
+                Column {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            text = if (isLive) "SERVER LIVE ($serverStatus)" else "SERVER: $serverStatus",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isLive) ProfitGreen else LossRed
+                        )
+                        Surface(
+                            shape = RoundedCornerShape(3.dp),
+                            color = AccentIndigoBg,
+                            border = BorderStroke(0.5.dp, AccentIndigo.copy(alpha = 0.5f))
+                        ) {
+                            Text(
+                                text = broker,
+                                fontSize = 8.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = AccentIndigoLight,
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                            )
+                        }
+                    }
+                    if (lastUpdated.isNotBlank()) {
+                        Text(
+                            text = "Sync: $lastUpdated (No Local Cache)",
+                            fontSize = 8.sp,
+                            color = TextMuted
+                        )
+                    }
+                }
+            }
+
+            IconButton(
+                onClick = onRefresh,
+                enabled = !isRefreshing,
+                modifier = Modifier.size(28.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Refresh,
+                    contentDescription = "Refresh",
+                    tint = if (isRefreshing) AccentBlue else TextSecondary,
+                    modifier = Modifier
+                        .size(16.dp)
+                        .graphicsLayer {
+                            if (isRefreshing) rotationZ = rotation
+                        }
+                )
+            }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────
+// 8b. Arjun Strategy Slot Matrix Card & Dynamic Configuration
 // ─────────────────────────────────────────────────────────────
 @Composable
 fun ArjunStrategySlotMatrixCard(
-    summary: com.example.varalakshmiportfolio.model.ArjunStrategySummary,
-    slots: List<com.example.varalakshmiportfolio.model.ArjunStrategySlot>,
-    onSelectStock: (String) -> Unit
+    summary: ArjunStrategySummary,
+    slots: List<ArjunStrategySlot>,
+    selectedSlotIndex: Int? = null,
+    onSelectSlot: (Int) -> Unit = {}
 ) {
+    val totalSlots = if (summary.totalSlots > 0) summary.totalSlots else if (slots.isNotEmpty()) slots.size else 7
+    val totalCapitalLakhs = (summary.totalCapital / 100_000).toInt()
+    val strategyTitle = if (totalCapitalLakhs > 0) "ARJUN ${totalCapitalLakhs}L STRATEGY" else "ARJUN STRATEGY"
+    val slotBudgetLabel = if (summary.slotBudget >= 100_000.0) "₹${(summary.slotBudget / 100_000).toInt()}L" else "₹${(summary.slotBudget / 1000).toInt()}k"
+    val subtitle = "$totalSlots Slots × $slotBudgetLabel • Multi-Tier SL/TP Ladders & Breakout Triggers"
+
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
@@ -1642,14 +1703,14 @@ fun ArjunStrategySlotMatrixCard(
                     Spacer(modifier = Modifier.width(6.dp))
                     Column {
                         Text(
-                            text = "ARJUN 5L STRATEGY",
+                            text = strategyTitle,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = TextPrimary,
                             letterSpacing = 0.5.sp
                         )
                         Text(
-                            text = "10 Slots × ₹50,000 • Daily Auto-Sell on SL & Target",
+                            text = subtitle,
                             fontSize = 9.sp,
                             color = TextMuted
                         )
@@ -1662,7 +1723,7 @@ fun ArjunStrategySlotMatrixCard(
                     border = BorderStroke(0.8.dp, AccentIndigo.copy(alpha = 0.5f))
                 ) {
                     Text(
-                        text = "${summary.occupiedSlotsCount}/10 SLOTS USED",
+                        text = "${summary.occupiedSlotsCount}/$totalSlots SLOTS USED",
                         fontSize = 9.5.sp,
                         fontWeight = FontWeight.Bold,
                         color = AccentIndigoLight,
@@ -1720,70 +1781,53 @@ fun ArjunStrategySlotMatrixCard(
 
             HorizontalDivider(color = DarkCardBorder.copy(alpha = 0.5f), thickness = 0.8.dp)
 
-            // 10-Slot Grid Layout (2 rows of 5 slots)
-            val context = LocalContext.current
+            // Dynamic Slot Grid Layout
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "SLOT ALLOCATION MATRIX (10 SLOTS)",
+                    text = "SLOT ALLOCATION MATRIX ($totalSlots SLOTS)",
                     fontSize = 8.5.sp,
                     fontWeight = FontWeight.Bold,
                     color = TextSecondary,
                     letterSpacing = 0.5.sp
                 )
                 Text(
-                    text = "Tap slot for Google Finance ↗",
+                    text = "Tap slot to manage / configure ↗",
                     fontSize = 7.5.sp,
                     color = AccentBlue,
                     fontWeight = FontWeight.Medium
                 )
             }
 
-            // Row 1: Slots 1 to 5
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                for (i in 1..5) {
-                    val slot = slots.firstOrNull { it.slotIndex == i }
-                    key(i) {
-                        ArjunSlotPill(
-                            slotIndex = i,
-                            slot = slot,
-                            modifier = Modifier.weight(1f),
-                            onClick = {
-                                slot?.stock?.let { s ->
-                                    onSelectStock(s.symbol)
-                                    StockLinkHelper.openGoogleFinance(context, s.symbol)
-                                }
-                            }
-                        )
-                    }
-                }
+            val slotsPerRow = if (totalSlots <= 8) 4 else 5
+            val displaySlots = (1..totalSlots).map { i ->
+                slots.firstOrNull { it.slotIndex == i } ?: ArjunStrategySlot(slotIndex = i, targetCapital = summary.slotBudget)
             }
+            val chunkedRows = displaySlots.chunked(slotsPerRow)
 
-            // Row 2: Slots 6 to 10
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                for (i in 6..10) {
-                    val slot = slots.firstOrNull { it.slotIndex == i }
-                    key(i) {
-                        ArjunSlotPill(
-                            slotIndex = i,
-                            slot = slot,
-                            modifier = Modifier.weight(1f),
-                            onClick = {
-                                slot?.stock?.let { s ->
-                                    onSelectStock(s.symbol)
-                                    StockLinkHelper.openGoogleFinance(context, s.symbol)
-                                }
-                            }
-                        )
+            chunkedRows.forEach { rowSlots ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    rowSlots.forEach { slot ->
+                        key(slot.slotIndex) {
+                            ArjunSlotPill(
+                                slotIndex = slot.slotIndex,
+                                slot = slot,
+                                isSelected = selectedSlotIndex == slot.slotIndex,
+                                modifier = Modifier.weight(1f),
+                                onClick = { onSelectSlot(slot.slotIndex) }
+                            )
+                        }
+                    }
+                    if (rowSlots.size < slotsPerRow) {
+                        repeat(slotsPerRow - rowSlots.size) {
+                            Spacer(modifier = Modifier.weight(1f))
+                        }
                     }
                 }
             }
@@ -1794,23 +1838,44 @@ fun ArjunStrategySlotMatrixCard(
 @Composable
 private fun ArjunSlotPill(
     slotIndex: Int,
-    slot: com.example.varalakshmiportfolio.model.ArjunStrategySlot?,
+    slot: ArjunStrategySlot?,
+    isSelected: Boolean,
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
-    val isOccupied = slot?.isOccupied == true && slot.stock != null
+    val status = slot?.status ?: ArjunSlotStatus.EMPTY
     val stock = slot?.stock
+    val breakout = slot?.pendingBreakout
+
+    val borderColor = when {
+        isSelected -> AccentIndigo
+        status == ArjunSlotStatus.OCCUPIED -> ProfitGreen.copy(alpha = 0.7f)
+        status == ArjunSlotStatus.PENDING_BREAKOUT -> GoldAccent.copy(alpha = 0.8f)
+        status == ArjunSlotStatus.CLOSED -> TextMuted.copy(alpha = 0.5f)
+        else -> DarkCardBorder
+    }
+
+    val bgColor = when {
+        isSelected -> DarkCard.copy(alpha = 0.95f)
+        status == ArjunSlotStatus.OCCUPIED -> Color(0xFF132A1C)
+        status == ArjunSlotStatus.PENDING_BREAKOUT -> Color(0xFF2D240E)
+        status == ArjunSlotStatus.CLOSED -> DarkSurface
+        else -> DarkCard
+    }
+
+    val budgetLabel = when {
+        (slot?.targetCapital ?: 0.0) >= 100_000.0 -> "₹${((slot?.targetCapital ?: 100_000.0) / 100_000).toInt()}L"
+        (slot?.targetCapital ?: 0.0) > 0.0 -> "₹${((slot?.targetCapital ?: 50_000.0) / 1000).toInt()}k"
+        else -> "READY"
+    }
 
     Surface(
         modifier = modifier
             .clip(RoundedCornerShape(6.dp))
-            .clickable(enabled = isOccupied, onClick = onClick),
+            .clickable(onClick = onClick),
         shape = RoundedCornerShape(6.dp),
-        color = if (isOccupied) Color(0xFF132A1C) else DarkCard,
-        border = BorderStroke(
-            0.8.dp,
-            if (isOccupied) ProfitGreen.copy(alpha = 0.6f) else DarkCardBorder
-        )
+        color = bgColor,
+        border = BorderStroke(if (isSelected) 1.5.dp else 0.8.dp, borderColor)
     ) {
         Column(
             modifier = Modifier
@@ -1822,45 +1887,970 @@ private fun ArjunSlotPill(
                 text = "#$slotIndex",
                 fontSize = 7.5.sp,
                 fontWeight = FontWeight.Bold,
-                color = if (isOccupied) ProfitGreen else TextMuted
+                color = when {
+                    isSelected -> AccentIndigoLight
+                    status == ArjunSlotStatus.OCCUPIED -> ProfitGreen
+                    status == ArjunSlotStatus.PENDING_BREAKOUT -> GoldAccent
+                    else -> TextMuted
+                }
             )
             Spacer(modifier = Modifier.height(1.dp))
-            if (stock != null) {
-                Text(
-                    text = stock.symbol,
-                    fontSize = 8.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = TextPrimary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+            when (status) {
+                ArjunSlotStatus.OCCUPIED -> {
+                    if (stock != null) {
+                        Text(
+                            text = stock.symbol,
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = TextPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = stock.formattedCurrentPrice,
+                            fontSize = 6.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFFC9D1D9),
+                            maxLines = 1
+                        )
+                        Text(
+                            text = stock.formattedPnlPct,
+                            fontSize = 6.8.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (stock.isProfit) ProfitGreen else LossRed,
+                            maxLines = 1
+                        )
+                    }
+                }
+                ArjunSlotStatus.PENDING_BREAKOUT -> {
+                    Text(
+                        text = breakout?.symbol ?: "TRIG",
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = GoldAccent,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = "₹${breakout?.triggerPrice?.let { String.format(Locale.US, "%.1f", it) } ?: ""}",
+                        fontSize = 6.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = GoldAccent,
+                        maxLines = 1
+                    )
+                    Text(
+                        text = "BREAKOUT",
+                        fontSize = 5.8.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = GoldAccent
+                    )
+                }
+                ArjunSlotStatus.CLOSED -> {
+                    Text(
+                        text = stock?.symbol ?: "CLOSED",
+                        fontSize = 7.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextMuted,
+                        maxLines = 1
+                    )
+                    Text(
+                        text = "EXITED",
+                        fontSize = 6.5.sp,
+                        color = TextMuted
+                    )
+                }
+                ArjunSlotStatus.EMPTY -> {
+                    Text(
+                        text = "READY",
+                        fontSize = 7.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = TextMuted
+                    )
+                    Text(
+                        text = budgetLabel,
+                        fontSize = 7.sp,
+                        color = TextMuted
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ArjunSlotConfigurationActionCard(
+    slotIndex: Int,
+    slot: ArjunStrategySlot,
+    onCloseSlotCard: () -> Unit,
+    onSetBreakoutOrder: (ArjunBreakoutOrder) -> Unit,
+    onCancelBreakoutOrder: () -> Unit,
+    onPartialBuy: (id: String, quantity: Int, price: Double) -> Unit,
+    onPartialSell: (id: String, quantity: Int, price: Double) -> Unit,
+    onFullSell: (stock: ArjunStockItem) -> Unit,
+    onUpdateLadders: (id: String, targetLadder: List<ArjunLadderLevel>, stopLossLadder: List<ArjunLadderLevel>) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val status = slot.status
+
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        color = DarkSurface,
+        border = BorderStroke(
+            1.5.dp,
+            when (status) {
+                ArjunSlotStatus.EMPTY -> GoldAccent.copy(alpha = 0.6f)
+                ArjunSlotStatus.PENDING_BREAKOUT -> GoldAccent
+                ArjunSlotStatus.OCCUPIED -> ProfitGreen.copy(alpha = 0.8f)
+                ArjunSlotStatus.CLOSED -> TextMuted
+            }
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            // Header: Slot # and Status Badge and Close (X)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "SLOT #$slotIndex",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = TextPrimary
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Surface(
+                        shape = RoundedCornerShape(4.dp),
+                        color = when (status) {
+                            ArjunSlotStatus.EMPTY -> DarkCard
+                            ArjunSlotStatus.PENDING_BREAKOUT -> GoldAccentBg
+                            ArjunSlotStatus.OCCUPIED -> ProfitGreenBg
+                            ArjunSlotStatus.CLOSED -> DarkCard
+                        },
+                        border = BorderStroke(
+                            0.8.dp,
+                            when (status) {
+                                ArjunSlotStatus.EMPTY -> TextMuted
+                                ArjunSlotStatus.PENDING_BREAKOUT -> GoldAccent
+                                ArjunSlotStatus.OCCUPIED -> ProfitGreen
+                                ArjunSlotStatus.CLOSED -> TextMuted
+                            }
+                        )
+                    ) {
+                        Text(
+                            text = slot.statusLabel,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = when (status) {
+                                ArjunSlotStatus.EMPTY -> TextSecondary
+                                ArjunSlotStatus.PENDING_BREAKOUT -> GoldAccent
+                                ArjunSlotStatus.OCCUPIED -> ProfitGreen
+                                ArjunSlotStatus.CLOSED -> TextMuted
+                            },
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+
+                IconButton(
+                    onClick = onCloseSlotCard,
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Close,
+                        contentDescription = "Close Slot Card",
+                        tint = TextSecondary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+
+            when (status) {
+                ArjunSlotStatus.EMPTY -> {
+                    ArjunEmptySlotConfigSection(
+                        slotIndex = slotIndex,
+                        onSetBreakoutOrder = onSetBreakoutOrder
+                    )
+                }
+                ArjunSlotStatus.PENDING_BREAKOUT -> {
+                    slot.pendingBreakout?.let { breakout ->
+                        ArjunPendingBreakoutSection(
+                            slotIndex = slotIndex,
+                            breakout = breakout,
+                            onCancelOrder = onCancelBreakoutOrder
+                        )
+                    }
+                }
+                ArjunSlotStatus.OCCUPIED -> {
+                    slot.stock?.let { stock ->
+                        ArjunOccupiedSlotSection(
+                            slotIndex = slotIndex,
+                            stock = stock,
+                            onPartialBuy = onPartialBuy,
+                            onPartialSell = onPartialSell,
+                            onFullSell = { onFullSell(stock) },
+                            onUpdateLadders = onUpdateLadders
+                        )
+                    }
+                }
+                ArjunSlotStatus.CLOSED -> {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            text = "Position closed for ${slot.stock?.symbol ?: "this slot"}.",
+                            fontSize = 12.sp,
+                            color = TextSecondary
+                        )
+                        Text(
+                            text = "Realized P&L: ${slot.stock?.formattedRealizedPnl ?: "₹0.00"}",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if ((slot.stock?.realizedPnl ?: 0.0) >= 0.0) ProfitGreen else LossRed
+                        )
+                        Button(
+                            onClick = onCloseSlotCard,
+                            colors = ButtonDefaults.buttonColors(containerColor = DarkCard)
+                        ) {
+                            Text("Dismiss", color = TextPrimary)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ArjunEmptySlotConfigSection(
+    slotIndex: Int,
+    onSetBreakoutOrder: (ArjunBreakoutOrder) -> Unit
+) {
+    val context = LocalContext.current
+    var symbol by remember { mutableStateOf("") }
+    var triggerPrice by remember { mutableStateOf("") }
+    var allocationAmount by remember { mutableStateOf("100000") }
+    var shareCount by remember { mutableStateOf("") }
+    var tp1Price by remember { mutableStateOf("") }
+    var tp1Pct by remember { mutableStateOf("50") }
+    var tp2Price by remember { mutableStateOf("") }
+    var tp2Pct by remember { mutableStateOf("50") }
+    var slPrice by remember { mutableStateOf("") }
+    var slPct by remember { mutableStateOf("100") }
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            text = "Configure Breakout Trigger Buy Order for Slot #$slotIndex",
+            fontSize = 11.5.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = AccentIndigoLight
+        )
+
+        // Symbol & Trigger Price
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            OutlinedTextField(
+                value = symbol,
+                onValueChange = { symbol = it.uppercase(Locale.US) },
+                label = { Text("Ticker Symbol", fontSize = 11.sp) },
+                placeholder = { Text("e.g. TATAPOWER", fontSize = 11.sp) },
+                singleLine = true,
+                modifier = Modifier.weight(1f),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = AccentIndigo,
+                    unfocusedBorderColor = DarkCardBorder,
+                    focusedTextColor = TextPrimary,
+                    unfocusedTextColor = TextPrimary
                 )
-                Text(
-                    text = stock.formattedEntryPrice,
-                    fontSize = 6.5.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Color(0xFFC9D1D9),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+            )
+            OutlinedTextField(
+                value = triggerPrice,
+                onValueChange = { triggerPrice = it },
+                label = { Text("Trigger Price (₹)", fontSize = 11.sp) },
+                placeholder = { Text("e.g. 420.50", fontSize = 11.sp) },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                singleLine = true,
+                modifier = Modifier.weight(1f),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = AccentIndigo,
+                    unfocusedBorderColor = DarkCardBorder,
+                    focusedTextColor = TextPrimary,
+                    unfocusedTextColor = TextPrimary
                 )
+            )
+        }
+
+        // Allocation Amount (₹) & Share Count
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            OutlinedTextField(
+                value = allocationAmount,
+                onValueChange = {
+                    allocationAmount = it
+                    val amt = it.toDoubleOrNull() ?: 0.0
+                    val trig = triggerPrice.toDoubleOrNull() ?: 0.0
+                    if (amt > 0.0 && trig > 0.0) {
+                        shareCount = (amt / trig).toInt().toString()
+                    }
+                },
+                label = { Text("Alloc ₹ (Max ₹1L)", fontSize = 11.sp) },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                singleLine = true,
+                modifier = Modifier.weight(1f),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = AccentIndigo,
+                    unfocusedBorderColor = DarkCardBorder,
+                    focusedTextColor = TextPrimary,
+                    unfocusedTextColor = TextPrimary
+                )
+            )
+            OutlinedTextField(
+                value = shareCount,
+                onValueChange = {
+                    shareCount = it
+                    val cnt = it.toIntOrNull() ?: 0
+                    val trig = triggerPrice.toDoubleOrNull() ?: 0.0
+                    if (cnt > 0 && trig > 0.0) {
+                        allocationAmount = (cnt * trig).toInt().toString()
+                    }
+                },
+                label = { Text("Est. Shares", fontSize = 11.sp) },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                singleLine = true,
+                modifier = Modifier.weight(1f),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = AccentIndigo,
+                    unfocusedBorderColor = DarkCardBorder,
+                    focusedTextColor = TextPrimary,
+                    unfocusedTextColor = TextPrimary
+                )
+            )
+        }
+
+        // Multi-tier Target & Stop Loss Ladders
+        Text(
+            text = "Multi-Tier Target & Stop Loss Ladder (% Allocation)",
+            fontSize = 10.5.sp,
+            fontWeight = FontWeight.Bold,
+            color = TextSecondary
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            OutlinedTextField(
+                value = tp1Price,
+                onValueChange = { tp1Price = it },
+                label = { Text("TP1 Price (₹)", fontSize = 10.sp) },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                singleLine = true,
+                modifier = Modifier.weight(1f),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = ProfitGreen,
+                    unfocusedBorderColor = DarkCardBorder,
+                    focusedTextColor = TextPrimary,
+                    unfocusedTextColor = TextPrimary
+                )
+            )
+            OutlinedTextField(
+                value = tp1Pct,
+                onValueChange = { tp1Pct = it },
+                label = { Text("TP1 %", fontSize = 10.sp) },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                singleLine = true,
+                modifier = Modifier.weight(0.7f),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = ProfitGreen,
+                    unfocusedBorderColor = DarkCardBorder,
+                    focusedTextColor = TextPrimary,
+                    unfocusedTextColor = TextPrimary
+                )
+            )
+            OutlinedTextField(
+                value = tp2Price,
+                onValueChange = { tp2Price = it },
+                label = { Text("TP2 Price (₹)", fontSize = 10.sp) },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                singleLine = true,
+                modifier = Modifier.weight(1f),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = ProfitGreen,
+                    unfocusedBorderColor = DarkCardBorder,
+                    focusedTextColor = TextPrimary,
+                    unfocusedTextColor = TextPrimary
+                )
+            )
+            OutlinedTextField(
+                value = tp2Pct,
+                onValueChange = { tp2Pct = it },
+                label = { Text("TP2 %", fontSize = 10.sp) },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                singleLine = true,
+                modifier = Modifier.weight(0.7f),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = ProfitGreen,
+                    unfocusedBorderColor = DarkCardBorder,
+                    focusedTextColor = TextPrimary,
+                    unfocusedTextColor = TextPrimary
+                )
+            )
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            OutlinedTextField(
+                value = slPrice,
+                onValueChange = { slPrice = it },
+                label = { Text("Stop Loss Price (₹)", fontSize = 10.sp) },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                singleLine = true,
+                modifier = Modifier.weight(1f),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = LossRed,
+                    unfocusedBorderColor = DarkCardBorder,
+                    focusedTextColor = TextPrimary,
+                    unfocusedTextColor = TextPrimary
+                )
+            )
+            OutlinedTextField(
+                value = slPct,
+                onValueChange = { slPct = it },
+                label = { Text("SL %", fontSize = 10.sp) },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                singleLine = true,
+                modifier = Modifier.weight(0.7f),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = LossRed,
+                    unfocusedBorderColor = DarkCardBorder,
+                    focusedTextColor = TextPrimary,
+                    unfocusedTextColor = TextPrimary
+                )
+            )
+        }
+
+        Button(
+            onClick = {
+                val cleanSymbol = symbol.trim().uppercase(Locale.US)
+                val trig = triggerPrice.toDoubleOrNull() ?: 0.0
+                val alloc = (allocationAmount.toDoubleOrNull() ?: 100_000.0).coerceIn(100.0, 100_000.0)
+                if (cleanSymbol.isBlank() || trig <= 0.0) {
+                    Toast.makeText(context, "Enter a valid ticker and trigger price", Toast.LENGTH_SHORT).show()
+                    return@Button
+                }
+                val calcQty = shareCount.toIntOrNull() ?: if (trig > 0.0) (alloc / trig).toInt() else 1
+                val targetLevels = mutableListOf<ArjunLadderLevel>()
+                val t1 = tp1Price.toDoubleOrNull()
+                val t1p = tp1Pct.toDoubleOrNull() ?: 50.0
+                if (t1 != null && t1 > 0.0) {
+                    targetLevels.add(ArjunLadderLevel(levelIndex = 1, triggerPrice = t1, allocationPct = t1p))
+                }
+                val t2 = tp2Price.toDoubleOrNull()
+                val t2p = tp2Pct.toDoubleOrNull() ?: 50.0
+                if (t2 != null && t2 > 0.0) {
+                    targetLevels.add(ArjunLadderLevel(levelIndex = 2, triggerPrice = t2, allocationPct = t2p))
+                }
+                val slLevels = mutableListOf<ArjunLadderLevel>()
+                val s1 = slPrice.toDoubleOrNull()
+                val s1p = slPct.toDoubleOrNull() ?: 100.0
+                if (s1 != null && s1 > 0.0) {
+                    slLevels.add(ArjunLadderLevel(levelIndex = 1, triggerPrice = s1, allocationPct = s1p))
+                }
+
+                val order = ArjunBreakoutOrder(
+                    symbol = cleanSymbol,
+                    triggerPrice = trig,
+                    slotIndex = slotIndex,
+                    allocationAmount = alloc,
+                    quantity = calcQty.coerceAtLeast(1),
+                    targetLadder = targetLevels,
+                    stopLossLadder = slLevels
+                )
+                onSetBreakoutOrder(order)
+                Toast.makeText(context, "Breakout order set for $cleanSymbol on Slot #$slotIndex", Toast.LENGTH_SHORT).show()
+            },
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = GoldAccent)
+        ) {
+            Text("Set Breakout Trigger Order", fontWeight = FontWeight.Bold, color = Color.Black)
+        }
+    }
+}
+
+@Composable
+private fun ArjunPendingBreakoutSection(
+    slotIndex: Int,
+    breakout: ArjunBreakoutOrder,
+    onCancelOrder: () -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Surface(
+            shape = RoundedCornerShape(8.dp),
+            color = DarkCard,
+            border = BorderStroke(0.8.dp, GoldAccent.copy(alpha = 0.5f))
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(10.dp),
+                verticalArrangement = Arrangement.spacedBy(5.dp)
+            ) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Symbol:", fontSize = 11.5.sp, color = TextMuted)
+                    Text(breakout.symbol, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, color = GoldAccent)
+                }
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Breakout Trigger Price:", fontSize = 11.5.sp, color = TextMuted)
+                    Text("₹${String.format(Locale.US, "%.2f", breakout.triggerPrice)}", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                }
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Target Allocation:", fontSize = 11.5.sp, color = TextMuted)
+                    Text("₹${String.format(Locale.US, "%,.2f", breakout.allocationAmount)} (~${breakout.quantity} shares)", fontSize = 11.5.sp, color = TextPrimary)
+                }
+                if (breakout.targetLadder.isNotEmpty()) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("TP Ladder:", fontSize = 11.sp, color = ProfitGreen)
+                        Text(
+                            breakout.targetLadder.joinToString(", ") { "TP${it.levelIndex}: ₹${it.triggerPrice} (${it.allocationPct.toInt()}%)" },
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = ProfitGreen
+                        )
+                    }
+                }
+                if (breakout.stopLossLadder.isNotEmpty()) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("SL Ladder:", fontSize = 11.sp, color = LossRed)
+                        Text(
+                            breakout.stopLossLadder.joinToString(", ") { "SL${it.levelIndex}: ₹${it.triggerPrice} (${it.allocationPct.toInt()}%)" },
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = LossRed
+                        )
+                    }
+                }
+            }
+        }
+
+        Text(
+            text = "⏳ Awaiting Live Market Trigger: System will automatically execute buy and occupy Slot #$slotIndex when live price reaches or exceeds ₹${breakout.triggerPrice}.",
+            fontSize = 10.sp,
+            color = GoldAccent
+        )
+
+        Button(
+            onClick = onCancelOrder,
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = LossRed)
+        ) {
+            Text("Cancel Breakout Order (Free Slot)", fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+private fun ArjunOccupiedSlotSection(
+    slotIndex: Int,
+    stock: ArjunStockItem,
+    onPartialBuy: (id: String, quantity: Int, price: Double) -> Unit,
+    onPartialSell: (id: String, quantity: Int, price: Double) -> Unit,
+    onFullSell: () -> Unit,
+    onUpdateLadders: (id: String, targetLadder: List<ArjunLadderLevel>, stopLossLadder: List<ArjunLadderLevel>) -> Unit
+) {
+    val context = LocalContext.current
+    var buyQtyText by remember(stock.id) { mutableStateOf("5") }
+    var sellQtyText by remember(stock.id, stock.quantity) { mutableStateOf(kotlin.math.max(1, stock.quantity / 2).toString()) }
+
+    var tp1PriceText by remember(stock.id) {
+        val tp1 = stock.targetLadder.firstOrNull { it.levelIndex == 1 }?.triggerPrice ?: stock.target1
+        mutableStateOf(if (tp1 > 0.0) tp1.toString() else "")
+    }
+    var tp1PctText by remember(stock.id) {
+        val pct = stock.targetLadder.firstOrNull { it.levelIndex == 1 }?.allocationPct ?: 50.0
+        mutableStateOf(pct.toInt().toString())
+    }
+    var tp2PriceText by remember(stock.id) {
+        val tp2 = stock.targetLadder.firstOrNull { it.levelIndex == 2 }?.triggerPrice ?: stock.target2
+        mutableStateOf(if (tp2 > 0.0) tp2.toString() else "")
+    }
+    var tp2PctText by remember(stock.id) {
+        val pct = stock.targetLadder.firstOrNull { it.levelIndex == 2 }?.allocationPct ?: 50.0
+        mutableStateOf(pct.toInt().toString())
+    }
+    var slPriceText by remember(stock.id) {
+        val sl = stock.stopLossLadder.firstOrNull { it.levelIndex == 1 }?.triggerPrice ?: stock.stopLoss
+        mutableStateOf(if (sl > 0.0) sl.toString() else "")
+    }
+    var slPctText by remember(stock.id) {
+        val pct = stock.stopLossLadder.firstOrNull { it.levelIndex == 1 }?.allocationPct ?: 100.0
+        mutableStateOf(pct.toInt().toString())
+    }
+
+    val maxBudget = 100_000.0
+    val invested = stock.investedValue
+    val remainingBudget = (maxBudget - invested).coerceAtLeast(0.0)
+    val cmp = if (stock.currentPrice > 0.0) stock.currentPrice else stock.entryPrice
+    val maxBuyQty = if (cmp > 0.0) (remainingBudget / cmp).toInt() else 0
+
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        // Position Financial Overview Card
+        Surface(
+            shape = RoundedCornerShape(8.dp),
+            color = DarkCard,
+            border = BorderStroke(0.8.dp, DarkCardBorder)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(10.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(stock.symbol, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = TextPrimary)
+                    Text("Qty: ${stock.quantity} shares", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = AccentIndigoLight)
+                }
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Invested: ${stock.formattedInvestedValue}", fontSize = 11.sp, color = TextSecondary)
+                    Text("CMP: ${stock.formattedCurrentPrice}", fontSize = 11.sp, color = TextPrimary, fontWeight = FontWeight.SemiBold)
+                }
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Value: ${stock.formattedCurrentValue}", fontSize = 11.sp, color = TextSecondary)
+                    val pnlCol = if (stock.isProfit) ProfitGreen else LossRed
+                    Text("P&L: ${stock.formattedPnl} (${stock.formattedPnlPct})", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = pnlCol)
+                }
+
+                // Slot utilization progress bar
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    val progress = (invested / maxBudget).toFloat().coerceIn(0f, 1f)
+                    LinearProgressIndicator(
+                        progress = { progress },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(6.dp)
+                            .clip(RoundedCornerShape(3.dp)),
+                        color = if (progress >= 0.99f) GoldAccent else AccentIndigo,
+                        trackColor = DarkCardBorder
+                    )
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Slot Used: ₹${invested.toInt()}", fontSize = 9.sp, color = TextMuted)
+                        Text("Headroom: ₹${remainingBudget.toInt()} (Max ₹1L)", fontSize = 9.sp, color = TextMuted)
+                    }
+                }
+            }
+        }
+
+        // Action 1: Partial Buy
+        Surface(
+            shape = RoundedCornerShape(8.dp),
+            color = DarkCard,
+            border = BorderStroke(0.8.dp, DarkCardBorder)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(10.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
                 Text(
-                    text = stock.formattedPnlPct,
-                    fontSize = 6.8.sp,
+                    text = "PARTIAL BUY (Add to Position)",
+                    fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
-                    color = if (stock.isProfit) ProfitGreen else LossRed,
-                    maxLines = 1
+                    color = AccentIndigoLight
                 )
-            } else {
+                if (maxBuyQty > 0) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = buyQtyText,
+                            onValueChange = { buyQtyText = it },
+                            label = { Text("Shares (Max $maxBuyQty)", fontSize = 10.sp) },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true,
+                            modifier = Modifier.weight(1f),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = AccentIndigo,
+                                unfocusedBorderColor = DarkCardBorder,
+                                focusedTextColor = TextPrimary,
+                                unfocusedTextColor = TextPrimary
+                            )
+                        )
+                        Button(
+                            onClick = {
+                                val bQty = buyQtyText.toIntOrNull() ?: 0
+                                if (bQty <= 0 || bQty > maxBuyQty) {
+                                    Toast.makeText(context, "Enter shares between 1 and $maxBuyQty", Toast.LENGTH_SHORT).show()
+                                    return@Button
+                                }
+                                onPartialBuy(stock.id, bQty, cmp)
+                                Toast.makeText(context, "Bought $bQty shares of ${stock.symbol}", Toast.LENGTH_SHORT).show()
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = AccentIndigo)
+                        ) {
+                            Text("+ Buy", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    // Quick add buttons
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        listOf(1, 5, 10, maxBuyQty).distinct().filter { it <= maxBuyQty }.forEach { q ->
+                            AssistChip(
+                                onClick = { buyQtyText = q.toString() },
+                                label = { Text("+$q", fontSize = 10.sp) },
+                                colors = AssistChipDefaults.assistChipColors(labelColor = TextSecondary)
+                            )
+                        }
+                    }
+                } else {
+                    Text(
+                        text = "₹1,00,000 slot budget fully reached. Cannot add more shares.",
+                        fontSize = 10.sp,
+                        color = TextMuted
+                    )
+                }
+            }
+        }
+
+        // Action 2: Partial Sell & Full Sell
+        Surface(
+            shape = RoundedCornerShape(8.dp),
+            color = DarkCard,
+            border = BorderStroke(0.8.dp, DarkCardBorder)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(10.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
                 Text(
-                    text = "READY",
-                    fontSize = 7.5.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = TextMuted
+                    text = "PARTIAL SELL & FULL EXIT",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = GoldAccent
                 )
+
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    listOf(25, 50, 75).forEach { pct ->
+                        val calc = kotlin.math.max(1, (stock.quantity * pct / 100.0).toInt())
+                        AssistChip(
+                            onClick = { sellQtyText = calc.toString() },
+                            label = { Text("$pct% ($calc)", fontSize = 10.sp) },
+                            colors = AssistChipDefaults.assistChipColors(labelColor = TextSecondary)
+                        )
+                    }
+                    AssistChip(
+                        onClick = { sellQtyText = stock.quantity.toString() },
+                        label = { Text("100% (${stock.quantity})", fontSize = 10.sp) },
+                        colors = AssistChipDefaults.assistChipColors(labelColor = LossRed)
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = sellQtyText,
+                        onValueChange = { sellQtyText = it },
+                        label = { Text("Sell Shares (1..${stock.quantity})", fontSize = 10.sp) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = GoldAccent,
+                            unfocusedBorderColor = DarkCardBorder,
+                            focusedTextColor = TextPrimary,
+                            unfocusedTextColor = TextPrimary
+                        )
+                    )
+                    Button(
+                        onClick = {
+                            val sQty = sellQtyText.toIntOrNull() ?: 0
+                            if (sQty <= 0 || sQty > stock.quantity) {
+                                Toast.makeText(context, "Enter shares between 1 and ${stock.quantity}", Toast.LENGTH_SHORT).show()
+                                return@Button
+                            }
+                            if (sQty == stock.quantity) {
+                                onFullSell()
+                            } else {
+                                onPartialSell(stock.id, sQty, cmp)
+                            }
+                            Toast.makeText(context, "Executed sell for $sQty shares", Toast.LENGTH_SHORT).show()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = GoldAccent)
+                    ) {
+                        Text("Sell", fontWeight = FontWeight.Bold, color = Color.Black)
+                    }
+                }
+
+                Button(
+                    onClick = {
+                        onFullSell()
+                        Toast.makeText(context, "Exited position for ${stock.symbol}", Toast.LENGTH_SHORT).show()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = LossRed)
+                ) {
+                    Text("Exit 100% Position (Liberate Slot)", fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+
+        // Action 3: Target & SL Ladder Edit
+        Surface(
+            shape = RoundedCornerShape(8.dp),
+            color = DarkCard,
+            border = BorderStroke(0.8.dp, DarkCardBorder)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(10.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
                 Text(
-                    text = "₹50k",
-                    fontSize = 7.sp,
-                    color = TextMuted
+                    text = "MULTI-TIER TARGET & STOP LOSS LADDERS",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = ProfitGreen
                 )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    OutlinedTextField(
+                        value = tp1PriceText,
+                        onValueChange = { tp1PriceText = it },
+                        label = { Text("TP1 ₹", fontSize = 9.sp) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = ProfitGreen,
+                            unfocusedBorderColor = DarkCardBorder,
+                            focusedTextColor = TextPrimary,
+                            unfocusedTextColor = TextPrimary
+                        )
+                    )
+                    OutlinedTextField(
+                        value = tp1PctText,
+                        onValueChange = { tp1PctText = it },
+                        label = { Text("TP1 %", fontSize = 9.sp) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        modifier = Modifier.weight(0.7f),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = ProfitGreen,
+                            unfocusedBorderColor = DarkCardBorder,
+                            focusedTextColor = TextPrimary,
+                            unfocusedTextColor = TextPrimary
+                        )
+                    )
+                    OutlinedTextField(
+                        value = tp2PriceText,
+                        onValueChange = { tp2PriceText = it },
+                        label = { Text("TP2 ₹", fontSize = 9.sp) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = ProfitGreen,
+                            unfocusedBorderColor = DarkCardBorder,
+                            focusedTextColor = TextPrimary,
+                            unfocusedTextColor = TextPrimary
+                        )
+                    )
+                    OutlinedTextField(
+                        value = tp2PctText,
+                        onValueChange = { tp2PctText = it },
+                        label = { Text("TP2 %", fontSize = 9.sp) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        modifier = Modifier.weight(0.7f),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = ProfitGreen,
+                            unfocusedBorderColor = DarkCardBorder,
+                            focusedTextColor = TextPrimary,
+                            unfocusedTextColor = TextPrimary
+                        )
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    OutlinedTextField(
+                        value = slPriceText,
+                        onValueChange = { slPriceText = it },
+                        label = { Text("SL ₹", fontSize = 9.sp) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = LossRed,
+                            unfocusedBorderColor = DarkCardBorder,
+                            focusedTextColor = TextPrimary,
+                            unfocusedTextColor = TextPrimary
+                        )
+                    )
+                    OutlinedTextField(
+                        value = slPctText,
+                        onValueChange = { slPctText = it },
+                        label = { Text("SL %", fontSize = 9.sp) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        modifier = Modifier.weight(0.7f),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = LossRed,
+                            unfocusedBorderColor = DarkCardBorder,
+                            focusedTextColor = TextPrimary,
+                            unfocusedTextColor = TextPrimary
+                        )
+                    )
+                }
+
+                Button(
+                    onClick = {
+                        val tpLevels = mutableListOf<ArjunLadderLevel>()
+                        val t1 = tp1PriceText.toDoubleOrNull()
+                        val t1p = tp1PctText.toDoubleOrNull() ?: 50.0
+                        if (t1 != null && t1 > 0.0) {
+                            tpLevels.add(ArjunLadderLevel(levelIndex = 1, triggerPrice = t1, allocationPct = t1p))
+                        }
+                        val t2 = tp2PriceText.toDoubleOrNull()
+                        val t2p = tp2PctText.toDoubleOrNull() ?: 50.0
+                        if (t2 != null && t2 > 0.0) {
+                            tpLevels.add(ArjunLadderLevel(levelIndex = 2, triggerPrice = t2, allocationPct = t2p))
+                        }
+                        val slLevels = mutableListOf<ArjunLadderLevel>()
+                        val s1 = slPriceText.toDoubleOrNull()
+                        val s1p = slPctText.toDoubleOrNull() ?: 100.0
+                        if (s1 != null && s1 > 0.0) {
+                            slLevels.add(ArjunLadderLevel(levelIndex = 1, triggerPrice = s1, allocationPct = s1p))
+                        }
+                        onUpdateLadders(stock.id, tpLevels, slLevels)
+                        Toast.makeText(context, "Updated ladders for ${stock.symbol}", Toast.LENGTH_SHORT).show()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = ProfitGreen)
+                ) {
+                    Text("Update Ladders", fontWeight = FontWeight.Bold)
+                }
             }
         }
     }
@@ -1936,8 +2926,7 @@ fun ArjunAutoExecutionBanner(
     }
 }
 
-// ─────────────────────────────────────────────────────────────
-// 10. Arjun 5L Strategy Approval Confirmation Dialog
+// 10. Arjun 7L Strategy Approval Confirmation Dialog
 // ─────────────────────────────────────────────────────────────
 @Composable
 fun ArjunApprovalDialog(
@@ -1947,8 +2936,9 @@ fun ArjunApprovalDialog(
     onDismiss: () -> Unit
 ) {
     val effectiveEntry = if (stock.entryPrice > 0.0) stock.entryPrice else stock.currentPrice
-    val qty = if (effectiveEntry > 0.0) kotlin.math.max(1, (50_000.0 / effectiveEntry).toInt()) else 10
-    val approxTotal = com.example.varalakshmiportfolio.model.ArjunMoneyMath.multiplyPaise(qty, effectiveEntry)
+    val canAfford = effectiveEntry <= 100_000.0 && effectiveEntry > 0.0
+    val qty = if (canAfford) (100_000.0 / effectiveEntry).toInt() else 0
+    val approxTotal = if (canAfford) com.example.varalakshmiportfolio.model.ArjunMoneyMath.multiplyPaise(qty, effectiveEntry) else 0.0
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1957,7 +2947,7 @@ fun ArjunApprovalDialog(
                 Text(text = "🏹", fontSize = 18.sp)
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "Approve for 5L Strategy",
+                    text = "Approve for 7L Strategy",
                     fontWeight = FontWeight.Bold,
                     color = TextPrimary
                 )
@@ -1966,9 +2956,10 @@ fun ArjunApprovalDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
-                    text = "Deploy approx ₹50,000 into next available slot for ${stock.symbol}.",
+                    text = if (canAfford) "Deploy approx ₹1,00,000 into next available slot for ${stock.symbol}."
+                    else "Cannot allocate ${stock.symbol}: Single share price exceeds ₹1,00,000 slot budget.",
                     fontSize = 12.sp,
-                    color = TextSecondary
+                    color = if (canAfford) TextSecondary else LossRed
                 )
 
                 Surface(
@@ -1992,7 +2983,7 @@ fun ArjunApprovalDialog(
                         }
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text("Auto-Sized Quantity:", fontSize = 11.sp, color = TextMuted)
-                            Text("$qty shares", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = AccentIndigoLight)
+                            Text(if (canAfford) "$qty shares" else "0 shares (exceeds budget)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = if (canAfford) AccentIndigoLight else LossRed)
                         }
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text("Approx Slot Investment:", fontSize = 11.sp, color = TextMuted)
@@ -2037,9 +3028,10 @@ fun ArjunApprovalDialog(
                     onConfirm()
                     onDismiss()
                 },
+                enabled = canAfford,
                 colors = ButtonDefaults.buttonColors(containerColor = AccentIndigo)
             ) {
-                Text("Confirm & Buy (₹50k Slot)", fontWeight = FontWeight.Bold)
+                Text("Confirm & Buy (₹1L Slot)", fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {

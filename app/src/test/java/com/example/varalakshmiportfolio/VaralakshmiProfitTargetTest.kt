@@ -22,6 +22,7 @@ class VaralakshmiProfitTargetTest {
 
     @After
     fun tearDown() {
+        VaralakshmiRepository.resetIoDispatcherForTesting()
         VaralakshmiRepository.resetCacheDirectoryForTesting()
         tempCacheDir.deleteRecursively()
     }
@@ -114,23 +115,27 @@ class VaralakshmiProfitTargetTest {
         repository.resetToDefaultSeed()
 
         val viewModel = VaralakshmiViewModel(repository = repository, autoRefresh = false)
-        val initialPos = viewModel.uiState.value.positions.first { it.symbol == "STLNETWORK" }
-        assertTrue("Initial state must be target enabled", initialPos.isProfitTargetEnabled)
+        try {
+            val initialPos = viewModel.uiState.value.positions.first { it.symbol == "STLNETWORK" }
+            assertTrue("Initial state must be target enabled", initialPos.isProfitTargetEnabled)
 
-        // 1. Toggle OFF
-        viewModel.toggleProfitTarget(initialPos)
-        val stateAfterToggle1 = viewModel.uiState.value
-        val posAfterToggle1 = stateAfterToggle1.positions.first { it.symbol == "STLNETWORK" }
-        assertFalse("StateFlow must immediately update isProfitTargetEnabled to false without jitter", posAfterToggle1.isProfitTargetEnabled)
-        assertNotNull("Snackbar message should confirm toggle", stateAfterToggle1.snackbarMessage)
-        assertTrue("Snackbar should indicate Uncapped Runner", stateAfterToggle1.snackbarMessage!!.contains("Uncapped Runner"))
+            // 1. Toggle OFF
+            viewModel.toggleProfitTarget(initialPos)
+            val stateAfterToggle1 = viewModel.uiState.value
+            val posAfterToggle1 = stateAfterToggle1.positions.first { it.symbol == "STLNETWORK" }
+            assertFalse("StateFlow must immediately update isProfitTargetEnabled to false without jitter", posAfterToggle1.isProfitTargetEnabled)
+            assertNotNull("Snackbar message should confirm toggle", stateAfterToggle1.snackbarMessage)
+            assertTrue("Snackbar should indicate Uncapped Runner", stateAfterToggle1.snackbarMessage!!.contains("Uncapped Runner"))
 
-        // 2. Toggle back ON using symbol overload
-        viewModel.toggleProfitTarget("STLNETWORK")
-        val stateAfterToggle2 = viewModel.uiState.value
-        val posAfterToggle2 = stateAfterToggle2.positions.first { it.symbol == "STLNETWORK" }
-        assertTrue("StateFlow must immediately update isProfitTargetEnabled to true", posAfterToggle2.isProfitTargetEnabled)
-        assertTrue("Snackbar should indicate +35% Cap", stateAfterToggle2.snackbarMessage!!.contains("+35% Cap"))
+            // 2. Toggle back ON using symbol overload
+            viewModel.toggleProfitTarget("STLNETWORK")
+            val stateAfterToggle2 = viewModel.uiState.value
+            val posAfterToggle2 = stateAfterToggle2.positions.first { it.symbol == "STLNETWORK" }
+            assertTrue("StateFlow must immediately update isProfitTargetEnabled to true", posAfterToggle2.isProfitTargetEnabled)
+            assertTrue("Snackbar should indicate +35% Cap", stateAfterToggle2.snackbarMessage!!.contains("+35% Cap"))
+        } finally {
+            viewModel.stopPeriodicSync()
+        }
     }
 
     @Test
@@ -138,11 +143,15 @@ class VaralakshmiProfitTargetTest {
         val repository = VaralakshmiRepository()
         repository.resetToDefaultSeed()
         val viewModel = VaralakshmiViewModel(repository = repository, autoRefresh = false)
-        val initialSize = viewModel.uiState.value.positions.size
+        try {
+            val initialSize = viewModel.uiState.value.positions.size
 
-        // Attempt to toggle unknown symbol
-        viewModel.toggleProfitTarget("NONEXISTENT_STOCK")
-        assertEquals("Positions list must remain unaffected", initialSize, viewModel.uiState.value.positions.size)
+            // Attempt to toggle unknown symbol
+            viewModel.toggleProfitTarget("NONEXISTENT_STOCK")
+            assertEquals("Positions list must remain unaffected", initialSize, viewModel.uiState.value.positions.size)
+        } finally {
+            viewModel.stopPeriodicSync()
+        }
     }
 
     @Test
@@ -242,22 +251,25 @@ class VaralakshmiProfitTargetTest {
         val repository = VaralakshmiRepository()
         repository.resetToDefaultSeed()
         val viewModel = VaralakshmiViewModel(repository = repository, autoRefresh = false)
+        try {
+            val initialPos = viewModel.uiState.value.positions.first { it.symbol == "STLNETWORK" }
+            assertTrue(initialPos.isProfitTargetEnabled)
 
-        val initialPos = viewModel.uiState.value.positions.first { it.symbol == "STLNETWORK" }
-        assertTrue(initialPos.isProfitTargetEnabled)
+            // Rapid 10-toggle stress
+            for (i in 1..10) {
+                val currentPos = viewModel.uiState.value.positions.first { it.symbol == "STLNETWORK" }
+                val expected = (i % 2 == 0) // even index -> true, odd index -> false
+                viewModel.toggleProfitTarget(currentPos)
+                val updated = viewModel.uiState.value.positions.first { it.symbol == "STLNETWORK" }
+                assertEquals("Toggle $i should match expected state", expected, updated.isProfitTargetEnabled)
+            }
 
-        // Rapid 10-toggle stress
-        for (i in 1..10) {
-            val currentPos = viewModel.uiState.value.positions.first { it.symbol == "STLNETWORK" }
-            val expected = (i % 2 == 0) // even index -> true, odd index -> false
-            viewModel.toggleProfitTarget(currentPos)
-            val updated = viewModel.uiState.value.positions.first { it.symbol == "STLNETWORK" }
-            assertEquals("Toggle $i should match expected state", expected, updated.isProfitTargetEnabled)
+            // Final state after 10 toggles should be true (even number of toggles)
+            val finalPos = viewModel.uiState.value.positions.first { it.symbol == "STLNETWORK" }
+            assertTrue(finalPos.isProfitTargetEnabled)
+        } finally {
+            viewModel.stopPeriodicSync()
         }
-
-        // Final state after 10 toggles should be true (even number of toggles)
-        val finalPos = viewModel.uiState.value.positions.first { it.symbol == "STLNETWORK" }
-        assertTrue(finalPos.isProfitTargetEnabled)
     }
 
     @Test
@@ -292,17 +304,21 @@ class VaralakshmiProfitTargetTest {
 
         val repository = VaralakshmiRepository()
         val viewModel = VaralakshmiViewModel(repository = repository, autoRefresh = false)
-        // Inject positions into ViewModel state
-        viewModel.setPositionsForTesting(listOf(pos1, pos2))
+        try {
+            // Inject positions into ViewModel state
+            viewModel.setPositionsForTesting(listOf(pos1, pos2))
 
-        // Toggle STOCK_A only
-        viewModel.toggleProfitTarget(pos1)
+            // Toggle STOCK_A only
+            viewModel.toggleProfitTarget(pos1)
 
-        val updatedA = viewModel.uiState.value.positions.first { it.symbol == "STOCK_A" }
-        val updatedB = viewModel.uiState.value.positions.first { it.symbol == "STOCK_B" }
+            val updatedA = viewModel.uiState.value.positions.first { it.symbol == "STOCK_A" }
+            val updatedB = viewModel.uiState.value.positions.first { it.symbol == "STOCK_B" }
 
-        assertFalse("STOCK_A should be toggled to false", updatedA.isProfitTargetEnabled)
-        assertTrue("STOCK_B must NOT be affected even though both had empty positionId", updatedB.isProfitTargetEnabled)
+            assertFalse("STOCK_A should be toggled to false", updatedA.isProfitTargetEnabled)
+            assertTrue("STOCK_B must NOT be affected even though both had empty positionId", updatedB.isProfitTargetEnabled)
+        } finally {
+            viewModel.stopPeriodicSync()
+        }
     }
 
     @Test

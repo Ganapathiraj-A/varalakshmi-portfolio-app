@@ -39,6 +39,7 @@ class VeeraLakshmiAdversarialStressTest {
 
     @After
     fun tearDown() {
+        VaralakshmiRepository.resetIoDispatcherForTesting()
         VaralakshmiRepository.resetCacheDirectoryForTesting()
         tempDir.deleteRecursively()
     }

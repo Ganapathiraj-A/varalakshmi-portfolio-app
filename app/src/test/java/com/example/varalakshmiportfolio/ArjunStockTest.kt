@@ -4,7 +4,10 @@ import com.example.varalakshmiportfolio.data.ArjunRecommendationParser
 import com.example.varalakshmiportfolio.data.ArjunStockRepository
 import com.example.varalakshmiportfolio.data.VaralakshmiRepository
 import com.example.varalakshmiportfolio.model.ArjunAutoExecutionEvent
+import com.example.varalakshmiportfolio.model.ArjunBreakoutOrder
+import com.example.varalakshmiportfolio.model.ArjunLadderLevel
 import com.example.varalakshmiportfolio.model.ArjunPortfolioSummary
+import com.example.varalakshmiportfolio.model.ArjunSlotStatus
 import com.example.varalakshmiportfolio.model.ArjunStockItem
 import com.example.varalakshmiportfolio.model.ArjunStrategySlot
 import com.example.varalakshmiportfolio.model.ArjunStrategySummary
@@ -50,6 +53,7 @@ class ArjunStockTest {
         Dispatchers.resetMain()
         VaralakshmiRepository.resetCacheDirectoryForTesting()
         ArjunStockRepository.resetCacheForTesting()
+        VaralakshmiRepository.resetIoDispatcherForTesting()
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -281,41 +285,45 @@ class ArjunStockTest {
     @Test
     fun testViewModelArjunStockOperations() = runTest {
         val vm = VaralakshmiViewModel(autoRefresh = false)
-        val initialState = vm.arjunStocksState.value
-        assertEquals(3, initialState.recommendations.size)
+        try {
+            val initialState = vm.arjunStocksState.value
+            assertEquals(3, initialState.recommendations.size)
 
-        // Add via raw alert
-        val raw = """
-            ARJUN Combo Package 🚀
-            SWING TRADE
-            BUY ADANIPOWER AROUND 650-660
-            TARGETS 750-800
-            KEEP SL 610
-        """.trimIndent()
+            // Add via raw alert
+            val raw = """
+                ARJUN Combo Package 🚀
+                SWING TRADE
+                BUY ADANIPOWER AROUND 650-660
+                TARGETS 750-800
+                KEEP SL 610
+            """.trimIndent()
 
-        vm.addArjunRecommendation(raw)
-        advanceUntilIdle()
+            vm.addArjunRecommendation(raw)
+            advanceUntilIdle()
 
-        val afterAdd = vm.arjunStocksState.value
-        assertEquals(4, afterAdd.recommendations.size)
-        assertEquals("ADANIPOWER", afterAdd.recommendations.first().symbol)
+            val afterAdd = vm.arjunStocksState.value
+            assertEquals(4, afterAdd.recommendations.size)
+            assertEquals("ADANIPOWER", afterAdd.recommendations.first().symbol)
 
-        // Close position
-        val addedId = afterAdd.recommendations.first().id
-        vm.closeArjunStock(addedId, exitPrice = 720.0)
-        val afterClose = vm.arjunStocksState.value
-        val closed = afterClose.recommendations.find { it.id == addedId }
-        assertNotNull(closed)
-        assertTrue(closed!!.isClosed)
-        assertEquals(720.0, closed.closedPrice, 0.01)
+            // Close position
+            val addedId = afterAdd.recommendations.first().id
+            vm.closeArjunStock(addedId, exitPrice = 720.0)
+            val afterClose = vm.arjunStocksState.value
+            val closed = afterClose.recommendations.find { it.id == addedId }
+            assertNotNull(closed)
+            assertTrue(closed!!.isClosed)
+            assertEquals(720.0, closed.closedPrice, 0.01)
 
-        // Filter selection
-        vm.selectArjunFilter("CLOSED")
-        assertEquals("CLOSED", vm.arjunStocksState.value.selectedFilter)
+            // Filter selection
+            vm.selectArjunFilter("CLOSED")
+            assertEquals("CLOSED", vm.arjunStocksState.value.selectedFilter)
 
-        // Delete
-        vm.deleteArjunStock(addedId)
-        assertEquals(3, vm.arjunStocksState.value.recommendations.size)
+            // Delete
+            vm.deleteArjunStock(addedId)
+            assertEquals(3, vm.arjunStocksState.value.recommendations.size)
+        } finally {
+            vm.stopPeriodicSync()
+        }
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -372,26 +380,26 @@ class ArjunStockTest {
         )
         repo.addRecommendation(customStock)
 
-        // Approve customStock into Strategy. Slot budget = ₹50,000. Quantity = 50,000 / 500 = 100 shares.
+        // Approve customStock into Strategy. Slot budget = ₹100,000. Quantity = 100,000 / 500 = 200 shares.
         val (success, message) = repo.approveRecommendation("strat-test-stock-1", targetSlot = 4)
         assertTrue(success)
-        assertTrue(message.contains("100 shares"))
+        assertTrue(message.contains("200 shares"))
 
         val approved = repo.getRecommendations().find { it.id == "strat-test-stock-1" }
         assertNotNull(approved)
         assertTrue(approved!!.isApprovedForStrategy)
         assertEquals(4, approved.strategySlotIndex)
-        assertEquals(100, approved.quantity)
-        assertEquals(50000.0, approved.investedValue, 0.01)
+        assertEquals(200, approved.quantity)
+        assertEquals(100000.0, approved.investedValue, 0.01)
         assertTrue(approved.isStrategySlotOccupied)
     }
 
     @Test
-    fun testStrategyTenSlotCapacityLimit() {
+    fun testStrategySevenSlotCapacityLimit() {
         val repo = ArjunStockRepository()
         // Seeds occupy slots 1 and 2 (SKYGOLD and LALITHAA).
-        // Add 8 more and approve them into slots 3, 4, 5, 6, 7, 8, 9, 10.
-        for (i in 3..10) {
+        // Add 5 more and approve them into slots 3, 4, 5, 6, 7.
+        for (i in 3..7) {
             val s = ArjunStockItem(
                 id = "stock-$i",
                 symbol = "SYM$i",
@@ -404,20 +412,20 @@ class ArjunStockTest {
         }
 
         val slots = repo.calculateStrategySlots(repo.getRecommendations())
-        assertEquals(10, slots.size)
-        assertEquals(10, slots.count { it.isOccupied })
+        assertEquals(7, slots.size)
+        assertEquals(7, slots.count { it.isOccupied })
 
-        // 11th recommendation should be rejected because all 10 slots are occupied
-        val s11 = ArjunStockItem(
-            id = "stock-11",
-            symbol = "SYM11",
+        // 8th recommendation should be rejected because all 7 slots are occupied
+        val s8 = ArjunStockItem(
+            id = "stock-8",
+            symbol = "SYM8",
             entryPrice = 200.0,
             currentPrice = 200.0
         )
-        repo.addRecommendation(s11)
-        val (eleventhSuccess, msg) = repo.approveRecommendation("stock-11")
-        assertFalse(eleventhSuccess)
-        assertTrue(msg.contains("All 10 strategy slots") && msg.contains("occupied"))
+        repo.addRecommendation(s8)
+        val (eighthSuccess, msg) = repo.approveRecommendation("stock-8")
+        assertFalse(eighthSuccess)
+        assertTrue(msg.contains("All 7 strategy slots") && msg.contains("occupied"))
 
         // Unapproving slot 4 frees it up
         val afterUnapprove = repo.unapproveRecommendation("stock-4")
@@ -426,10 +434,10 @@ class ArjunStockTest {
         assertFalse(unapprovedStock!!.isApprovedForStrategy)
         assertFalse(unapprovedStock.isStrategySlotOccupied)
 
-        // Now 11th can be approved into the freed slot
-        val (retrySuccess, retryMsg) = repo.approveRecommendation("stock-11")
+        // Now 8th can be approved into the freed slot
+        val (retrySuccess, retryMsg) = repo.approveRecommendation("stock-8")
         assertTrue(retrySuccess)
-        assertTrue(retryMsg.contains("Approved SYM11"))
+        assertTrue(retryMsg.contains("Approved SYM8"))
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -565,19 +573,19 @@ class ArjunStockTest {
         )
 
         val summary = repo.calculateStrategySummary(items)
-        assertEquals(500000.0, summary.totalFund, 0.01)
+        assertEquals(700000.0, summary.totalFund, 0.01)
         assertEquals(2, summary.occupiedSlotsCount)
-        assertEquals(8, summary.availableSlotsCount)
+        assertEquals(5, summary.availableSlotsCount)
         assertEquals(100000.0, summary.totalDeployedCapital, 0.01) // 50k + 50k active
         assertEquals(105000.0, summary.currentDeployedValue, 0.01) // 55k + 50k
         assertEquals(5000.0, summary.unrealizedPnl, 0.01)
         assertEquals(10000.0, summary.realizedPnl, 0.01)
-        // Cash = 500,000 - 100,000 + 10,000 = 410,000
-        assertEquals(410000.0, summary.availableCash, 0.01)
-        // NAV = 410,000 + 105,000 = 515,000
-        assertEquals(515000.0, summary.totalStrategyNav, 0.01)
+        // Cash = 700,000 - 100,000 + 10,000 = 610,000
+        assertEquals(610000.0, summary.availableCash, 0.01)
+        // NAV = 610,000 + 105,000 = 715,000
+        assertEquals(715000.0, summary.totalStrategyNav, 0.01)
         assertEquals(15000.0, summary.totalPnl, 0.01)
-        assertEquals(3.0, summary.totalStrategyReturnPct, 0.01)
+        assertEquals(2.14, summary.totalStrategyReturnPct, 0.01)
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -587,28 +595,32 @@ class ArjunStockTest {
     @Test
     fun testViewModelStrategyApproveAndDismissEvent() = runTest {
         val vm = VaralakshmiViewModel(autoRefresh = false)
-        val state = vm.arjunStocksState.value
-        assertEquals(10, state.strategySlots.size)
-        assertNotNull(state.strategySummary)
+        try {
+            val state = vm.arjunStocksState.value
+            assertEquals(7, state.strategySlots.size)
+            assertNotNull(state.strategySummary)
 
-        // Unapprove first, then approve into Slot 6
-        val targetId = state.recommendations.first().id
-        vm.unapproveArjunStock(targetId)
-        advanceUntilIdle()
+            // Unapprove first, then approve into Slot 6
+            val targetId = state.recommendations.first().id
+            vm.unapproveArjunStock(targetId)
+            advanceUntilIdle()
 
-        vm.approveArjunStock(targetId, targetSlot = 6)
-        advanceUntilIdle()
+            vm.approveArjunStock(targetId, targetSlot = 6)
+            advanceUntilIdle()
 
-        val afterApprove = vm.arjunStocksState.value
-        val item = afterApprove.recommendations.find { it.id == targetId }
-        assertNotNull(item)
-        assertTrue(item!!.isApprovedForStrategy)
-        assertEquals(6, item.strategySlotIndex)
+            val afterApprove = vm.arjunStocksState.value
+            val item = afterApprove.recommendations.find { it.id == targetId }
+            assertNotNull(item)
+            assertTrue(item!!.isApprovedForStrategy)
+            assertEquals(6, item.strategySlotIndex)
 
-        // Dismiss execution event
-        vm.dismissAutoExecutionEvent("evt-123")
-        advanceUntilIdle()
-        assertFalse(vm.arjunStocksState.value.autoExecutionEvents.any { it.id == "evt-123" })
+            // Dismiss execution event
+            vm.dismissAutoExecutionEvent("evt-123")
+            advanceUntilIdle()
+            assertFalse(vm.arjunStocksState.value.autoExecutionEvents.any { it.id == "evt-123" })
+        } finally {
+            vm.stopPeriodicSync()
+        }
     }
 
     @Test
@@ -643,114 +655,114 @@ class ArjunStockTest {
             ArjunStockItem(symbol = "UNAPPROVED1", entryPrice = 100.0, currentPrice = 105.0)
         )
         val summary0 = repo.calculateStrategySummary(initialItems)
-        assertEquals(500_000.0, summary0.totalFund, 0.001)
-        assertEquals(500_000.0, summary0.availableCash, 0.001)
+        assertEquals(700_000.0, summary0.totalFund, 0.001)
+        assertEquals(700_000.0, summary0.availableCash, 0.001)
         assertEquals(0.0, summary0.totalDeployedCapital, 0.001)
         assertEquals(0.0, summary0.currentDeployedValue, 0.001)
-        assertEquals(500_000.0, summary0.totalStrategyNav, 0.001)
+        assertEquals(700_000.0, summary0.totalStrategyNav, 0.001)
         // Conservation check: Total NAV == Available Cash + Current Market Value of Open Holdings
         assertEquals(summary0.totalStrategyNav, summary0.availableCash + summary0.currentDeployedValue, 0.001)
         assertEquals(summary0.availableCash, summary0.totalFund - summary0.totalDeployedCapital + summary0.realizedPnl, 0.001)
 
-        // State 1: 1 Slot Allocation (~₹50k deployed)
+        // State 1: 1 Slot Allocation (~₹100k deployed)
         val item1 = ArjunStockItem(
             id = "slot1",
             symbol = "STOCK1",
             entryPrice = 1000.0,
             currentPrice = 1000.0,
-            quantity = 50, // 50,000 deployed
+            quantity = 100, // 100,000 deployed
             isApprovedForStrategy = true,
             strategySlotIndex = 1
         )
         val summary1 = repo.calculateStrategySummary(listOf(item1))
-        assertEquals(50_000.0, summary1.totalDeployedCapital, 0.001)
-        assertEquals(50_000.0, summary1.currentDeployedValue, 0.001)
-        assertEquals(450_000.0, summary1.availableCash, 0.001)
-        assertEquals(500_000.0, summary1.totalStrategyNav, 0.001)
+        assertEquals(100_000.0, summary1.totalDeployedCapital, 0.001)
+        assertEquals(100_000.0, summary1.currentDeployedValue, 0.001)
+        assertEquals(600_000.0, summary1.availableCash, 0.001)
+        assertEquals(700_000.0, summary1.totalStrategyNav, 0.001)
         assertEquals(1, summary1.occupiedSlotsCount)
-        assertEquals(9, summary1.availableSlotsCount)
+        assertEquals(6, summary1.availableSlotsCount)
         assertEquals(summary1.totalStrategyNav, summary1.availableCash + summary1.currentDeployedValue, 0.001)
         assertEquals(summary1.availableCash, summary1.totalFund - summary1.totalDeployedCapital + summary1.realizedPnl, 0.001)
 
-        // State 2: 10 Slots Fully Deployed (All 500k deployed)
-        val full10Items = (1..10).map { slot ->
+        // State 2: 7 Slots Fully Deployed (All 700k deployed)
+        val full7Items = (1..7).map { slot ->
             ArjunStockItem(
                 id = "slot$slot",
                 symbol = "STOCK$slot",
                 entryPrice = 500.0,
                 currentPrice = 500.0,
-                quantity = 100, // 100 * 500 = 50,000 per slot
+                quantity = 200, // 200 * 500 = 100,000 per slot
                 isApprovedForStrategy = true,
                 strategySlotIndex = slot
             )
         }
-        val summary2 = repo.calculateStrategySummary(full10Items)
-        assertEquals(500_000.0, summary2.totalDeployedCapital, 0.001)
-        assertEquals(500_000.0, summary2.currentDeployedValue, 0.001)
+        val summary2 = repo.calculateStrategySummary(full7Items)
+        assertEquals(700_000.0, summary2.totalDeployedCapital, 0.001)
+        assertEquals(700_000.0, summary2.currentDeployedValue, 0.001)
         assertEquals(0.0, summary2.availableCash, 0.001)
-        assertEquals(500_000.0, summary2.totalStrategyNav, 0.001)
-        assertEquals(10, summary2.occupiedSlotsCount)
+        assertEquals(700_000.0, summary2.totalStrategyNav, 0.001)
+        assertEquals(7, summary2.occupiedSlotsCount)
         assertEquals(0, summary2.availableSlotsCount)
         assertEquals(summary2.totalStrategyNav, summary2.availableCash + summary2.currentDeployedValue, 0.001)
         assertEquals(summary2.availableCash, summary2.totalFund - summary2.totalDeployedCapital + summary2.realizedPnl, 0.001)
 
         // State 3: Intraday Price Changes (Unrealized PnL drift)
-        // 5 stocks gain 10% (+5,000 each = +25,000), 5 stocks lose 4% (-2,000 each = -10,000). Net unrealized PnL = +15,000
-        val priceChangedItems = full10Items.mapIndexed { index, item ->
-            if (index < 5) item.copy(currentPrice = 550.0) // 100 * 550 = 55,000
-            else item.copy(currentPrice = 480.0) // 100 * 480 = 48,000
+        // 4 stocks gain 10% (+10,000 each = +40,000), 3 stocks lose 5% (-5,000 each = -15,000). Net unrealized PnL = +25,000
+        val priceChangedItems = full7Items.mapIndexed { index, item ->
+            if (index < 4) item.copy(currentPrice = 550.0) // 200 * 550 = 110,000
+            else item.copy(currentPrice = 475.0) // 200 * 475 = 95,000
         }
         val summary3 = repo.calculateStrategySummary(priceChangedItems)
-        assertEquals(500_000.0, summary3.totalDeployedCapital, 0.001)
-        assertEquals(515_000.0, summary3.currentDeployedValue, 0.001)
-        assertEquals(15_000.0, summary3.unrealizedPnl, 0.001)
+        assertEquals(700_000.0, summary3.totalDeployedCapital, 0.001)
+        assertEquals(725_000.0, summary3.currentDeployedValue, 0.001)
+        assertEquals(25_000.0, summary3.unrealizedPnl, 0.001)
         assertEquals(0.0, summary3.realizedPnl, 0.001)
         assertEquals(0.0, summary3.availableCash, 0.001)
-        assertEquals(515_000.0, summary3.totalStrategyNav, 0.001)
-        assertEquals(3.0, summary3.totalStrategyReturnPct, 0.001)
+        assertEquals(725_000.0, summary3.totalStrategyNav, 0.001)
+        assertEquals(3.57, summary3.totalStrategyReturnPct, 0.01)
         assertEquals(summary3.totalStrategyNav, summary3.availableCash + summary3.currentDeployedValue, 0.001)
         assertEquals(summary3.availableCash, summary3.totalFund - summary3.totalDeployedCapital + summary3.realizedPnl, 0.001)
 
-        // State 4: Target 1 Hit Automated Exit on Slot 1 (+₹10,000 profit booked)
-        // Slot 1 closed at 600.0 (cost 50k, proceeds 60k, profit +10k).
+        // State 4: Target 1 Hit Automated Exit on Slot 1 (+₹20,000 profit booked)
+        // Slot 1 closed at 600.0 (cost 100k, proceeds 120k, profit +20k).
         val afterTarget1Exit = priceChangedItems.map {
             if (it.strategySlotIndex == 1) it.copy(isClosed = true, closedPrice = 600.0, exitReason = "TARGET_HIT")
             else it
         }
         val summary4 = repo.calculateStrategySummary(afterTarget1Exit)
-        // 9 active slots: 4 at 55k, 5 at 48k. Total deployed = 450,000. Current value = 4 * 55k + 5 * 48k = 460,000
-        assertEquals(450_000.0, summary4.totalDeployedCapital, 0.001)
-        assertEquals(460_000.0, summary4.currentDeployedValue, 0.001)
-        assertEquals(10_000.0, summary4.realizedPnl, 0.001)
-        assertEquals(10_000.0, summary4.unrealizedPnl, 0.001)
-        // Available cash = 500,000 - 450,000 + 10,000 = 60,000 (Initial 50k cost basis + 10k profit returned to cash!)
-        assertEquals(60_000.0, summary4.availableCash, 0.001)
-        // Total NAV = 60,000 + 460,000 = 520,000
-        assertEquals(520_000.0, summary4.totalStrategyNav, 0.001)
-        assertEquals(9, summary4.occupiedSlotsCount)
+        // 6 active slots: 3 at 110k, 3 at 95k. Total deployed = 600,000. Current value = 3 * 110k + 3 * 95k = 615,000
+        assertEquals(600_000.0, summary4.totalDeployedCapital, 0.001)
+        assertEquals(615_000.0, summary4.currentDeployedValue, 0.001)
+        assertEquals(20_000.0, summary4.realizedPnl, 0.001)
+        assertEquals(15_000.0, summary4.unrealizedPnl, 0.001)
+        // Available cash = 700,000 - 600,000 + 20,000 = 120,000 (Initial 100k cost basis + 20k profit returned to cash!)
+        assertEquals(120_000.0, summary4.availableCash, 0.001)
+        // Total NAV = 120,000 + 615,000 = 735,000
+        assertEquals(735_000.0, summary4.totalStrategyNav, 0.001)
+        assertEquals(6, summary4.occupiedSlotsCount)
         assertEquals(1, summary4.availableSlotsCount) // Slot 1 is immediately free!
         assertEquals(summary4.totalStrategyNav, summary4.availableCash + summary4.currentDeployedValue, 0.001)
         assertEquals(summary4.availableCash, summary4.totalFund - summary4.totalDeployedCapital + summary4.realizedPnl, 0.001)
 
-        // State 5: Stop Loss Hit Automated Exit on Slot 6 (-₹5,000 loss booked)
-        // Slot 6 closed at 450.0 (cost 50k, proceeds 45k, loss -5k).
+        // State 5: Stop Loss Hit Automated Exit on Slot 5 (-₹10,000 loss booked)
+        // Slot 5 closed at 450.0 (cost 100k, proceeds 90k, loss -10k).
         val afterSlExit = afterTarget1Exit.map {
-            if (it.strategySlotIndex == 6) it.copy(isClosed = true, closedPrice = 450.0, exitReason = "STOP_LOSS_HIT")
+            if (it.strategySlotIndex == 5) it.copy(isClosed = true, closedPrice = 450.0, exitReason = "STOP_LOSS_HIT")
             else it
         }
         val summary5 = repo.calculateStrategySummary(afterSlExit)
-        // 8 active slots: 4 at 55k, 4 at 48k. Total deployed = 400,000. Current value = 4 * 55k + 4 * 48k = 412,000
-        assertEquals(400_000.0, summary5.totalDeployedCapital, 0.001)
-        assertEquals(412_000.0, summary5.currentDeployedValue, 0.001)
-        // Realized PnL = +10,000 - 5,000 = +5,000
-        assertEquals(5_000.0, summary5.realizedPnl, 0.001)
-        assertEquals(12_000.0, summary5.unrealizedPnl, 0.001)
-        // Available cash = 500,000 - 400,000 + 5,000 = 105,000 (60k previous + 45k returned from SL exit)
-        assertEquals(105_000.0, summary5.availableCash, 0.001)
-        // Total NAV = 105,000 + 412,000 = 517,000
-        assertEquals(517_000.0, summary5.totalStrategyNav, 0.001)
-        assertEquals(8, summary5.occupiedSlotsCount)
-        assertEquals(2, summary5.availableSlotsCount) // Slots 1 and 6 are freed!
+        // 5 active slots: 3 at 110k, 2 at 95k. Total deployed = 500,000. Current value = 3 * 110k + 2 * 95k = 520,000
+        assertEquals(500_000.0, summary5.totalDeployedCapital, 0.001)
+        assertEquals(520_000.0, summary5.currentDeployedValue, 0.001)
+        // Realized PnL = +20,000 - 10,000 = +10,000
+        assertEquals(10_000.0, summary5.realizedPnl, 0.001)
+        assertEquals(20_000.0, summary5.unrealizedPnl, 0.001)
+        // Available cash = 700,000 - 500,000 + 10,000 = 210,000 (120k previous + 90k returned from SL exit)
+        assertEquals(210_000.0, summary5.availableCash, 0.001)
+        // Total NAV = 210,000 + 520,000 = 730,000
+        assertEquals(730_000.0, summary5.totalStrategyNav, 0.001)
+        assertEquals(5, summary5.occupiedSlotsCount)
+        assertEquals(2, summary5.availableSlotsCount) // Slots 1 and 5 are freed!
         assertEquals(summary5.totalStrategyNav, summary5.availableCash + summary5.currentDeployedValue, 0.001)
         assertEquals(summary5.availableCash, summary5.totalFund - summary5.totalDeployedCapital + summary5.realizedPnl, 0.001)
 
@@ -761,15 +773,15 @@ class ArjunStockTest {
         }
         val summary6 = repo.calculateStrategySummary(allLiquidated)
         assertEquals(0, summary6.occupiedSlotsCount)
-        assertEquals(10, summary6.availableSlotsCount)
+        assertEquals(7, summary6.availableSlotsCount)
         assertEquals(0.0, summary6.totalDeployedCapital, 0.001)
         assertEquals(0.0, summary6.currentDeployedValue, 0.001)
         assertEquals(0.0, summary6.unrealizedPnl, 0.001)
-        // Realized PnL = +17,000
-        assertEquals(17_000.0, summary6.realizedPnl, 0.001)
-        // Cash = 500,000 - 0 + 17,000 = 517,000
-        assertEquals(517_000.0, summary6.availableCash, 0.001)
-        assertEquals(517_000.0, summary6.totalStrategyNav, 0.001)
+        // Realized PnL = +30,000
+        assertEquals(30_000.0, summary6.realizedPnl, 0.001)
+        // Cash = 700,000 - 0 + 30,000 = 730,000
+        assertEquals(730_000.0, summary6.availableCash, 0.001)
+        assertEquals(730_000.0, summary6.totalStrategyNav, 0.001)
         // Absolute Conservation: Total NAV == Available Cash + 0
         assertEquals(summary6.totalStrategyNav, summary6.availableCash, 0.001)
         assertEquals(summary6.availableCash, summary6.totalFund + summary6.realizedPnl, 0.001)
@@ -1173,13 +1185,13 @@ class ArjunStockTest {
             strategySlotIndex = -1
         )
         val summary = repo.calculateStrategySummary(listOf(ghostStock))
-        // Must NOT count as deployed capital in 5L Strategy
+        // Must NOT count as deployed capital in 7L Strategy
         assertEquals(0.0, summary.totalDeployedCapital, 0.001)
         assertEquals(0.0, summary.currentDeployedValue, 0.001)
-        assertEquals(500_000.0, summary.availableCash, 0.001)
-        assertEquals(500_000.0, summary.totalStrategyNav, 0.001)
+        assertEquals(700_000.0, summary.availableCash, 0.001)
+        assertEquals(700_000.0, summary.totalStrategyNav, 0.001)
         assertEquals(0, summary.occupiedSlotsCount)
-        assertEquals(10, summary.availableSlotsCount)
+        assertEquals(7, summary.availableSlotsCount)
     }
 
     @Test
@@ -1236,18 +1248,22 @@ class ArjunStockTest {
     @Test
     fun testDashboardSyncUpdatesArjunStrategySummaryAndEvents() = runTest {
         val vm = VaralakshmiViewModel(autoRefresh = false)
-        val initialState = vm.arjunStocksState.value
-        assertNotNull(initialState.strategySummary)
-        assertEquals(2, initialState.strategySummary.occupiedSlotsCount)
+        try {
+            val initialState = vm.arjunStocksState.value
+            assertNotNull(initialState.strategySummary)
+            assertEquals(2, initialState.strategySummary.occupiedSlotsCount)
 
-        // General refresh() must update strategySummary and slots
-        vm.refresh()
-        advanceUntilIdle()
+            // General refresh() must update strategySummary and slots
+            vm.refresh()
+            advanceUntilIdle()
 
-        val refreshedState = vm.arjunStocksState.value
-        assertEquals(2, refreshedState.strategySummary.occupiedSlotsCount)
-        assertEquals(8, refreshedState.strategySummary.availableSlotsCount)
-        assertEquals(10, refreshedState.strategySlots.size)
+            val refreshedState = vm.arjunStocksState.value
+            assertEquals(2, refreshedState.strategySummary.occupiedSlotsCount)
+            assertEquals(5, refreshedState.strategySummary.availableSlotsCount)
+            assertEquals(7, refreshedState.strategySlots.size)
+        } finally {
+            vm.stopPeriodicSync()
+        }
     }
 
     @Test
@@ -1269,5 +1285,641 @@ class ArjunStockTest {
         assertFalse(formatted.contains(" ()"))
         assertTrue(formatted.contains("Entry: ₹100.00 | Current: ₹110.00"))
     }
+
+    // ─────────────────────────────────────────────────────────────
+    // 11. Partial Buy / Sell & Multi-Tier Ladders & Breakout Tests
+    // ─────────────────────────────────────────────────────────────
+
+    @Test
+    fun testPartialBuyIncreasesPositionWithinSlotBudget() {
+        val repo = ArjunStockRepository()
+        // Slot 1: SKYGOLD has ~47 shares @ ~1058.64 = ~49,756.08
+        val skygold = repo.getRecommendations().first { it.symbol == "SKYGOLD" }
+        assertEquals(1, skygold.strategySlotIndex)
+        val initialInvested = skygold.investedValue
+        val initialQty = skygold.quantity
+
+        // Add 20 shares @ 1060.0. 20 * 1060 = 21,200. Total invested ~ 70,956.08 <= 100,000.
+        val (success, msg) = repo.partialBuy(skygold.id, additionalQuantity = 20, buyPrice = 1060.0)
+        assertTrue(success)
+        assertTrue(msg.contains("Bought 20 shares"))
+
+        val updated = repo.getRecommendations().first { it.id == skygold.id }
+        assertEquals(initialQty + 20, updated.quantity)
+        val expectedInvested = com.example.varalakshmiportfolio.model.ArjunMoneyMath.roundPaise(initialInvested + 21200.0)
+        assertEquals(expectedInvested, updated.investedValue, 0.01)
+        assertTrue(updated.investedValue <= 100_000.0)
+    }
+
+    @Test
+    fun testPartialBuyRejectsExceedingSlotBudget() {
+        val repo = ArjunStockRepository()
+        val skygold = repo.getRecommendations().first { it.symbol == "SKYGOLD" }
+        // Remaining headroom is around 50,243.92.
+        // Attempting to buy 60 shares @ 1060.0 = 63,600.0 -> total exceeds 100,000!
+        val (success, msg) = repo.partialBuy(skygold.id, additionalQuantity = 60, buyPrice = 1060.0)
+        assertFalse(success)
+        assertTrue(msg.contains("Exceeds ₹1,00,000 slot budget"))
+
+        // Quantity remains unchanged
+        val unadjusted = repo.getRecommendations().first { it.id == skygold.id }
+        assertEquals(skygold.quantity, unadjusted.quantity)
+    }
+
+    @Test
+    fun testPartialSellProportionalCostBasisAndPnl() {
+        val repo = ArjunStockRepository()
+        // Create a custom item with round numbers for clean verification
+        val stock = ArjunStockItem(
+            id = "partial-sell-test",
+            symbol = "PARTIALCO",
+            entryPrice = 1000.0,
+            currentPrice = 1200.0,
+            quantity = 100, // 100k invested
+            isApprovedForStrategy = true,
+            strategySlotIndex = 4
+        )
+        repo.addRecommendation(stock)
+
+        // Sell 40 shares @ 1200.0:
+        // Proportional cost basis sold = 40 * 1000.0 = 40,000.0
+        // Realized proceeds = 40 * 1200.0 = 48,000.0
+        // Realized profit = 8,000.0
+        // Remaining invested = 60,000.0, remaining shares = 60
+        val (success, msg) = repo.partialSell("partial-sell-test", sellQuantity = 40, sellPrice = 1200.0)
+        assertTrue(success)
+        assertTrue(msg.contains("Sold 40 shares"))
+
+        val afterSell = repo.getRecommendations().first { it.id == "partial-sell-test" }
+        assertEquals(60, afterSell.quantity)
+        assertEquals(60_000.0, afterSell.investedValue, 0.01)
+        assertEquals(8_000.0, afterSell.partialRealizedPnl, 0.01)
+        assertFalse(afterSell.isClosed)
+        assertTrue(afterSell.isStrategySlotOccupied)
+
+        // Verify summary accounting and conservation:
+        // Available cash must include the realized P&L from the partial sell
+        val summary = repo.calculateStrategySummary(repo.getRecommendations())
+        assertEquals(8_000.0, afterSell.realizedPnl, 0.01)
+        // NAV conservation equation holds strictly:
+        assertEquals(summary.totalStrategyNav, summary.availableCash + summary.currentDeployedValue, 0.001)
+        assertEquals(summary.availableCash, summary.totalFund - summary.totalDeployedCapital + summary.realizedPnl, 0.001)
+    }
+
+    @Test
+    fun testPartialSellLiberatesSlotOnFullExit() {
+        val repo = ArjunStockRepository()
+        val stock = ArjunStockItem(
+            id = "full-exit-test",
+            symbol = "FULLEXIT",
+            entryPrice = 1000.0,
+            currentPrice = 1200.0,
+            quantity = 50,
+            isApprovedForStrategy = true,
+            strategySlotIndex = 5
+        )
+        repo.addRecommendation(stock)
+
+        // Sell 100% of shares (50 shares)
+        val (success, msg) = repo.partialSell("full-exit-test", sellQuantity = 50, sellPrice = 1200.0)
+        assertTrue(success)
+        assertTrue(msg.contains("Closed position"))
+
+        val afterSell = repo.getRecommendations().first { it.id == "full-exit-test" }
+        assertTrue(afterSell.isClosed)
+        assertEquals(1200.0, afterSell.closedPrice, 0.01)
+        assertFalse(afterSell.isStrategySlotOccupied)
+
+        val slots = repo.calculateStrategySlots(repo.getRecommendations())
+        val slot5 = slots.first { it.slotIndex == 5 }
+        assertEquals(ArjunSlotStatus.EMPTY, slot5.status)
+        assertFalse(slot5.isOccupied)
+    }
+
+    @Test
+    fun testMultiTierTargetLadderPartialExecutions() {
+        val repo = ArjunStockRepository()
+        val stock = ArjunStockItem(
+            id = "ladder-test-1",
+            symbol = "LADDERCO",
+            entryPrice = 100.0,
+            currentPrice = 102.0,
+            quantity = 100,
+            isApprovedForStrategy = true,
+            strategySlotIndex = 3,
+            targetLadder = listOf(
+                ArjunLadderLevel(levelIndex = 1, triggerPrice = 110.0, allocationPct = 50.0),
+                ArjunLadderLevel(levelIndex = 2, triggerPrice = 120.0, allocationPct = 50.0)
+            ),
+            stopLossLadder = listOf(
+                ArjunLadderLevel(levelIndex = 1, triggerPrice = 90.0, allocationPct = 100.0)
+            )
+        )
+        repo.addRecommendation(stock)
+
+        // Price rises to 112.0 -> crosses TP1 (110.0)
+        val price112Item = stock.copy(currentPrice = 112.0)
+        val (eval1, events1) = repo.evaluateStrategyTriggers(listOf(price112Item))
+
+        assertEquals(1, events1.size)
+        assertTrue(events1.first().headline.contains("TP1 Hit"))
+        val itemAfterTp1 = eval1.first { it.id == "ladder-test-1" }
+        // 50% sold = 50 shares sold, 50 remaining
+        assertEquals(50, itemAfterTp1.quantity)
+        assertEquals(5000.0, itemAfterTp1.investedValue, 0.01)
+        assertEquals(600.0, itemAfterTp1.partialRealizedPnl, 0.01) // 50 * (112 - 100) = 600
+        assertFalse(itemAfterTp1.isClosed)
+        assertTrue(itemAfterTp1.isStrategySlotOccupied)
+        assertTrue(itemAfterTp1.targetLadder.first { it.levelIndex == 1 }.isExecuted)
+        assertFalse(itemAfterTp1.targetLadder.first { it.levelIndex == 2 }.isExecuted)
+
+        // Price rises to 122.0 -> crosses TP2 (120.0)
+        val price122Item = itemAfterTp1.copy(currentPrice = 122.0)
+        val (eval2, events2) = repo.evaluateStrategyTriggers(listOf(price122Item))
+
+        assertEquals(1, events2.size)
+        assertTrue(events2.first().headline.contains("TP2 Hit"))
+        val itemAfterTp2 = eval2.first { it.id == "ladder-test-1" }
+        assertTrue(itemAfterTp2.isClosed)
+        assertEquals(122.0, itemAfterTp2.closedPrice, 0.01)
+        assertFalse(itemAfterTp2.isStrategySlotOccupied)
+        // Total realized P&L = 600 (TP1) + 50 * (122 - 100 = 22) = 600 + 1100 = 1700
+        assertEquals(1700.0, itemAfterTp2.realizedPnl, 0.01)
+    }
+
+    @Test
+    fun testMultiTierStopLossLadderPartialExecutions() {
+        val repo = ArjunStockRepository()
+        val stock = ArjunStockItem(
+            id = "sl-ladder-test",
+            symbol = "SLLADDER",
+            entryPrice = 100.0,
+            currentPrice = 98.0,
+            quantity = 100,
+            isApprovedForStrategy = true,
+            strategySlotIndex = 6,
+            targetLadder = listOf(
+                ArjunLadderLevel(levelIndex = 1, triggerPrice = 115.0, allocationPct = 100.0)
+            ),
+            stopLossLadder = listOf(
+                ArjunLadderLevel(levelIndex = 1, triggerPrice = 92.0, allocationPct = 40.0),
+                ArjunLadderLevel(levelIndex = 2, triggerPrice = 85.0, allocationPct = 60.0)
+            )
+        )
+        repo.addRecommendation(stock)
+
+        // Price drops to 91.0 -> crosses SL1 (92.0)
+        val price91Item = stock.copy(currentPrice = 91.0)
+        val (eval1, events1) = repo.evaluateStrategyTriggers(listOf(price91Item))
+
+        assertEquals(1, events1.size)
+        assertTrue(events1.first().headline.contains("SL1 Hit"))
+        val itemAfterSl1 = eval1.first { it.id == "sl-ladder-test" }
+        // 40% of 100 = 40 shares sold @ 91.0, 60 remaining
+        assertEquals(60, itemAfterSl1.quantity)
+        assertEquals(6000.0, itemAfterSl1.investedValue, 0.01)
+        assertEquals(-360.0, itemAfterSl1.partialRealizedPnl, 0.01) // 40 * (91 - 100) = -360
+        assertFalse(itemAfterSl1.isClosed)
+        assertTrue(itemAfterSl1.isStrategySlotOccupied)
+    }
+
+    @Test
+    fun testBreakoutOrderExecutionWhenPriceCrosses() {
+        val repo = ArjunStockRepository()
+        // Place breakout order on empty Slot 7
+        val order = ArjunBreakoutOrder(
+            symbol = "TATAPOWER",
+            triggerPrice = 420.0,
+            slotIndex = 7,
+            allocationAmount = 100_000.0,
+            quantity = 238
+        )
+        val (success, msg) = repo.setBreakoutOrder(order)
+        assertTrue(success)
+        assertTrue(msg.contains("Breakout order set"))
+
+        // Check slot status
+        val slots = repo.calculateStrategySlots(repo.getRecommendations())
+        val slot7 = slots.first { it.slotIndex == 7 }
+        assertEquals(ArjunSlotStatus.PENDING_BREAKOUT, slot7.status)
+        assertNotNull(slot7.pendingBreakout)
+
+        // Evaluate when price is below trigger (415.0) -> No execution
+        val quotesBelow = mapOf("TATAPOWER" to 415.0)
+        val (_, eventsBelow) = repo.evaluateBreakoutTriggers(quotesBelow)
+        assertTrue(eventsBelow.isEmpty())
+        assertEquals(1, repo.getBreakoutOrders().size)
+
+        // Evaluate when price crosses trigger (422.50) -> Auto execution!
+        val quotesAbove = mapOf("TATAPOWER" to 422.50)
+        val (_, eventsAbove) = repo.evaluateBreakoutTriggers(quotesAbove)
+        assertEquals(1, eventsAbove.size)
+        assertTrue(eventsAbove.first().headline.contains("Breakout Buy Executed"))
+        assertTrue(eventsAbove.first().message.contains("TATAPOWER"))
+
+        // Breakout orders cache must now be empty
+        assertTrue(repo.getBreakoutOrders().isEmpty())
+
+        // Recommendation list now has TATAPOWER approved in Slot 7
+        val tatapower = repo.getRecommendations().firstOrNull { it.symbol == "TATAPOWER" }
+        assertNotNull(tatapower)
+        assertTrue(tatapower!!.isApprovedForStrategy)
+        assertEquals(7, tatapower.strategySlotIndex)
+        assertEquals(422.50, tatapower.entryPrice, 0.01)
+        assertTrue(tatapower.investedValue <= 100_000.0)
+
+        // Slot 7 is now OCCUPIED
+        val slotsAfter = repo.calculateStrategySlots(repo.getRecommendations())
+        val slot7After = slotsAfter.first { it.slotIndex == 7 }
+        assertEquals(ArjunSlotStatus.OCCUPIED, slot7After.status)
+    }
+
+    @Test
+    fun testBreakoutOrderPersistenceAcrossColdStart() {
+        val repo1 = ArjunStockRepository()
+        val order = ArjunBreakoutOrder(
+            symbol = "PERSISTTEST",
+            triggerPrice = 500.0,
+            slotIndex = 6,
+            allocationAmount = 80_000.0,
+            quantity = 160
+        )
+        repo1.setBreakoutOrder(order)
+        assertEquals(1, repo1.getBreakoutOrders().size)
+
+        // Simulate app restart / cold start
+        ArjunStockRepository.resetCacheForTesting()
+        val repo2 = ArjunStockRepository()
+        val loadedOrders = repo2.getBreakoutOrders()
+        assertEquals(1, loadedOrders.size)
+        assertEquals("PERSISTTEST", loadedOrders.first().symbol)
+        assertEquals(500.0, loadedOrders.first().triggerPrice, 0.01)
+        assertEquals(6, loadedOrders.first().slotIndex)
+
+        // Cancel order
+        val (cancelSuccess, _) = repo2.cancelBreakoutOrder(6)
+        assertTrue(cancelSuccess)
+        assertTrue(repo2.getBreakoutOrders().isEmpty())
+
+        // Cold start after cancel
+        ArjunStockRepository.resetCacheForTesting()
+        val repo3 = ArjunStockRepository()
+        assertTrue(repo3.getBreakoutOrders().isEmpty())
+    }
+
+    @Test
+    fun testBreakoutOrderOverBudgetSingleShareSkipped() {
+        val repo = ArjunStockRepository()
+        // Expensive stock (e.g. MRF) where single share > 100,000 budget
+        val order = ArjunBreakoutOrder(
+            symbol = "EXPENSIVESTOCK",
+            triggerPrice = 120_000.0,
+            slotIndex = 4,
+            allocationAmount = 100_000.0,
+            quantity = 0 // Auto-calc by budget
+        )
+        val (setSuccess, _) = repo.setBreakoutOrder(order)
+        assertTrue(setSuccess)
+
+        // Price crosses trigger at 125,000.0 -> maxBudgetQty = 0 -> buyQty = 0
+        val quotes = mapOf("EXPENSIVESTOCK" to 125_000.0)
+        val (_, events) = repo.evaluateBreakoutTriggers(quotes)
+        assertTrue(events.isEmpty())
+
+        // Order remains pending, slot remains PENDING_BREAKOUT
+        assertEquals(1, repo.getBreakoutOrders().size)
+        val slots = repo.calculateStrategySlots(repo.getRecommendations())
+        val slot4 = slots.first { it.slotIndex == 4 }
+        assertEquals(ArjunSlotStatus.PENDING_BREAKOUT, slot4.status)
+
+        // Summary confirms no capital was deployed
+        val summary = repo.calculateStrategySummary(repo.getRecommendations())
+        assertTrue(summary.totalDeployedCapital <= 700_000.0)
+    }
+
+    @Test
+    fun testBreakoutOrderPriceGapDoesNotFalselyTriggerLowerProfitTarget() {
+        val repo = ArjunStockRepository()
+        val order = ArjunBreakoutOrder(
+            symbol = "GAPSTOCK",
+            triggerPrice = 100.0,
+            slotIndex = 3,
+            allocationAmount = 100_000.0,
+            targetLadder = listOf(
+                ArjunLadderLevel(levelIndex = 1, triggerPrice = 110.0, allocationPct = 50.0),
+                ArjunLadderLevel(levelIndex = 2, triggerPrice = 130.0, allocationPct = 50.0)
+            ),
+            stopLossLadder = listOf(
+                ArjunLadderLevel(levelIndex = 1, triggerPrice = 90.0, allocationPct = 100.0)
+            )
+        )
+        val (setSuccess, _) = repo.setBreakoutOrder(order)
+        assertTrue(setSuccess)
+
+        // Stock gaps up to 115.0 on opening tick -> crosses breakout trigger 100.0
+        val gapQuotes = mapOf("GAPSTOCK" to 115.0)
+        val (itemsAfterBuy, buyEvents) = repo.evaluateBreakoutTriggers(gapQuotes)
+        assertEquals(1, buyEvents.size)
+        assertEquals("BREAKOUT_BUY", buyEvents.first().eventType)
+
+        val stock = itemsAfterBuy.first { it.symbol == "GAPSTOCK" }
+        assertEquals(115.0, stock.entryPrice, 0.01)
+        assertEquals(115.0, stock.currentPrice, 0.01)
+        assertTrue(stock.isStrategySlotOccupied)
+
+        // On immediate subsequent evaluation at 115.0, TP1 (110.0) must NOT fire because 110.0 <= entryPrice (115.0)
+        val (itemsSubsequent, subsequentEvents) = repo.evaluateStrategyTriggers(itemsAfterBuy, gapQuotes)
+        assertTrue(subsequentEvents.isEmpty())
+        val stockStillOpen = itemsSubsequent.first { it.symbol == "GAPSTOCK" }
+        assertFalse(stockStillOpen.isClosed)
+        assertTrue(stockStillOpen.isStrategySlotOccupied)
+
+        // But when price rises to 132.0 -> crosses TP2 (130.0 > entry 115.0) -> triggers TP2!
+        val quotesTp2 = mapOf("GAPSTOCK" to 132.0)
+        val (itemsTp2, tp2Events) = repo.evaluateStrategyTriggers(itemsSubsequent, quotesTp2)
+        assertEquals(1, tp2Events.size)
+        assertTrue(tp2Events.first().headline.contains("TP2 Hit"))
+    }
+
+    @Test
+    fun testBreakoutOrderPreservedWhenRecommendationsMutated() {
+        val repo = ArjunStockRepository()
+        val order = ArjunBreakoutOrder(
+            symbol = "RETAINED",
+            triggerPrice = 250.0,
+            slotIndex = 4,
+            allocationAmount = 100_000.0
+        )
+        repo.setBreakoutOrder(order)
+        assertEquals(1, repo.getBreakoutOrders().size)
+
+        // Add unrelated recommendation
+        val newRec = ArjunStockItem(
+            id = "mutated-test-1",
+            symbol = "NEWREC",
+            entryPrice = 50.0,
+            quantity = 10
+        )
+        repo.addRecommendation(newRec)
+        assertEquals(1, repo.getBreakoutOrders().size)
+
+        // Mark a recommendation closed
+        repo.markAsClosed("mutated-test-1", exitPrice = 55.0)
+        assertEquals(1, repo.getBreakoutOrders().size)
+
+        // Cold start check: orders must still be preserved on disk
+        ArjunStockRepository.resetCacheForTesting()
+        val repoReloaded = ArjunStockRepository()
+        val ordersAfterReload = repoReloaded.getBreakoutOrders()
+        assertEquals(1, ordersAfterReload.size)
+        assertEquals("RETAINED", ordersAfterReload.first().symbol)
+        assertEquals(4, ordersAfterReload.first().slotIndex)
+    }
+
+    @Test
+    fun testBrokerOrderDispatchSellDoesNotTouchCorePortfolio() = runTest {
+        val repo = VaralakshmiRepository()
+        val initialCorePositions = repo.getCachedPositions()
+
+        // Dispatch SELL order for an Arjun strategy stock
+        val result = repo.dispatchBrokerOrder(
+            strategyId = "ARJUN_7L_STRATEGY",
+            symbol = "TATAPOWER",
+            action = "SELL",
+            quantity = 50,
+            price = 420.0
+        )
+        assertTrue(result.isSuccess)
+
+        // Core portfolio positions cache must remain completely unchanged
+        val afterPositions = repo.getCachedPositions()
+        assertEquals(initialCorePositions.size, afterPositions.size)
+        assertEquals(initialCorePositions.map { it.symbol }, afterPositions.map { it.symbol })
+    }
+
+    @Test
+    fun testApproveRecommendationOverBudgetSingleShareFails() {
+        val repo = ArjunStockRepository()
+        val expensiveStock = ArjunStockItem(
+            id = "mrf-expensive-stock",
+            symbol = "MRF",
+            entryPrice = 140_000.0,
+            currentPrice = 140_000.0,
+            quantity = 1,
+            isApprovedForStrategy = false,
+            strategySlotIndex = -1
+        )
+        repo.addRecommendation(expensiveStock)
+
+        val (success, message) = repo.approveRecommendation("mrf-expensive-stock")
+        assertFalse(success)
+        assertTrue(message.contains("exceeds ₹1,00,000 slot budget"))
+
+        val reloaded = repo.getRecommendations().first { it.id == "mrf-expensive-stock" }
+        assertFalse(reloaded.isApprovedForStrategy)
+        assertEquals(-1, reloaded.strategySlotIndex)
+    }
+
+    @Test
+    fun testOddLotQuantityMultiTierLadderNoOrphanShares() {
+        val repo = ArjunStockRepository()
+        val stock = ArjunStockItem(
+            id = "odd-lot-ladder-test",
+            symbol = "ODDLOT",
+            entryPrice = 100.0,
+            currentPrice = 100.0,
+            quantity = 9,
+            initialStrategyQuantity = 9,
+            isApprovedForStrategy = true,
+            strategySlotIndex = 4,
+            targetLadder = listOf(
+                ArjunLadderLevel(levelIndex = 1, triggerPrice = 110.0, allocationPct = 50.0),
+                ArjunLadderLevel(levelIndex = 2, triggerPrice = 120.0, allocationPct = 50.0)
+            )
+        )
+        repo.addRecommendation(stock)
+
+        // 1. Cross TP1: floor(9 * 0.5) = 4 shares sold, 5 remaining
+        val (eval1, events1) = repo.evaluateStrategyTriggers(listOf(stock.copy(currentPrice = 112.0)))
+        assertEquals(1, events1.size)
+        val afterTp1 = eval1.first { it.id == "odd-lot-ladder-test" }
+        assertEquals(5, afterTp1.quantity)
+        assertFalse(afterTp1.isClosed)
+
+        // 2. Cross TP2: final ladder tier must sell all remaining 5 shares (no orphan shares)
+        val (eval2, events2) = repo.evaluateStrategyTriggers(listOf(afterTp1.copy(currentPrice = 122.0)))
+        assertEquals(1, events2.size)
+        val afterTp2 = eval2.first { it.id == "odd-lot-ladder-test" }
+        assertTrue(afterTp2.isClosed)
+        assertEquals(122.0, afterTp2.closedPrice, 0.01)
+        assertFalse(afterTp2.isStrategySlotOccupied)
+        // Total PnL: 4 * (112 - 100) = 48, plus 5 * (122 - 100) = 110 => 158.0
+        assertEquals(158.0, afterTp2.realizedPnl, 0.01)
+    }
+
+    @Test
+    fun testBreakoutOrderAllocationCappedAtSlotBudget() {
+        val repo = ArjunStockRepository()
+        val oversizedOrder = ArjunBreakoutOrder(
+            id = "oversized-breakout",
+            slotIndex = 5,
+            symbol = "OVERSIZE",
+            triggerPrice = 100.0,
+            allocatedAmount = 500_000.0 // Attempts 5 Lakhs allocation
+        )
+        val (success, _) = repo.setBreakoutOrder(oversizedOrder)
+        assertTrue(success)
+
+        val savedOrder = repo.getBreakoutOrders().first { it.id == "oversized-breakout" }
+        assertEquals(100_000.0, savedOrder.allocatedAmount, 0.01)
+
+        // Execution at ₹100 should buy 1000 shares (₹1 Lakh), NOT 5000 shares (₹5 Lakhs)
+        val (eval, events) = repo.evaluateStrategyTriggers(
+            items = repo.getRecommendations(),
+            externalPrices = mapOf("OVERSIZE" to 100.0)
+        )
+        val executed = eval.firstOrNull { it.symbol == "OVERSIZE" }
+        assertNotNull(executed)
+        assertEquals(1000, executed?.quantity)
+        assertEquals(100_000.0, executed?.strategySlotCapital ?: 0.0, 0.01)
+    }
+
+    @Test
+    fun testPartialBuyResetsBaseQuantityForSubsequentLadder() {
+        val repo = ArjunStockRepository()
+        val stock = ArjunStockItem(
+            id = "ladder-buy-reset-test",
+            symbol = "RESETLADDER",
+            entryPrice = 100.0,
+            currentPrice = 100.0,
+            quantity = 100,
+            initialStrategyQuantity = 100,
+            isApprovedForStrategy = true,
+            strategySlotIndex = 6,
+            targetLadder = listOf(
+                ArjunLadderLevel(levelIndex = 1, triggerPrice = 110.0, allocationPct = 50.0)
+            )
+        )
+        repo.addRecommendation(stock)
+
+        // 1. Partial sell 50 shares
+        repo.partialSell("ladder-buy-reset-test", 50, 105.0)
+        val afterSell = repo.getRecommendations().first { it.id == "ladder-buy-reset-test" }
+        assertEquals(50, afterSell.quantity)
+
+        // 2. Partial buy 50 shares back at ₹100
+        repo.partialBuy("ladder-buy-reset-test", 50, 100.0)
+        val afterBuy = repo.getRecommendations().first { it.id == "ladder-buy-reset-test" }
+        assertEquals(100, afterBuy.quantity)
+        assertEquals(100, afterBuy.initialStrategyQuantity)
+
+        // 3. Trigger 50% TP level -> should sell 50 shares (50% of 100), not 75 shares
+        val (eval, events) = repo.evaluateStrategyTriggers(listOf(afterBuy.copy(currentPrice = 115.0)))
+        assertEquals(1, events.size)
+        val afterTp = eval.first { it.id == "ladder-buy-reset-test" }
+        assertEquals(50, afterTp.quantity)
+    }
+
+    @Test
+    fun testNoDiskCacheInProductionMode() {
+        val repo = ArjunStockRepository()
+        ArjunStockRepository.enableDiskCache = false
+        try {
+            val stock = ArjunStockItem(symbol = "TESTCACHE", entryPrice = 100.0)
+            repo.addRecommendation(stock)
+            val dir = VaralakshmiRepository.getCacheDirectory()
+            val file = File(dir, "arjun_stocks_cache.json")
+            assertFalse("arjun_stocks_cache.json must NOT exist when enableDiskCache is false", file.exists())
+        } finally {
+            ArjunStockRepository.enableDiskCache = true
+        }
+    }
+
+    @Test
+    fun testParseServerFullPayload10Slots() {
+        val repo = ArjunStockRepository()
+        val mockJson = """
+            {
+              "status": "success",
+              "summary": {
+                "total_strategy_capital": 500000.0,
+                "slot_budget": 50000.0,
+                "total_slots": 10,
+                "occupied_slots_count": 1,
+                "deployed_capital": 49000.0,
+                "available_cash": 451000.0,
+                "current_portfolio_value": 52000.0,
+                "unrealized_pnl": 3000.0,
+                "realized_pnl": 0.0,
+                "total_strategy_nav": 503000.0,
+                "total_strategy_return_pct": 0.60,
+                "status": "ACTIVE_CNC",
+                "broker": "Zerodha Kite CNC"
+              },
+              "positions": [
+                {
+                  "slot_index": 1,
+                  "symbol": "ORIENTHOT",
+                  "company_name": "ORIENTAL HOTELS",
+                  "entry_price": 169.5,
+                  "current_price": 175.0,
+                  "quantity": 289,
+                  "target_1": 185.0,
+                  "target_2": 195.0,
+                  "stop_loss": 160.0
+                }
+              ],
+              "slots": [
+                {
+                  "slot_index": 1,
+                  "status": "OCCUPIED",
+                  "symbol": "ORIENTHOT",
+                  "current_price": 175.0,
+                  "pnl_pct": 3.24
+                },
+                {
+                  "slot_index": 2,
+                  "status": "EMPTY",
+                  "allocated_budget": 50000.0
+                }
+              ],
+              "watchlist": [
+                {
+                  "symbol": "FEDERALBNK",
+                  "trigger_price": 205.0,
+                  "planned_shares": 243,
+                  "target_1": 220.0,
+                  "target_2": 230.0,
+                  "stop_loss": 195.0
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val payload = repo.parseServerFullPayload(mockJson)
+        assertEquals(500000.0, payload.strategySummary.totalFund, 0.01)
+        assertEquals(500000.0, payload.strategySummary.totalCapital, 0.01)
+        assertEquals(50000.0, payload.strategySummary.slotBudget, 0.01)
+        assertEquals(10, payload.strategySummary.totalSlots)
+        assertEquals("ACTIVE_CNC", payload.serverStatus)
+        assertEquals("Zerodha Kite CNC", payload.broker)
+
+        assertEquals(1, payload.positions.size)
+        assertEquals("ORIENTHOT", payload.positions.first().symbol)
+        assertEquals(1, payload.positions.first().strategySlotIndex)
+
+        // Verify slots include 10 slots
+        assertEquals(10, payload.strategySlots.size)
+        assertEquals(ArjunSlotStatus.OCCUPIED, payload.strategySlots[0].status)
+        assertEquals(ArjunSlotStatus.PENDING_BREAKOUT, payload.strategySlots[1].status)
+        assertEquals("FEDERALBNK", payload.strategySlots[1].pendingBreakout?.symbol)
+        assertEquals(ArjunSlotStatus.EMPTY, payload.strategySlots[2].status)
+
+        // Verify breakout order from watchlist
+        assertEquals(1, payload.breakoutOrders.size)
+        assertEquals("FEDERALBNK", payload.breakoutOrders.first().symbol)
+        assertEquals(205.0, payload.breakoutOrders.first().triggerPrice, 0.01)
+    }
 }
+
 

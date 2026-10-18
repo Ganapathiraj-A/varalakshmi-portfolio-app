@@ -8,11 +8,48 @@ import java.util.UUID
 enum class ArjunTradeStatus {
     ACTIVE,
     WAITING_TRIGGER,
+    PENDING_BREAKOUT,
     TARGET1_HIT,
     TARGET2_HIT,
     STOP_LOSS_HIT,
     CLOSED
 }
+
+enum class ArjunSlotStatus {
+    EMPTY,
+    PENDING_BREAKOUT,
+    OCCUPIED,
+    CLOSED
+}
+
+data class ArjunLadderLevel(
+    val levelIndex: Int = 1,
+    val triggerPrice: Double = 0.0,
+    val allocationPct: Double = 100.0,
+    val isTriggered: Boolean = false,
+    val triggeredAtPrice: Double = 0.0,
+    val triggeredDate: String = ""
+) {
+    val price: Double get() = triggerPrice
+    val isExecuted: Boolean get() = isTriggered
+}
+
+data class ArjunBreakoutOrder(
+    val id: String = UUID.randomUUID().toString(),
+    val slotIndex: Int,
+    val symbol: String,
+    val triggerPrice: Double,
+    val quantity: Int = 0,
+    val allocatedAmount: Double = 100_000.0,
+    val targetLadder: List<ArjunLadderLevel> = emptyList(),
+    val stopLossLadder: List<ArjunLadderLevel> = emptyList(),
+    val targetPrice1: Double = 0.0,
+    val targetPrice2: Double = 0.0,
+    val stopLoss: Double = 0.0,
+    val notes: String = "",
+    val createdAt: String = "",
+    val allocationAmount: Double = allocatedAmount
+)
 
 data class ArjunStockItem(
     val id: String = UUID.randomUUID().toString(),
@@ -37,12 +74,16 @@ data class ArjunStockItem(
     val closedDate: String = "",
     val isApprovedForStrategy: Boolean = false,
     val strategySlotIndex: Int = -1,
-    val strategySlotCapital: Double = 50_000.0,
+    val strategySlotCapital: Double = 100_000.0,
     val exitReason: String = "",
-    val exitTriggerPrice: Double = 0.0
+    val exitTriggerPrice: Double = 0.0,
+    val initialStrategyQuantity: Int = quantity,
+    val partialRealizedPnl: Double = 0.0,
+    val targetLadder: List<ArjunLadderLevel> = emptyList(),
+    val stopLossLadder: List<ArjunLadderLevel> = emptyList()
 ) {
     val isStrategySlotOccupied: Boolean
-        get() = isApprovedForStrategy && !isClosed && strategySlotIndex in 1..10
+        get() = isApprovedForStrategy && !isClosed && strategySlotIndex in 1..7
 
     val effectivePrice: Double get() = if (isClosed) closedPrice else currentPrice
 
@@ -58,7 +99,9 @@ data class ArjunStockItem(
 
     val unrealizedPnl: Double get() = ArjunMoneyMath.roundPaise(currentValue - investedValue)
 
-    val realizedPnl: Double get() = if (isClosed) ArjunMoneyMath.calculatePnl(quantity, entryPrice, closedPrice) else 0.0
+    val realizedPnl: Double get() = ArjunMoneyMath.roundPaise(
+        partialRealizedPnl + if (isClosed) ArjunMoneyMath.calculatePnl(quantity, entryPrice, closedPrice) else 0.0
+    )
 
     val status: ArjunTradeStatus
         get() {
@@ -74,6 +117,15 @@ data class ArjunStockItem(
             if (targetPrice1 > 0.0 && currentPrice >= targetPrice1) return ArjunTradeStatus.TARGET1_HIT
             return ArjunTradeStatus.ACTIVE
         }
+
+    val target1: Double get() = targetPrice1
+    val target2: Double get() = targetPrice2
+    val formattedInvestedValue: String get() = String.format(Locale.US, "₹%,.2f", investedValue)
+    val formattedCurrentValue: String get() = String.format(Locale.US, "₹%,.2f", currentValue)
+    val formattedRealizedPnl: String get() {
+        val sign = if (realizedPnl >= 0.0) "+" else "-"
+        return String.format(Locale.US, "%s₹%,.2f", sign, kotlin.math.abs(realizedPnl))
+    }
 
     val formattedEntryPrice: String get() = String.format(Locale.US, "₹%,.2f", entryPrice)
     val formattedCurrentPrice: String get() = String.format(Locale.US, "₹%,.2f", currentPrice)
@@ -173,30 +225,45 @@ data class ArjunPortfolioSummary(
 }
 
 data class ArjunStrategySlot(
-    val slotIndex: Int, // 1 to 10
-    val isOccupied: Boolean,
+    val slotIndex: Int, // 1 to 7
     val stock: ArjunStockItem? = null,
-    val targetCapital: Double = 50_000.0
+    val isOccupied: Boolean = stock != null,
+    val targetCapital: Double = 100_000.0,
+    val pendingBreakout: ArjunBreakoutOrder? = null
 ) {
+    val status: ArjunSlotStatus
+        get() = when {
+            isOccupied && stock != null && !stock.isClosed -> ArjunSlotStatus.OCCUPIED
+            pendingBreakout != null -> ArjunSlotStatus.PENDING_BREAKOUT
+            stock != null && stock.isClosed -> ArjunSlotStatus.CLOSED
+            else -> ArjunSlotStatus.EMPTY
+        }
+
     val statusLabel: String
-        get() = if (isOccupied && stock != null) stock.symbol else "Slot $slotIndex Available"
+        get() = when (status) {
+            ArjunSlotStatus.OCCUPIED -> stock?.symbol ?: "Slot $slotIndex"
+            ArjunSlotStatus.PENDING_BREAKOUT -> "⏳ ${pendingBreakout?.symbol} @ ₹${pendingBreakout?.triggerPrice}"
+            ArjunSlotStatus.CLOSED -> "Closed"
+            ArjunSlotStatus.EMPTY -> "Slot $slotIndex Available"
+        }
 }
 
 data class ArjunStrategySummary(
-    val totalFund: Double = 500_000.0,
-    val slotBudget: Double = 50_000.0,
-    val totalSlots: Int = 10,
+    val totalFund: Double = 700_000.0,
+    val slotBudget: Double = 100_000.0,
+    val totalSlots: Int = 7,
     val occupiedSlotsCount: Int = 0,
-    val availableSlotsCount: Int = 10,
+    val availableSlotsCount: Int = 7,
     val totalDeployedCapital: Double = 0.0,
-    val availableCash: Double = 500_000.0,
+    val availableCash: Double = 700_000.0,
     val currentDeployedValue: Double = 0.0,
     val unrealizedPnl: Double = 0.0,
     val realizedPnl: Double = 0.0,
-    val totalStrategyNav: Double = 500_000.0,
+    val totalStrategyNav: Double = 700_000.0,
     val totalStrategyReturnPct: Double = 0.0
 ) {
     val formattedTotalFund: String get() = String.format(Locale.US, "₹%,.2f", totalFund)
+    val totalCapital: Double get() = totalFund
     val formattedTotalDeployed: String get() = String.format(Locale.US, "₹%,.2f", totalDeployedCapital)
     val formattedAvailableCash: String get() = String.format(Locale.US, "₹%,.2f", availableCash)
     val formattedCurrentValue: String get() = String.format(Locale.US, "₹%,.2f", currentDeployedValue)
@@ -217,7 +284,7 @@ data class ArjunAutoExecutionEvent(
     val stockId: String,
     val symbol: String,
     val timestamp: String,
-    val eventType: String, // "TARGET_HIT" or "STOP_LOSS_HIT"
+    val eventType: String, // "TARGET_HIT" or "STOP_LOSS_HIT" or "PARTIAL_SELL" or "BREAKOUT_BUY"
     val triggerPrice: Double,
     val entryPrice: Double,
     val quantity: Int,
@@ -243,12 +310,28 @@ data class ArjunStocksUiState(
     val summary: ArjunPortfolioSummary = ArjunPortfolioSummary(),
     val strategySummary: ArjunStrategySummary = ArjunStrategySummary(),
     val strategySlots: List<ArjunStrategySlot> = emptyList(),
+    val breakoutOrders: List<ArjunBreakoutOrder> = emptyList(),
     val autoExecutionEvents: List<ArjunAutoExecutionEvent> = emptyList(),
+    val selectedSlotIndex: Int? = null,
     val isLoading: Boolean = false,
     val isRefreshingQuotes: Boolean = false,
     val selectedFilter: String = "ALL",
     val lastRefreshedTime: String = "",
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val serverStatus: String = "DISCONNECTED",
+    val isLiveSync: Boolean = false,
+    val broker: String = "Zerodha Kite CNC"
+)
+
+data class ArjunServerSyncPayload(
+    val positions: List<ArjunStockItem>,
+    val strategySlots: List<ArjunStrategySlot>,
+    val strategySummary: ArjunStrategySummary,
+    val portfolioSummary: ArjunPortfolioSummary,
+    val breakoutOrders: List<ArjunBreakoutOrder> = emptyList(),
+    val serverStatus: String = "ACTIVE_CNC",
+    val broker: String = "Zerodha Kite CNC",
+    val lastUpdated: String = ""
 )
 
 fun formatArjunStocksForClipboard(
@@ -273,6 +356,7 @@ fun formatArjunStocksForClipboard(
             ArjunTradeStatus.TARGET1_HIT -> "🎯 TARGET 1 HIT"
             ArjunTradeStatus.STOP_LOSS_HIT -> "🛑 SL HIT"
             ArjunTradeStatus.WAITING_TRIGGER -> "⏳ WAITING TRIGGER"
+            ArjunTradeStatus.PENDING_BREAKOUT -> "🚀 PENDING BREAKOUT"
             ArjunTradeStatus.CLOSED -> "🔒 CLOSED"
             ArjunTradeStatus.ACTIVE -> "🟢 ACTIVE"
         }

@@ -3,8 +3,14 @@ package com.example.varalakshmiportfolio
 import com.example.varalakshmiportfolio.data.VaralakshmiRepository
 import com.example.varalakshmiportfolio.data.VaralakshmiRepository.Companion.roundPaise
 import com.example.varalakshmiportfolio.ui.VaralakshmiViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.setMain
+import org.junit.After
 import org.junit.Assert.*
+import org.junit.Before
 import org.junit.Test
 import kotlin.concurrent.thread
 
@@ -13,7 +19,22 @@ import kotlin.concurrent.thread
  * Validates financial precision, invariant conservation under sequential and arbitrary
  * trade exits, concurrency safety, edge cases, and ViewModel state transitions.
  */
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class FinancialAdversarialStressTest {
+
+    private val testDispatcher = StandardTestDispatcher()
+
+    @Before
+    fun setUp() {
+        Dispatchers.setMain(testDispatcher)
+    }
+
+    @After
+    fun tearDown() {
+        VaralakshmiRepository.resetIoDispatcherForTesting()
+        testDispatcher.scheduler.advanceUntilIdle()
+        Dispatchers.resetMain()
+    }
 
     private val baselineNav = 109268.80
     private val baselineDeployed = 99536.77
@@ -273,29 +294,38 @@ class FinancialAdversarialStressTest {
     @Test
     fun testViewModelSequentialExitsEndToEnd() = runTest {
         val repo = VaralakshmiRepository()
-        val viewModel = VaralakshmiViewModel(repo)
+        val viewModel = VaralakshmiViewModel(
+            repository = repo,
+            autoRefresh = false,
+            enablePeriodicSync = false
+        )
 
-        val symbolsToExit = listOf("STLNETWORK", "AHCL", "TBZ")
-        for (sym in symbolsToExit) {
-            val stateBefore = viewModel.uiState.value
-            val target = stateBefore.positions.firstOrNull { it.symbol == sym }
-            assertNotNull("Position $sym should exist before exit", target)
+        try {
+            val symbolsToExit = listOf("STLNETWORK", "AHCL", "TBZ")
+            for (sym in symbolsToExit) {
+                val stateBefore = viewModel.uiState.value
+                val target = stateBefore.positions.firstOrNull { it.symbol == sym }
+                assertNotNull("Position $sym should exist before exit", target)
 
-            viewModel.requestExit(target!!)
-            assertEquals(target, viewModel.uiState.value.positionToExit)
+                viewModel.requestExit(target!!)
+                assertEquals(target, viewModel.uiState.value.positionToExit)
 
-            viewModel.confirmExit()
-            val stateAfter = viewModel.uiState.value
-            assertNull(stateAfter.positionToExit)
-            assertEquals(baselineNav, stateAfter.summary.totalNav, 0.0001)
-            assertTrue(stateAfter.snackbarMessage?.contains("Exited $sym") == true)
+                viewModel.confirmExit()
+                val stateAfter = viewModel.uiState.value
+                assertNull(stateAfter.positionToExit)
+                assertEquals(baselineNav, stateAfter.summary.totalNav, 0.0001)
+                assertTrue(stateAfter.snackbarMessage?.contains("Exited $sym") == true)
+            }
+
+            val finalState = viewModel.uiState.value
+            assertEquals(0, finalState.positions.size)
+            assertEquals(109268.80, finalState.summary.availableCapital, 0.0001)
+            assertEquals(0.00, finalState.summary.deployedCapital, 0.0001)
+            assertEquals(9268.80, finalState.summary.realizedPnl, 0.0001)
+            assertEquals(baselineNav, finalState.summary.totalNav, 0.0001)
+            testScheduler.advanceUntilIdle()
+        } finally {
+            viewModel.stopPeriodicSync()
         }
-
-        val finalState = viewModel.uiState.value
-        assertEquals(0, finalState.positions.size)
-        assertEquals(109268.80, finalState.summary.availableCapital, 0.0001)
-        assertEquals(0.00, finalState.summary.deployedCapital, 0.0001)
-        assertEquals(9268.80, finalState.summary.realizedPnl, 0.0001)
-        assertEquals(baselineNav, finalState.summary.totalNav, 0.0001)
     }
 }

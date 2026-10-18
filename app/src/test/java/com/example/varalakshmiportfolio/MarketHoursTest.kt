@@ -98,6 +98,11 @@ class MarketHoursTest {
         assertEquals(expectedHours, remaining)
     }
 
+    @org.junit.After
+    fun tearDown() {
+        VaralakshmiRepository.resetIoDispatcherForTesting()
+    }
+
     @Test
     fun testRepositoryAndViewModelAutoSyncState() {
         val repository = VaralakshmiRepository()
@@ -114,16 +119,19 @@ class MarketHoursTest {
             autoRefresh = false,
             enablePeriodicSync = false
         )
+        try {
+            assertTrue(viewModel.uiState.value.isAutoSyncEnabled)
+            assertEquals(1 * 60 * 1000L, viewModel.syncIntervalMillis)
 
-        assertTrue(viewModel.uiState.value.isAutoSyncEnabled)
-        assertEquals(1 * 60 * 1000L, viewModel.syncIntervalMillis)
+            viewModel.toggleAutoSync(false)
+            assertFalse(viewModel.uiState.value.isAutoSyncEnabled)
+            assertFalse(repository.isAutoSyncEnabled())
 
-        viewModel.toggleAutoSync(false)
-        assertFalse(viewModel.uiState.value.isAutoSyncEnabled)
-        assertFalse(repository.isAutoSyncEnabled())
-
-        viewModel.toggleAutoSync(true)
-        assertTrue(viewModel.uiState.value.isAutoSyncEnabled)
-        assertTrue(repository.isAutoSyncEnabled())
+            viewModel.toggleAutoSync(true)
+            assertTrue(viewModel.uiState.value.isAutoSyncEnabled)
+            assertTrue(repository.isAutoSyncEnabled())
+        } finally {
+            viewModel.stopPeriodicSync()
+        }
     }
 }

@@ -811,7 +811,13 @@ fun VaralakshmiDashboardScreen(
                             onRefresh = remember(viewModel) { { viewModel.refreshArjunQuotes() } },
                             onApproveStock = remember(viewModel) { { id: String -> viewModel.approveArjunStock(id) } },
                             onUnapproveStock = remember(viewModel) { { id: String -> viewModel.unapproveArjunStock(id) } },
-                            onDismissExecutionEvent = remember(viewModel) { { id: String -> viewModel.dismissAutoExecutionEvent(id) } }
+                            onDismissExecutionEvent = remember(viewModel) { { id: String -> viewModel.dismissAutoExecutionEvent(id) } },
+                            onSelectSlot = remember(viewModel) { { slotIndex: Int? -> viewModel.selectArjunSlot(slotIndex) } },
+                            onPartialBuy = remember(viewModel) { { id: String, qty: Int, price: Double -> viewModel.partialBuyArjunStock(id, qty, price) } },
+                            onPartialSell = remember(viewModel) { { id: String, qty: Int, price: Double -> viewModel.partialSellArjunStock(id, qty, price) } },
+                            onSetBreakoutOrder = remember(viewModel) { { order: com.example.varalakshmiportfolio.model.ArjunBreakoutOrder -> viewModel.setArjunBreakoutOrder(order) } },
+                            onCancelBreakoutOrder = remember(viewModel) { { slotIndex: Int -> viewModel.cancelArjunBreakoutOrder(slotIndex) } },
+                            onUpdateStockLadders = remember(viewModel) { { id: String, tp: List<com.example.varalakshmiportfolio.model.ArjunLadderLevel>, sl: List<com.example.varalakshmiportfolio.model.ArjunLadderLevel> -> viewModel.updateArjunStockLadders(id, tp, sl) } }
                         )
                         Spacer(modifier = Modifier.height(24.dp))
                     }

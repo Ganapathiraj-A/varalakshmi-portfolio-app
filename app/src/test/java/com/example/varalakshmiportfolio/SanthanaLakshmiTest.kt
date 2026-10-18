@@ -45,6 +45,8 @@ class SanthanaLakshmiTest {
 
     @After
     fun tearDown() {
+        VaralakshmiRepository.resetIoDispatcherForTesting()
+        testDispatcher.scheduler.advanceUntilIdle()
         Dispatchers.resetMain()
         VaralakshmiRepository.resetCacheDirectoryForTesting()
     }
